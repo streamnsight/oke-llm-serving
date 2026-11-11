@@ -41,7 +41,7 @@ The provider is constrained to OCI 7.x and the tested example lock file pins 7.3
 
 ## Inventory scope and output
 
-The result schema is 2.0. It lists subscriptions, but one module instance scans one provider region. The old regions-list input is removed. For several regions, instantiate the module with explicit provider aliases or run one regional Resource Manager stack/job per selected subscribed region. Terraform does not dynamically instantiate provider configurations from subscription data.
+The inventory result schema is 2.0. One inventory module scans one provider region. The combined root at terraform/stacks/discovery supplies checked-in provider aliases and activates READY subscriptions within one job. Its optional regions input filters the subscriptions. Terraform does not dynamically instantiate provider configurations from subscription data.
 
 Within the region, shapes are listed for every AD. shape_names filters GPU shapes; an empty set retains all visible GPU shapes. image_id optionally filters for image-compatible shapes. Returned fields include GPU count/description, host_memory_gb, OCPUs, local disk capacity and RDMA ports/bandwidth. GPU VRAM and NVLink topology remain null until catalog enrichment is implemented. A visible shape is not itself proof of OKE compatibility or launch capacity.
 
@@ -55,7 +55,7 @@ Only limits whose metadata explicitly supports resource availability and whose s
 
 Native provider data sources fail Terraform on permission errors, unsupported API errors not reflected in metadata, transport failures and other API diagnostics. Terraform try() cannot catch these provider request failures. This differs from the removed SDK wrapper's partial-error JSON behavior.
 
-Known unsupported queries are skipped using limit metadata. If an endpoint still fails, examine the provider diagnostic, correct IAM/scope or explicitly exclude that limit/disable headroom queries and rerun. The resulting omitted headroom remains unknown. A cross-region coordinator can run independent regional jobs to keep one region's error from preventing others from completing.
+Known unsupported queries are skipped using limit metadata. If an endpoint still fails, examine the provider diagnostic, correct IAM/scope or explicitly exclude that limit/disable headroom queries and rerun. The resulting omitted headroom remains unknown. The combined RMS stack fails the job on an API error; use its explicit region subset to investigate. It does not launch independent Terraform processes.
 
 Successful outputs can still be complete or partial depending on omitted/null entitlement data. Complete means the selected observations were obtained, not that enough resources exist.
 
@@ -83,14 +83,13 @@ Before allocating hardware, request a fresh report again. A report is not a rese
 
 OCI discovery requires no Python or Bash runtime beyond the Terraform provider execution environment. Hugging Face analysis is different: binary-header parsing, architecture interpretation, estimates and tests remain in Python. A shell rewrite would require its own HTTP/JSON/binary tooling and would not provide an unconditional reliability guarantee.
 
-For RMS, generate model-profile JSON in a controlled, versioned build environment and supply it to the model-profile module's profile_json input. That path never executes Python. External analysis is disabled by default and requires explicit enable_external_analysis=true on a prepared runner. See terraform/examples/model-profile-rms and [model tool documentation](model-profile.md).
+For RMS, use the combined native stack at terraform/stacks/discovery. Hugging Face model lookup also uses native Terraform HTTP data sources and HCL. No precomputed profile or external runtime is needed. See [RMS workflow](rms-discovery.md) and [model profile documentation](model-profile.md).
 
 ## Verification
 
-Run Python model tests and Terraform native-provider tests:
+Run Terraform native-provider tests:
 
 ```sh
-PYTHONPATH=src python3 -m unittest discover -s tests -v
 terraform -chdir=terraform/modules/accelerator-inventory init -backend=false
 terraform -chdir=terraform/modules/accelerator-inventory test
 terraform -chdir=terraform/modules/capacity-assessment init -backend=false

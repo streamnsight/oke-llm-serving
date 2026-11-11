@@ -9,4 +9,5 @@ __pycache__/
 *.tfvars
 *.tfvars.json
 work/
+outputs/capacity-scans/
 .DS_Store

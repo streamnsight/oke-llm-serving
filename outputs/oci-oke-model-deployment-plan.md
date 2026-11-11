@@ -2,6 +2,8 @@
 
 Proposal date November 11 2026
 
+Current implementation update: the agreed first user-facing stack is now `terraform/stacks/discovery`, using native HTTP/OCI providers and HCL for model profiling and subscribed-region capacity. All Python/Bash model analyzers, external wrappers and precomputed-profile paths were removed. The second user-facing stack will allocate the selected region/OKE/shape/node quantity and create DevOps resources. Historical alternatives below describing interpreter-based discovery or a required bootstrap stack are superseded by this two-stack flow. See [current workflow](../docs/rms-discovery.md) and [implementation checklist](project-status.md).
+
 ## Purpose and product direction
 
 Build a model-first advisor and reproducible deployment workflow for an existing regional OKE cluster. A user supplies a Hugging Face model and OCI context. The advisor inspects model artifacts, workload requirements, cluster compatibility, resource entitlements and reported capacity, then explains deployable configurations. The selected configuration becomes an immutable deployment specification consumed by Terraform and OCI DevOps.
@@ -261,9 +263,9 @@ This path differs from older self-managed-node deployments using Cluster Network
 | gpu_allocation | Selected immutable deployment specification | Optional Compute Cluster plus GPU managed node pool, optional CPU pool, storage/IAM references |
 | delivery_pipeline | Allocated resource IDs and pinned deployment artifacts | DevOps deployment environments, artifacts, stages and configuration |
 
-Modules are reusable code units, not necessarily separate Resource Manager stacks. OCI inventory now uses native data sources and capacity assessment uses a native report resource. No OCI SDK or external script is required. Model-analysis logic remains Python, with an optional external wrapper for prepared runners and a runtime-free profile_json input for RMS.
+Modules are reusable code units, not necessarily separate Resource Manager stacks. OCI inventory uses native data sources and capacity assessment uses a native report resource. Model analysis uses native HTTP data sources and Terraform expressions. No OCI SDK, interpreter or external script is required.
 
-For model_profile, precompute a JSON profile in a controlled build environment and pass profile_json to RMS. External Python analysis is disabled by default and requires enable_external_analysis=true for local/prepared runners. Neither Python nor a Bash rewrite can guarantee an uncontrolled managed runtime. A versioned build image and an immutable JSON artifact remove that execution dependency from RMS.
+The model_profile module accepts a public model URL and serving assumptions directly. It reads Hub-published safetensors counts and SHA-pinned config JSON, with declared metadata provenance. Independent tensor-header inspection, gated/private access and alternate checkpoint selection are outside the initial implementation. RMS does not require a precomputed profile.
 
 The capacity API's Terraform implementation is a resource, oci_core_compute_capacity_report, rather than a data source. It creates a report, not instances. A module can expose its results but needs an explicit freshness strategy; re-reading an old report is not a fresh host-capacity test. Change observation_id to deliberately create a fresh native report for the discovery run and again before allocation. The provider documentation requires the report compartment to be the tenancy root. Limits and target-compartment quota observations have different scopes and must remain separate.
 

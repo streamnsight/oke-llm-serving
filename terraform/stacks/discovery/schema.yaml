@@ -1,0 +1,66 @@
+title: OKE LLM discovery
+description: Inspect a public Hugging Face model and assess GPU shapes, entitlement and host capacity across READY subscribed regions. Creates no GPU instances.
+schemaVersion: 1.1.0
+version: "0.1.0"
+variableGroups:
+  - title: Model and serving assumptions
+    variables: [model, revision, context_length, concurrency, kv_dtype, runtime_gib, margin]
+  - title: Capacity observation
+    variables: [observation_id, compartment_id, regions, shape_names, query_resource_availability]
+  - title: Resource Manager context
+    visible: false
+    variables: [tenancy_ocid, region]
+variables:
+  model:
+    type: string
+    title: Public Hugging Face model URL
+    required: true
+    description: https://huggingface.co/owner/model or owner/model
+  revision:
+    type: string
+    title: Model revision
+  context_length:
+    type: integer
+    title: Context tokens per sequence
+    minimum: 1
+  concurrency:
+    type: integer
+    title: Concurrent sequences
+    minimum: 1
+  kv_dtype:
+    type: enum
+    enum: [bfloat16, float16, float32]
+    title: KV cache dtype
+  runtime_gib:
+    type: number
+    title: Assumed aggregate runtime overhead (GiB)
+    minimum: 0
+  margin:
+    type: number
+    title: Additional memory margin (fraction)
+    minimum: 0
+    maximum: 1
+  observation_id:
+    type: string
+    title: Capacity observation identifier
+    description: Change for each new capacity report. Reusing this identifier preserves the previous snapshot.
+  compartment_id:
+    type: oci:identity:compartment:id
+    title: Intended deployment compartment (optional)
+    required: false
+    description: Quota/headroom scope only; capacity uses tenancy root. Leaving unset checks root entitlement.
+  regions:
+    type: array
+    items:
+      type: string
+    title: Optional region subset
+    description: Empty means all READY subscribed regions.
+  shape_names:
+    type: array
+    items:
+      type: string
+    title: Optional GPU shape subset
+    description: Empty means all visible GPU shapes.
+  query_resource_availability:
+    type: boolean
+    title: Query supported limit headroom

@@ -1,60 +1,38 @@
-# OCI OKE deployment project status
+# Project status
 
-Updated November 11 2026
+Updated November 11, 2026.
 
-## Current status
+## Current direction
 
-Model inspection and native Terraform OCI discovery are implemented. Python remains only for Hugging Face analysis. RMS can consume precomputed model profiles without Python execution; the native OCI modules require no external scripts. Live local-provider validation is complete; actual RMS and private/gated model execution remain pending.
+Two user-facing Resource Manager stacks: discovery from a public model URL and serving assumptions, followed by allocation/DevOps from an explicitly selected configuration. Existing OKE cluster first; retain scarce GPU allocations and scale serving inside them.
 
-## Documents
+All model/OCI discovery now uses native Terraform providers and HCL. Python, Bash analyzers, external wrappers and the precomputed-profile path have been removed. No Terraform process launches another Terraform process. Older planning notes describing those paths are superseded.
 
-- [Deployment plan](oci-oke-model-deployment-plan.md)
-- [Serving ecosystem report and production-stack investigation](kubernetes-llm-serving-report.md)
+## Phase 1 — discovery
 
-## Decisions recorded
+- [x] Inspect Hugging Face model metadata through HTTP provider data sources and SHA-pin config reads.
+- [x] Estimate conventional full-context KV and all resident MoE weights with explicit context/concurrency/runtime assumptions.
+- [x] Label Hub-published counts as declared metadata and return unsupported/null estimates when evidence is insufficient.
+- [x] Use native OCI shapes, limits, headroom and capacity reports, keeping root capacity separate from compartment entitlement.
+- [x] Implement a single discovery root module and RMS input schema.
+- [x] Use checked-in provider aliases and READY-subscription-driven module counts; reject unmapped selected regions.
+- [x] Remove local region orchestration and all interpreter-based model paths.
+- [x] Finish combined live stack validation and record current test results (18 Terraform test runs; single live plan/apply across 16 subscribed regions).
+- [ ] Validate a real RMS job and input-form rendering.
 
-- Start with an existing regional OKE cluster.
-- Begin with Hugging Face model inspection, including architecture and weight/runtime/KV memory estimates with explicit assumptions.
-- Use native OCI Terraform discovery. Feed precomputed model profiles into RMS; external model analysis is opt-in on prepared runners.
-- Discover entitlement headroom and physical capacity separately. Use CreateComputeCapacityReport before allocation, preserving observation timestamps and unknown states.
-- Support an RDMA managed-node-pool path using an OCI Compute Cluster on supported hardware and an enhanced OKE cluster.
-- Consider a regular managed node pool when RDMA is unavailable only if the alternative remains feasible. Freeze the selected topology before apply.
-- Terraform owns infrastructure and DevOps resource definitions. DevOps deploys cluster components and model releases.
-- Retain allocated GPU nodes and scale serving within the allocation.
-- Separate shared bootstrap, discovery and per-deployment allocation responsibilities; not every pipeline stage needs a separate Terraform stack.
-- Keep outputs and configuration selections explicit and versioned between discovery and deployment.
+Local model-only native apply succeeded for Qwen/Qwen2.5-0.5B-Instruct: 988,065,536 weight bytes and a 3.729 GiB aggregate estimate at 4096 tokens × four concurrent sequences, including assumed 2 GiB runtime and 20% margin. This is not a per-GPU fit or throughput measurement.
 
-## Completed first work package
+An initial live capacity investigation covered all 16 READY subscriptions and 26 ADs using native OCI reports. Five regions listed no GPU shapes; reported positive capacity existed in ten regions, with Chicago's listed shapes out of capacity. No GPU hardware was allocated. The combined single-state discovery stack also completed live validation; see the validation record and capacity report for the newer snapshot.
 
-- [x] Inspect workspace/repository conventions before implementation.
-- [x] Define the model-profile input/output schema and confidence/provenance fields.
-- [x] Implement Hugging Face metadata and checkpoint inspection without executing repository code.
-- [x] Implement supported weight and KV estimators with explicit context/concurrency inputs.
-- [x] Add a Terraform external-data-source wrapper with a packaged runtime contract.
-- [x] Verify dense/MoE fixtures, duplicate checkpoint variants, simulated gated-access failures and unsupported architectures, plus live public dense-model inspection.
-- [x] Document local execution and Resource Manager compatibility requirements.
+## Phase 2 — layout and deployment (not implemented)
 
-See [model tool usage](../docs/model-profile.md) and [live example profile](example-model-profile.json).
+- [ ] Add sourced GPU VRAM/topology catalog and per-rank fit/engine compatibility checks; expose candidate layouts and node quantities.
+- [ ] Inspect the selected OKE cluster and existing allocation.
+- [ ] Define the selected deployment specification: region, AD, cluster, shape, node count, pinned model/configuration and serving recipe.
+- [ ] Provision retained GPU pool/compute cluster where supported and any CPU infrastructure.
+- [ ] Provision OCI DevOps resources and deploy CRDs/operators, serving and API/conversation components.
+- [ ] Validate inference and scaling inside the retained GPU allocation.
 
-## Completed native OCI discovery refactor
+The first native metadata estimator supports public conventional-attention models only. Gated/private models, quantized/custom/multimodal estimates and model-specific serving recipes need additional implementation. Capacity is never a reservation or proof of RDMA placement. Root headroom does not prove a child compartment's entitlement.
 
-- [x] Replace the OCI SDK implementation with native Terraform data sources and a capacity-report resource.
-- [x] Remove OCI SDK dependencies, Python commands and external wrapper scripts.
-- [x] Keep tenancy-root capacity reporting separate from target-compartment entitlement queries.
-- [x] Add explicit observation IDs for report freshness and document native provider fail-fast errors.
-- [x] Default model-profile Terraform to runtime-free precomputed JSON; external Python analysis requires explicit opt-in.
-- [x] Validate 16 Python tests and 14 Terraform test runs, plus live DEFAULT native-provider plan/apply and local runtime-free profile plan/apply.
-
-The live VM.GPU.A10.1 query returned OUT_OF_HOST_CAPACITY in the inspected AD. No hardware was allocated. See [native OCI usage](../docs/oci-discovery.md) and [validation record](oci-discovery-validation.md). Actual RMS execution remains pending.
-
-Next: source the GPU VRAM/topology catalog, inspect OKE compatibility/existing allocation, and combine these observations with model profiles to propose configurations. Allocation and DevOps deployment follow validated candidate planning.
-
-## Decisions still to finalize
-
-- Exact initial model/architecture coverage and validation models.
-- First serving deployment recipe and pinned versions.
-- Whether multi-node deployment and durable Responses conversation state are first-release requirements or subsequent increments.
-- Target tenancy, compartment and cluster for integration testing.
-- Packaging of the discovery runtime in Resource Manager versus a DevOps discovery job.
-
-These decisions do not prevent documenting and designing the model-profile contract.
+See [RMS workflow](../docs/rms-discovery.md), [model-profile limitations](../docs/model-profile.md) and [deployment plan](oci-oke-model-deployment-plan.md).

@@ -1,41 +1,146 @@
 terraform {
   required_version = ">= 1.5.0"
   required_providers {
-    external = {
-      source  = "hashicorp/external"
-      version = "~> 2.3"
+    http = {
+      source  = "hashicorp/http"
+      version = "~> 3.4"
     }
   }
 }
 
-# External analysis is opt-in. RMS can consume a previously generated profile.
-data "external" "model" {
-  count   = var.profile_json == null && var.enable_external_analysis ? 1 : 0
-  program = [var.python_executable, "${path.module}/inspect.py"]
-  query = {
-    model          = var.model == null ? "" : var.model
-    revision       = var.revision
-    checkpoint     = var.checkpoint == null ? "" : var.checkpoint
-    context_length = tostring(var.context_length)
-    concurrency    = tostring(var.concurrency)
-    kv_dtype       = var.kv_dtype
-    weight_dtype   = var.weight_dtype
-    runtime_gib    = tostring(var.runtime_gib)
-    margin         = tostring(var.margin)
-  }
+locals {
+  repository = trimsuffix(trimprefix(var.model, "https://huggingface.co/"), "/")
+}
+
+# Public Hub metadata only. No external program, model code or weight download.
+data "http" "model" {
+  url                = "https://huggingface.co/api/models/${local.repository}/revision/${urlencode(var.revision)}?blobs=true"
+  request_headers    = { Accept = "application/json" }
+  request_timeout_ms = 60000
   lifecycle {
-    precondition {
-      condition     = var.model != null && var.model != ""
-      error_message = "External analysis requires a model identifier."
+    postcondition {
+      condition     = self.status_code == 200 && can(regex("^[a-fA-F0-9]{40}$", jsondecode(self.response_body).sha))
+      error_message = "Hub model lookup failed or did not resolve a commit SHA. Initial native discovery supports public models."
     }
   }
+}
+
+locals {
+  info = jsondecode(data.http.model.response_body)
+  sha  = local.info.sha
+}
+
+data "http" "config" {
+  url                = "https://huggingface.co/${local.repository}/resolve/${local.sha}/config.json"
+  request_headers    = { Accept = "application/json" }
+  request_timeout_ms = 60000
+  lifecycle {
+    postcondition {
+      condition     = self.status_code == 200 && can(keys(jsondecode(self.response_body)))
+      error_message = "Could not read config.json at the resolved revision."
+    }
+  }
+}
+
+locals {
+  config           = jsondecode(data.http.config.response_body)
+  text             = try(local.config.text_config, local.config)
+  model_type       = try(local.text.model_type, local.config.model_type, "unknown")
+  experts          = try(local.text.num_local_experts, local.text.num_experts, null)
+  moe              = contains(["mixtral", "qwen2_moe", "qwen3_moe"], local.model_type) || try(local.experts > 1, false)
+  conventional     = contains(["llama", "mistral", "mixtral", "qwen2", "qwen2_moe", "qwen3", "qwen3_moe"], local.model_type)
+  dtype_bytes      = { F64 = 8, F32 = 4, F16 = 2, BF16 = 2 }
+  parameters       = try(local.info.safetensors.parameters, {})
+  counts_valid     = try(length(local.parameters) > 0 && alltrue([for dtype, count in local.parameters : contains(keys(local.dtype_bytes), dtype) && count >= 0 && floor(count) == count]) && sum(values(local.parameters)) == local.info.safetensors.total, false)
+  weight_bytes     = local.counts_valid ? sum([for dtype, count in local.parameters : count * lookup(local.dtype_bytes, dtype, 0)]) : null
+  layers           = try(local.text.num_hidden_layers, 0)
+  heads            = try(local.text.num_attention_heads, 0)
+  kv_heads         = try(local.text.num_key_value_heads, local.heads)
+  head_dim         = try(local.text.head_dim, local.text.hidden_size / local.heads, 0)
+  dimensions_valid = try(alltrue([for n in [local.layers, local.heads, local.kv_heads, local.head_dim] : n > 0 && floor(n) == n]) && local.kv_heads <= local.heads && local.heads % local.kv_heads == 0, false)
+  max_context      = try(local.text.max_position_embeddings, null)
+  quantization     = try(local.config.quantization_config, local.text.quantization_config, null)
+  root_checkpoints = [for file in try(local.info.siblings, []) : file.rfilename if endswith(file.rfilename, ".safetensors") && !strcontains(file.rfilename, "/")]
+  has_index        = contains([for file in try(local.info.siblings, []) : file.rfilename], "model.safetensors.index.json")
+  canonical        = local.has_index || (length(local.root_checkpoints) == 1 && contains(local.root_checkpoints, "model.safetensors"))
+  reasons = compact([
+    local.conventional ? "" : "Architecture requires a dedicated estimator.",
+    local.counts_valid ? "" : "Hub safetensors counts are missing, inconsistent or use unsupported dtypes.",
+    local.canonical ? "" : "No unambiguous canonical safetensors checkpoint is declared.",
+    local.dimensions_valid ? "" : "Missing or unsupported attention dimensions.",
+    local.quantization == null ? "" : "Quantized checkpoints need engine-specific resident-memory estimates.",
+    anytrue([for key in ["text_config", "vision_config", "auto_map"] : contains(keys(local.config), key)]) ? "Composite, multimodal or custom-code architecture requires a dedicated estimator." : "",
+    try(var.context_length > local.max_context, false) ? "Requested context exceeds the declared maximum." : "",
+  ])
+  supported          = length(local.reasons) == 0
+  kv_bytes_per_token = local.supported ? 2 * local.layers * local.kv_heads * local.head_dim * (var.kv_dtype == "float32" ? 4 : 2) : null
+  kv_bytes           = local.supported ? local.kv_bytes_per_token * var.context_length * var.concurrency : null
+  runtime_bytes      = ceil(var.runtime_gib * pow(1024, 3))
+  subtotal           = local.supported ? local.weight_bytes + local.kv_bytes + local.runtime_bytes : null
+  total              = local.supported ? ceil(local.subtotal * (1 + var.margin)) : null
 }
 
 output "profile" {
-  description = "Versioned model profile. Unsupported estimates retain metadata and explain their limits."
-  value       = var.profile_json != null ? jsondecode(var.profile_json) : try(jsondecode(data.external.model[0].result.profile_json), null)
-  precondition {
-    condition     = var.profile_json != null || var.enable_external_analysis
-    error_message = "Supply profile_json for runtime-free execution, or explicitly enable_external_analysis on a prepared Python runner."
+  description = "Metadata-based profile; check memory.status before interpreting numeric estimates."
+  value = {
+    schema_version    = "1.0"
+    estimator_version = "terraform-metadata-0.1.0"
+    model = {
+      repository         = local.repository
+      requested_revision = var.revision
+      resolved_revision  = local.sha
+      url                = "https://huggingface.co/${local.repository}/tree/${local.sha}"
+      gated              = try(local.info.gated, false)
+      pipeline_tag       = try(local.info.pipeline_tag, null)
+      license            = try(local.info.cardData.license, null)
+    }
+    architecture = {
+      model_type              = local.model_type
+      kind                    = local.moe ? "moe" : local.conventional ? "dense" : "unknown"
+      experts                 = local.experts
+      experts_per_token       = try(local.text.num_experts_per_tok, null)
+      architectures           = try(local.config.architectures, [])
+      declared_context_length = local.max_context
+      quantization            = local.quantization
+      source                  = "SHA-pinned config.json"
+      confidence              = "declared_metadata"
+    }
+    weights = {
+      selected_checkpoint = local.has_index ? "model.safetensors.index.json" : local.canonical ? "model.safetensors" : null
+      tensor_data_bytes   = local.weight_bytes
+      tensor_elements     = try(local.info.safetensors.total, null)
+      elements_by_dtype   = local.parameters
+      source              = "Hub-published safetensors counts by dtype; not independently verified headers"
+      confidence          = "declared_metadata"
+    }
+    memory = {
+      status                      = local.supported ? "estimated" : "unsupported"
+      reasons                     = local.reasons
+      weight_bytes                = local.supported ? local.weight_bytes : null
+      kv_bytes_per_token          = local.kv_bytes_per_token
+      kv_bytes                    = local.kv_bytes
+      runtime_allowance_bytes     = local.runtime_bytes
+      minimum_aggregate_bytes     = local.subtotal
+      recommended_aggregate_bytes = local.total
+      recommended_aggregate_gib   = local.supported ? local.total / pow(1024, 3) : null
+      assumptions = {
+        context_length         = var.context_length
+        concurrency            = var.concurrency
+        live_cached_tokens     = var.context_length * var.concurrency
+        kv_dtype               = var.kv_dtype
+        weight_dtype           = "checkpoint"
+        runtime_allowance_gib  = var.runtime_gib
+        safety_margin_fraction = var.margin
+        prefix_sharing         = false
+        offload                = false
+        parallelism            = "unsharded aggregate; not a per-GPU fit assessment"
+      }
+    }
+    warnings = [
+      "Hub-published parameter counts are trusted metadata, not independently read tensor headers.",
+      "All expert weights and full-context KV for all layers are counted; sliding-window savings are not assumed.",
+      "Runtime allowance and margin are assumptions, not measured overhead or a performance guarantee.",
+      "GPU count/layout requires per-rank VRAM, topology and serving-engine assessment.",
+    ]
   }
 }

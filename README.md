@@ -1,52 +1,35 @@
-# OCI OKE model deployment
+# OCI OKE LLM serving
 
-This workspace contains the research and agreed direction for a model-first workflow that deploys open-weight LLMs onto GPU nodes in an existing OCI OKE cluster.
+Deploy open-weight models onto GPUs in an existing OKE cluster through a model-first workflow. The intended user experience has two Resource Manager stacks: **discover**, then **deploy a selected configuration**.
 
-## Documents
+## Start here
 
-- [Deployment architecture and phased implementation plan](outputs/oci-oke-model-deployment-plan.md) — user workflow, model inspection, OCI discovery, capacity checks, Terraform modules, Resource Manager stacks and DevOps delivery. The final section contains the latest refinements concerning RDMA and staged deployment.
-- [Kubernetes LLM serving research](outputs/kubernetes-llm-serving-report.md) — bottom-to-top infrastructure and serving ecosystem report. Section 20 contains the production-stack repository investigation.
-- [Current decisions and next steps](outputs/project-status.md) — agreed direction, implementation status and remaining decisions.
-
-## Agreed direction
-
-1. Inspect a Hugging Face model and estimate its requirements, with a Terraform data-only wrapper around the inspection tool.
-2. Discover OCI shapes, quota/limit headroom and reported host capacity independently.
-3. Compare feasible configurations, then pin the selected configuration in a deployment specification.
-4. Use Terraform to allocate GPU infrastructure and create OCI DevOps resources.
-5. Use DevOps to deploy cluster components and the model, then validate the result.
-6. Retain scarce GPU node allocation and scale serving workloads within that allocation.
-
-## Workspace layout
-
-```text
-README.md       Workspace entry point
-outputs/        Research, plans and other user-facing deliverables
-work/           Research notes and intermediate assets
-```
-
-## Model requirements tool
-
-The first work package is implemented: Hugging Face metadata/checkpoint inspection, explicit memory estimates and a Terraform data-only wrapper. See [usage and limitations](docs/model-profile.md).
+The first stack is implemented at [terraform/stacks/discovery](terraform/stacks/discovery). Supply a public Hugging Face model URL, context length and concurrency. It returns a model profile, GPU shapes, limit/headroom observations and AD-scoped host capacity across READY subscribed regions.
 
 ```sh
-PYTHONPATH=src python3 -m oke_llm_serving inspect Qwen/Qwen2.5-0.5B-Instruct \
-  --context-length 4096 --concurrency 4
+terraform -chdir=terraform/stacks/discovery init
+terraform -chdir=terraform/stacks/discovery plan -var-file=/path/to/request.tfvars.json -out=/path/to/discovery.tfplan
+terraform -chdir=terraform/stacks/discovery apply /path/to/discovery.tfplan
+terraform -chdir=terraform/stacks/discovery output -json discovery
 ```
 
-The Terraform example is in `terraform/examples/model-profile`. It allocates no cloud infrastructure. A [live example profile](outputs/example-model-profile.json) records a successful Terraform run.
+For RMS, use this repository as the configuration source and set the working directory to `terraform/stacks/discovery`. Its `schema.yaml` describes the user inputs. See [RMS setup, scope and limitations](docs/rms-discovery.md).
 
-## OCI inventory and capacity
+Everything in the discovery path uses Terraform providers and HCL. Hugging Face JSON comes through `hashicorp/http`; OCI observations use `oracle/oci`. There are no Python/Bash analyzers, external-program wrappers or nested Terraform invocations. The model-only example remains at `terraform/examples/model-profile`.
 
-OCI discovery uses native Terraform data sources and capacity-report resources. No OCI SDK, Python or shell program is required. See [usage and migration](docs/oci-discovery.md) and the [validation record](outputs/oci-discovery-validation.md).
+Discovery creates reports, not GPU allocations. Counts represent available instances at the observation time and do not reserve them. Hub-published model counts are declared metadata, not independent tensor inspection. Per-GPU VRAM/topology assessment and model-to-shape layout recommendations remain subsequent work. Actual RMS execution still needs validation; local provider execution is tested.
 
-```sh
-terraform -chdir=terraform/examples/oci-discovery init
-terraform -chdir=terraform/examples/oci-discovery plan -var-file=/path/to/discovery.tfvars.json
-```
+## Deployment stack (next phase)
 
-Supply tenancy_ocid and region; local authentication uses DEFAULT and RMS supplies its own provider credentials. Capacity reports use the tenancy root, independently of the compartment used for entitlement checks. They allocate no GPU instances. Change observation_id for a fresh capacity report.
+The user selects region, AD, OKE cluster, shape and node quantity, with the model pinned to its resolved revision. The deployment stack will allocate retained GPU infrastructure and OCI DevOps resources. DevOps will install cluster components, serving frameworks and API components, then validate inference. This phase is not implemented yet.
 
-For RMS model discovery, supply precomputed profile_json through terraform/examples/model-profile-rms. Python execution is opt-in for prepared local/build runners, not an assumption about RMS.
+## Documentation
 
-Hardware topology/VRAM catalog enrichment, model-to-shape planning, cluster inspection and GPU provisioning remain subsequent work.
+- [Model profile inputs, arithmetic and evidence](docs/model-profile.md)
+- [Native OCI inventory and capacity modules](docs/oci-discovery.md)
+- [Current status and implementation checklist](outputs/project-status.md)
+- [Live validation record](outputs/oci-discovery-validation.md)
+- [Architecture and deployment plan](outputs/oci-oke-model-deployment-plan.md)
+- [Kubernetes LLM serving ecosystem research](outputs/kubernetes-llm-serving-report.md)
+
+User-specific reports/state stay in ignored local artifacts; reusable modules, examples and provider locks are checked in.
