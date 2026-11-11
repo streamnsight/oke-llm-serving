@@ -7,6 +7,8 @@ Licensed under the Universal Permissive License v 1.0 as shown at http://oss.ora
 
 Updated November 11, 2026.
 
+Repository consolidation: all built serving/discovery work, research reports, and repository policy/license documents are checked in and integrated into local `main`. Combined validation passed 53 native Terraform tests and six command/manifest/schema tests, including the released Helm chart. Actual RMS/GPU/DevOps validation remains pending.
+
 ## Current direction
 
 Two user-facing Resource Manager stacks: discovery from a public model URL and serving assumptions, followed by allocation/DevOps from an explicitly selected configuration. Existing OKE cluster first; retain scarce GPU allocations and scale serving inside them.
