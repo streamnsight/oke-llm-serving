@@ -25,4 +25,13 @@ outputs/        Research, plans and other user-facing deliverables
 work/           Research notes and intermediate assets
 ```
 
-Implementation has not started. The first work package is the Hugging Face model-inspection tool and its Terraform wrapper.
+## Model requirements tool
+
+The first work package is implemented: Hugging Face metadata/checkpoint inspection, explicit memory estimates and a Terraform data-only wrapper. See [usage and limitations](docs/model-profile.md).
+
+```sh
+PYTHONPATH=src python3 -m oke_llm_serving inspect Qwen/Qwen2.5-0.5B-Instruct \
+  --context-length 4096 --concurrency 4
+```
+
+The Terraform example is in `terraform/examples/model-profile`. It allocates no cloud infrastructure. A [live example profile](outputs/example-model-profile.json) records a successful Terraform run. OCI inventory, capacity assessment and GPU provisioning remain subsequent work.

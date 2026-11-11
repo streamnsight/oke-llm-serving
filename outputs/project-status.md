@@ -4,7 +4,7 @@ Updated November 11 2026
 
 ## Current status
 
-Research and architecture planning are documented. The user has accepted the proposed direction. No model-inspection implementation, Terraform infrastructure modules or DevOps deployment pipelines have been built or deployed yet.
+The first implementation is complete: dependency-free Python model inspection, conventional transformer memory estimation and a Terraform external-data-source wrapper. Verification includes 16 unit tests, Terraform format/validation, a live public Hugging Face inspection, and a successful Terraform plan/apply with the real wrapper. No OCI infrastructure was allocated. Resource Manager execution and private/gated model access have not yet been tested against live credentials.
 
 ## Documents
 
@@ -24,17 +24,17 @@ Research and architecture planning are documented. The user has accepted the pro
 - Separate shared bootstrap, discovery and per-deployment allocation responsibilities; not every pipeline stage needs a separate Terraform stack.
 - Keep outputs and configuration selections explicit and versioned between discovery and deployment.
 
-## Next work package
+## Completed first work package
 
-- [ ] Inspect workspace/repository conventions before implementation.
-- [ ] Define the model-profile input/output schema and confidence/provenance fields.
-- [ ] Implement Hugging Face metadata and checkpoint inspection without executing repository code.
-- [ ] Implement supported weight and KV estimators with explicit context/concurrency inputs.
-- [ ] Add a Terraform external-data-source wrapper with a packaged runtime contract.
-- [ ] Verify representative dense/MoE profiles, duplicate checkpoint variants, gated access and unsupported architectures.
-- [ ] Document local execution and Resource Manager compatibility requirements.
+- [x] Inspect workspace/repository conventions before implementation.
+- [x] Define the model-profile input/output schema and confidence/provenance fields.
+- [x] Implement Hugging Face metadata and checkpoint inspection without executing repository code.
+- [x] Implement supported weight and KV estimators with explicit context/concurrency inputs.
+- [x] Add a Terraform external-data-source wrapper with a packaged runtime contract.
+- [x] Verify dense/MoE fixtures, duplicate checkpoint variants, simulated gated-access failures and unsupported architectures, plus live public dense-model inspection.
+- [x] Document local execution and Resource Manager compatibility requirements.
 
-OCI inventory and capacity assessment follow this package. Allocation and deployment modules consume the validated discovery contracts afterward.
+Next: implement OCI inventory and capacity assessment. Allocation and deployment modules consume the validated discovery contracts afterward. See [tool usage](../docs/model-profile.md) and [live example profile](example-model-profile.json).
 
 ## Decisions still to finalize
 
