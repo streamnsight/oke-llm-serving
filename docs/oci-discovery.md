@@ -1,3 +1,8 @@
+<!--
+Copyright (c) 2020-2022 Oracle and/or its affiliates. All rights reserved.
+Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
+-->
+
 # Native Terraform OCI discovery
 
 OCI inventory and capacity assessment now use only the oracle/oci Terraform provider and Terraform expressions. There are no OCI Python SDK calls, external programs, shell provisioners or OCI CLI dependencies. The old inventory, capacity and terraform-oci Python commands have been removed.
@@ -49,7 +54,7 @@ Limit definitions/values use the tenancy root. Shape lookup and resource availab
 
 Quota-name matching is exact. Limits retain their name, scope, tenancy limit, description, available/used values, fractional values and effective quota. No quota-to-instance conversion is inferred. Unmapped shape quota names remain visible.
 
-Only limits whose metadata explicitly supports resource availability and whose scope can be resolved are queried. Regional/global queries omit AD; AD queries use the AD from the limit value. max_limit_checks bounds calls deterministically by sorted key. query_resource_availability=false disables all headroom calls. exclude_limit_names explicitly omits named queries. Skipped/unsupported/budget-limited headroom is unknown, not zero. A response without available/fractional availability also remains unknown. A null effective quota is not presented as unlimited capacity.
+Only limits whose metadata explicitly supports resource availability and whose scope can be resolved are queried. Regional/global queries omit AD; AD queries use the AD from the limit value. max_limit_checks bounds calls deterministically, prioritizing shape-matched quota names before other GPU limits, with sorted keys within each group. query_resource_availability=false disables all headroom calls. exclude_limit_names explicitly omits named queries. Skipped/unsupported/budget-limited headroom is unknown, not zero. A response without available/fractional availability also remains unknown. A null effective quota is not presented as unlimited capacity.
 
 ## API errors fail the plan
 
@@ -101,3 +106,11 @@ terraform -chdir=terraform/modules/model-profile test
 Terraform's mock-provider tests require Terraform 1.7+; modules themselves require 1.5+. See the [validation record](../outputs/oci-discovery-validation.md) for live checks. Actual RMS execution, additional authentication modes and target-child-compartment checks remain to be validated there.
 
 Sources: [Resource Manager requirements](https://docs.oracle.com/en-us/iaas/Content/ResourceManager/Concepts/terraformconfigresourcemanager.htm), [shape data source](https://docs.oracle.com/en-us/iaas/tools/terraform-provider-oci/latest/docs/d/core_shapes.html), [resource availability](https://docs.oracle.com/en-us/iaas/tools/terraform-provider-oci/latest/docs/d/limits_resource_availability.html), [capacity report resource](https://docs.oracle.com/en-us/iaas/tools/terraform-provider-oci/latest/docs/r/core_compute_capacity_report.html).
+
+## Quota-aware discovery and recommendations
+
+The discovery stack accepts `only_shapes_with_limits` (default `false`). Leave it false to assess all visible GPU shapes, including shapes whose zero limits would require an increase. Set it true to skip capacity reports for shapes with a confirmed zero applicable tenancy limit and restrict headroom queries to shape-matched limits that are not known to be zero. Unknown/missing mappings remain visible and are not treated as zero. Inventory always retains the shapes and limit metadata. Regional capacity output lists `assessed_gpu_shapes` and `skipped_zero_limit_shapes` per AD. Change `observation_id` when requesting fresh capacity observations.
+
+`assessment.shape_observations` reports capacity, configured limits, observed headroom, and a combined status per region/AD/shape independently of model fit. `assessment.capacity_and_headroom_shapes` lists shapes with positive physical capacity, positive configured limits for all shape quota names, and positive observed headroom. This is not a quantity-specific launch guarantee: quota units may be GPUs or cores rather than instances, and model/runtime compatibility is separate.
+
+If that list is empty, `assessment.limit_increase_recommendations` identifies exact zero limit names, regions, AD scopes, and shapes with observed physical capacity. Consumed headroom is reported as `headroom_exhausted`, not a missing configured limit. Skipped queries, incomplete mappings, unsupported APIs and missing capacity reports remain unknown. Filtered mode cannot recommend limit increases based on capacity it did not assess; use the default broad mode for that investigation.

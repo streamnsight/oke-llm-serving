@@ -1,3 +1,5 @@
+# Copyright (c) 2020-2022 Oracle and/or its affiliates. All rights reserved.
+# Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
 variable "tenancy_ocid" {
   description = "Root tenancy for shape visibility and capacity reports."
   type        = string
@@ -29,4 +31,10 @@ variable "query_resource_availability" {
   description = "Query headroom only for supported limit definitions. API errors fail the job."
   type        = bool
   default     = true
+}
+
+variable "only_shapes_with_limits" {
+  description = "Skip confirmed zero-limit shapes/headroom queries; retain unknown quota mappings. False scans all visible GPU shapes."
+  type        = bool
+  default     = false
 }

@@ -1,3 +1,8 @@
+<!--
+Copyright (c) 2020-2022 Oracle and/or its affiliates. All rights reserved.
+Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
+-->
+
 # GPU host capacity — subscribed-region discovery
 
 Observed November 11, 2026, 21:03:15–21:03:22 UTC using the DEFAULT profile and the combined native Terraform discovery stack. All 16 READY subscribed regions and 26 ADs were inspected. Terraform created 19 capacity reports plus 19 local bookkeeping resources; no GPU hosts were allocated.

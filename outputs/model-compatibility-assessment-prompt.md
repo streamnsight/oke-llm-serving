@@ -1,3 +1,8 @@
+<!--
+Copyright (c) 2020-2022 Oracle and/or its affiliates. All rights reserved.
+Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
+-->
+
 # Model compatibility assessment prompt
 
 Use this when discovery reports unknown compatibility. This prompt produces a research assessment and proposed configuration. Runtime validation requires a separate model-load/inference test. Replace the placeholders and attach available discovery/engine-catalog artifacts; omit credentials.

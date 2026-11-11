@@ -1,9 +1,11 @@
+# Copyright (c) 2020-2022 Oracle and/or its affiliates. All rights reserved.
+# Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
 terraform {
   required_version = ">= 1.5.0"
   required_providers {
     oci = {
       source  = "oracle/oci"
-      version = "~> 7.0"
+      version = "~> 9.12"
     }
     http = {
       source  = "hashicorp/http"
@@ -22,6 +24,10 @@ data "oci_identity_region_subscriptions" "subscribed" {
 }
 
 locals {
+  model_catalog      = jsondecode(file("${path.module}/../../../catalogs/models.json"))
+  catalog_choice     = try([for model in local.model_catalog.models : model if model.id == var.model_choice][0], null)
+  effective_model    = var.model_choice == "custom" ? (var.model == null ? "" : var.model) : try(local.catalog_choice.id, "")
+  effective_revision = var.model_choice == "custom" ? var.revision : try(local.catalog_choice.sha, "main")
   subscribed_regions = toset([for sub in data.oci_identity_region_subscriptions.subscribed.region_subscriptions : sub.region_name if sub.state == "READY"])
   requested_regions  = length(var.regions) == 0 ? local.subscribed_regions : var.regions
   selected_regions   = setintersection(local.requested_regions, local.subscribed_regions)
@@ -29,8 +35,8 @@ locals {
 
 module "model_profile" {
   source         = "../../modules/model-profile"
-  model          = var.model
-  revision       = var.revision
+  model          = local.effective_model
+  revision       = local.effective_revision
   context_length = var.context_length
   concurrency    = var.concurrency
   kv_dtype       = var.kv_dtype
@@ -43,6 +49,7 @@ output "discovery" {
     schema_version     = "1.0"
     observation_id     = var.observation_id
     profile            = module.model_profile.profile
+    assessment         = module.planner.assessment
     subscribed_regions = sort(tolist(local.subscribed_regions))
     assessed_regions   = sort(tolist(local.selected_regions))
     regions            = local.regional_results
@@ -60,4 +67,14 @@ output "discovery" {
     condition     = length(local.selected_regions) > 0
     error_message = "No READY subscribed regions selected."
   }
+}
+
+module "planner" {
+  source  = "../../modules/deployment-planner"
+  profile = module.model_profile.profile
+  regions = local.regional_results
+}
+
+output "assessment" {
+  value = module.planner.assessment
 }

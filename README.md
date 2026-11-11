@@ -1,3 +1,8 @@
+<!--
+Copyright (c) 2020-2022 Oracle and/or its affiliates. All rights reserved.
+Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
+-->
+
 # OCI OKE LLM serving
 
 Deploy open-weight models onto GPUs in an existing OKE cluster through a model-first workflow. The intended user experience has two Resource Manager stacks: **discover**, then **deploy a selected configuration**.
@@ -17,11 +22,13 @@ For RMS, use this repository as the configuration source and set the working dir
 
 Everything in the discovery path uses Terraform providers and HCL. Hugging Face JSON comes through `hashicorp/http`; OCI observations use `oracle/oci`. There are no Python/Bash analyzers, external-program wrappers or nested Terraform invocations. The model-only example remains at `terraform/examples/model-profile`.
 
-Discovery creates reports, not GPU allocations. Counts represent available instances at the observation time and do not reserve them. Hub-published model counts are declared metadata, not independent tensor inspection. Per-GPU VRAM/topology assessment and model-to-shape layout recommendations remain subsequent work. Actual RMS execution still needs validation; local provider execution is tested.
+Discovery creates reports, not GPU allocations. Counts represent available instances at the observation time and do not reserve them. Hub-published model counts are declared metadata, not independent tensor inspection. Discovery now includes conservative per-rank GPU layouts and engine compatibility assessment. Actual RMS execution still needs validation; local provider execution is tested.
 
-## Deployment stack (next phase)
+## Deploy a selected configuration
 
-The user selects region, AD, OKE cluster, shape and node quantity, with the model pinned to its resolved revision. The deployment stack will allocate retained GPU infrastructure and OCI DevOps resources. DevOps will install cluster components, serving frameworks and API components, then validate inference. This phase is not implemented yet.
+The deployment stack at `terraform/stacks/deployment` creates retained GPU/CPU pools, optional supported RDMA Compute Cluster placement, and OCI DevOps deploy, validation and benchmark pipelines. Select a discovery candidate and export its immutable model/image/topology settings using `scripts/select-deployment.sh`.
+
+See the [complete deployment workflow](docs/deployment-workflow.md) for the target-file example, RMS handoff, Kubernetes RBAC bootstrap, official vLLM CPU benchmark container and validation boundaries. Cloud/GPU/DevOps execution remains pending a selected target. Durable Responses conversation storage remains a separate API-layer feature.
 
 ## Documentation
 

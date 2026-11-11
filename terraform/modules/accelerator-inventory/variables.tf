@@ -1,3 +1,5 @@
+# Copyright (c) 2020-2022 Oracle and/or its affiliates. All rights reserved.
+# Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
 variable "tenancy_ocid" {
   description = "Root tenancy OCID for subscriptions, ADs and service-limit metadata."
   type        = string
@@ -36,9 +38,15 @@ variable "exclude_limit_names" {
 variable "max_limit_checks" {
   description = "Maximum deterministic headroom queries in this region."
   type        = number
-  default     = 100
+  default     = 1000
   validation {
     condition     = var.max_limit_checks >= 0 && var.max_limit_checks <= 1000 && floor(var.max_limit_checks) == var.max_limit_checks
     error_message = "Use an integer between 0 and 1000."
   }
+}
+
+variable "only_shapes_with_limits" {
+  description = "Skip confirmed zero-limit shapes/headroom queries; retain unknown quota mappings. False scans all visible GPU shapes."
+  type        = bool
+  default     = false
 }

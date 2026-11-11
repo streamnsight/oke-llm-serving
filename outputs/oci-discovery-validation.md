@@ -1,3 +1,8 @@
+<!--
+Copyright (c) 2020-2022 Oracle and/or its affiliates. All rights reserved.
+Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
+-->
+
 # Native discovery validation
 
 Validated November 11, 2026 using Terraform 1.9.8, oracle/oci 7.32.0, hashicorp/http 3.6.3 and the local DEFAULT OCI profile.

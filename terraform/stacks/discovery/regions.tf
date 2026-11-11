@@ -1,3 +1,5 @@
+# Copyright (c) 2020-2022 Oracle and/or its affiliates. All rights reserved.
+# Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
 # Static regional aliases: Oracle public OC1 catalog/Go SDK, reviewed 2026-11-11.
 # Subscription-driven counts activate only selected READY regions. No nested Terraform.
 # Sources: https://docs.oracle.com/en-us/iaas/Content/General/Concepts/regions.htm
@@ -17,6 +19,7 @@ module "af_casablanca_1" {
   shape_names                 = var.shape_names
   observation_id              = var.observation_id
   query_resource_availability = var.query_resource_availability
+  only_shapes_with_limits     = var.only_shapes_with_limits
 }
 
 provider "oci" {
@@ -33,6 +36,7 @@ module "af_johannesburg_1" {
   shape_names                 = var.shape_names
   observation_id              = var.observation_id
   query_resource_availability = var.query_resource_availability
+  only_shapes_with_limits     = var.only_shapes_with_limits
 }
 
 provider "oci" {
@@ -49,6 +53,7 @@ module "ap_batam_1" {
   shape_names                 = var.shape_names
   observation_id              = var.observation_id
   query_resource_availability = var.query_resource_availability
+  only_shapes_with_limits     = var.only_shapes_with_limits
 }
 
 provider "oci" {
@@ -65,6 +70,7 @@ module "ap_chennai_1" {
   shape_names                 = var.shape_names
   observation_id              = var.observation_id
   query_resource_availability = var.query_resource_availability
+  only_shapes_with_limits     = var.only_shapes_with_limits
 }
 
 provider "oci" {
@@ -81,6 +87,7 @@ module "ap_chuncheon_1" {
   shape_names                 = var.shape_names
   observation_id              = var.observation_id
   query_resource_availability = var.query_resource_availability
+  only_shapes_with_limits     = var.only_shapes_with_limits
 }
 
 provider "oci" {
@@ -97,6 +104,7 @@ module "ap_delhi_1" {
   shape_names                 = var.shape_names
   observation_id              = var.observation_id
   query_resource_availability = var.query_resource_availability
+  only_shapes_with_limits     = var.only_shapes_with_limits
 }
 
 provider "oci" {
@@ -113,6 +121,7 @@ module "ap_hyderabad_1" {
   shape_names                 = var.shape_names
   observation_id              = var.observation_id
   query_resource_availability = var.query_resource_availability
+  only_shapes_with_limits     = var.only_shapes_with_limits
 }
 
 provider "oci" {
@@ -129,6 +138,7 @@ module "ap_kulai_2" {
   shape_names                 = var.shape_names
   observation_id              = var.observation_id
   query_resource_availability = var.query_resource_availability
+  only_shapes_with_limits     = var.only_shapes_with_limits
 }
 
 provider "oci" {
@@ -145,6 +155,7 @@ module "ap_melbourne_1" {
   shape_names                 = var.shape_names
   observation_id              = var.observation_id
   query_resource_availability = var.query_resource_availability
+  only_shapes_with_limits     = var.only_shapes_with_limits
 }
 
 provider "oci" {
@@ -161,6 +172,7 @@ module "ap_mumbai_1" {
   shape_names                 = var.shape_names
   observation_id              = var.observation_id
   query_resource_availability = var.query_resource_availability
+  only_shapes_with_limits     = var.only_shapes_with_limits
 }
 
 provider "oci" {
@@ -177,6 +189,7 @@ module "ap_osaka_1" {
   shape_names                 = var.shape_names
   observation_id              = var.observation_id
   query_resource_availability = var.query_resource_availability
+  only_shapes_with_limits     = var.only_shapes_with_limits
 }
 
 provider "oci" {
@@ -193,6 +206,7 @@ module "ap_seoul_1" {
   shape_names                 = var.shape_names
   observation_id              = var.observation_id
   query_resource_availability = var.query_resource_availability
+  only_shapes_with_limits     = var.only_shapes_with_limits
 }
 
 provider "oci" {
@@ -209,6 +223,7 @@ module "ap_singapore_1" {
   shape_names                 = var.shape_names
   observation_id              = var.observation_id
   query_resource_availability = var.query_resource_availability
+  only_shapes_with_limits     = var.only_shapes_with_limits
 }
 
 provider "oci" {
@@ -225,6 +240,7 @@ module "ap_singapore_2" {
   shape_names                 = var.shape_names
   observation_id              = var.observation_id
   query_resource_availability = var.query_resource_availability
+  only_shapes_with_limits     = var.only_shapes_with_limits
 }
 
 provider "oci" {
@@ -241,6 +257,7 @@ module "ap_sydney_1" {
   shape_names                 = var.shape_names
   observation_id              = var.observation_id
   query_resource_availability = var.query_resource_availability
+  only_shapes_with_limits     = var.only_shapes_with_limits
 }
 
 provider "oci" {
@@ -257,6 +274,7 @@ module "ap_tokyo_1" {
   shape_names                 = var.shape_names
   observation_id              = var.observation_id
   query_resource_availability = var.query_resource_availability
+  only_shapes_with_limits     = var.only_shapes_with_limits
 }
 
 provider "oci" {
@@ -273,6 +291,7 @@ module "ca_montreal_1" {
   shape_names                 = var.shape_names
   observation_id              = var.observation_id
   query_resource_availability = var.query_resource_availability
+  only_shapes_with_limits     = var.only_shapes_with_limits
 }
 
 provider "oci" {
@@ -289,6 +308,7 @@ module "ca_toronto_1" {
   shape_names                 = var.shape_names
   observation_id              = var.observation_id
   query_resource_availability = var.query_resource_availability
+  only_shapes_with_limits     = var.only_shapes_with_limits
 }
 
 provider "oci" {
@@ -305,6 +325,7 @@ module "eu_amsterdam_1" {
   shape_names                 = var.shape_names
   observation_id              = var.observation_id
   query_resource_availability = var.query_resource_availability
+  only_shapes_with_limits     = var.only_shapes_with_limits
 }
 
 provider "oci" {
@@ -321,6 +342,7 @@ module "eu_frankfurt_1" {
   shape_names                 = var.shape_names
   observation_id              = var.observation_id
   query_resource_availability = var.query_resource_availability
+  only_shapes_with_limits     = var.only_shapes_with_limits
 }
 
 provider "oci" {
@@ -337,6 +359,7 @@ module "eu_madrid_1" {
   shape_names                 = var.shape_names
   observation_id              = var.observation_id
   query_resource_availability = var.query_resource_availability
+  only_shapes_with_limits     = var.only_shapes_with_limits
 }
 
 provider "oci" {
@@ -353,6 +376,7 @@ module "eu_madrid_3" {
   shape_names                 = var.shape_names
   observation_id              = var.observation_id
   query_resource_availability = var.query_resource_availability
+  only_shapes_with_limits     = var.only_shapes_with_limits
 }
 
 provider "oci" {
@@ -369,6 +393,7 @@ module "eu_marseille_1" {
   shape_names                 = var.shape_names
   observation_id              = var.observation_id
   query_resource_availability = var.query_resource_availability
+  only_shapes_with_limits     = var.only_shapes_with_limits
 }
 
 provider "oci" {
@@ -385,6 +410,7 @@ module "eu_milan_1" {
   shape_names                 = var.shape_names
   observation_id              = var.observation_id
   query_resource_availability = var.query_resource_availability
+  only_shapes_with_limits     = var.only_shapes_with_limits
 }
 
 provider "oci" {
@@ -401,6 +427,7 @@ module "eu_paris_1" {
   shape_names                 = var.shape_names
   observation_id              = var.observation_id
   query_resource_availability = var.query_resource_availability
+  only_shapes_with_limits     = var.only_shapes_with_limits
 }
 
 provider "oci" {
@@ -417,6 +444,7 @@ module "eu_stockholm_1" {
   shape_names                 = var.shape_names
   observation_id              = var.observation_id
   query_resource_availability = var.query_resource_availability
+  only_shapes_with_limits     = var.only_shapes_with_limits
 }
 
 provider "oci" {
@@ -433,6 +461,7 @@ module "eu_turin_1" {
   shape_names                 = var.shape_names
   observation_id              = var.observation_id
   query_resource_availability = var.query_resource_availability
+  only_shapes_with_limits     = var.only_shapes_with_limits
 }
 
 provider "oci" {
@@ -449,6 +478,7 @@ module "eu_zurich_1" {
   shape_names                 = var.shape_names
   observation_id              = var.observation_id
   query_resource_availability = var.query_resource_availability
+  only_shapes_with_limits     = var.only_shapes_with_limits
 }
 
 provider "oci" {
@@ -465,6 +495,7 @@ module "il_jerusalem_1" {
   shape_names                 = var.shape_names
   observation_id              = var.observation_id
   query_resource_availability = var.query_resource_availability
+  only_shapes_with_limits     = var.only_shapes_with_limits
 }
 
 provider "oci" {
@@ -481,6 +512,7 @@ module "me_abudhabi_1" {
   shape_names                 = var.shape_names
   observation_id              = var.observation_id
   query_resource_availability = var.query_resource_availability
+  only_shapes_with_limits     = var.only_shapes_with_limits
 }
 
 provider "oci" {
@@ -497,6 +529,7 @@ module "me_dubai_1" {
   shape_names                 = var.shape_names
   observation_id              = var.observation_id
   query_resource_availability = var.query_resource_availability
+  only_shapes_with_limits     = var.only_shapes_with_limits
 }
 
 provider "oci" {
@@ -513,6 +546,7 @@ module "me_jeddah_1" {
   shape_names                 = var.shape_names
   observation_id              = var.observation_id
   query_resource_availability = var.query_resource_availability
+  only_shapes_with_limits     = var.only_shapes_with_limits
 }
 
 provider "oci" {
@@ -529,6 +563,7 @@ module "me_riyadh_1" {
   shape_names                 = var.shape_names
   observation_id              = var.observation_id
   query_resource_availability = var.query_resource_availability
+  only_shapes_with_limits     = var.only_shapes_with_limits
 }
 
 provider "oci" {
@@ -545,6 +580,7 @@ module "mx_monterrey_1" {
   shape_names                 = var.shape_names
   observation_id              = var.observation_id
   query_resource_availability = var.query_resource_availability
+  only_shapes_with_limits     = var.only_shapes_with_limits
 }
 
 provider "oci" {
@@ -561,6 +597,7 @@ module "mx_queretaro_1" {
   shape_names                 = var.shape_names
   observation_id              = var.observation_id
   query_resource_availability = var.query_resource_availability
+  only_shapes_with_limits     = var.only_shapes_with_limits
 }
 
 provider "oci" {
@@ -577,6 +614,7 @@ module "sa_bogota_1" {
   shape_names                 = var.shape_names
   observation_id              = var.observation_id
   query_resource_availability = var.query_resource_availability
+  only_shapes_with_limits     = var.only_shapes_with_limits
 }
 
 provider "oci" {
@@ -593,6 +631,7 @@ module "sa_santiago_1" {
   shape_names                 = var.shape_names
   observation_id              = var.observation_id
   query_resource_availability = var.query_resource_availability
+  only_shapes_with_limits     = var.only_shapes_with_limits
 }
 
 provider "oci" {
@@ -609,6 +648,7 @@ module "sa_saopaulo_1" {
   shape_names                 = var.shape_names
   observation_id              = var.observation_id
   query_resource_availability = var.query_resource_availability
+  only_shapes_with_limits     = var.only_shapes_with_limits
 }
 
 provider "oci" {
@@ -625,6 +665,7 @@ module "sa_valparaiso_1" {
   shape_names                 = var.shape_names
   observation_id              = var.observation_id
   query_resource_availability = var.query_resource_availability
+  only_shapes_with_limits     = var.only_shapes_with_limits
 }
 
 provider "oci" {
@@ -641,6 +682,7 @@ module "sa_vinhedo_1" {
   shape_names                 = var.shape_names
   observation_id              = var.observation_id
   query_resource_availability = var.query_resource_availability
+  only_shapes_with_limits     = var.only_shapes_with_limits
 }
 
 provider "oci" {
@@ -657,6 +699,7 @@ module "uk_cardiff_1" {
   shape_names                 = var.shape_names
   observation_id              = var.observation_id
   query_resource_availability = var.query_resource_availability
+  only_shapes_with_limits     = var.only_shapes_with_limits
 }
 
 provider "oci" {
@@ -673,6 +716,7 @@ module "uk_london_1" {
   shape_names                 = var.shape_names
   observation_id              = var.observation_id
   query_resource_availability = var.query_resource_availability
+  only_shapes_with_limits     = var.only_shapes_with_limits
 }
 
 provider "oci" {
@@ -689,6 +733,7 @@ module "us_ashburn_1" {
   shape_names                 = var.shape_names
   observation_id              = var.observation_id
   query_resource_availability = var.query_resource_availability
+  only_shapes_with_limits     = var.only_shapes_with_limits
 }
 
 provider "oci" {
@@ -705,6 +750,7 @@ module "us_chicago_1" {
   shape_names                 = var.shape_names
   observation_id              = var.observation_id
   query_resource_availability = var.query_resource_availability
+  only_shapes_with_limits     = var.only_shapes_with_limits
 }
 
 provider "oci" {
@@ -721,6 +767,7 @@ module "us_phoenix_1" {
   shape_names                 = var.shape_names
   observation_id              = var.observation_id
   query_resource_availability = var.query_resource_availability
+  only_shapes_with_limits     = var.only_shapes_with_limits
 }
 
 provider "oci" {
@@ -737,6 +784,7 @@ module "us_saltlake_2" {
   shape_names                 = var.shape_names
   observation_id              = var.observation_id
   query_resource_availability = var.query_resource_availability
+  only_shapes_with_limits     = var.only_shapes_with_limits
 }
 
 provider "oci" {
@@ -753,6 +801,7 @@ module "us_sanjose_1" {
   shape_names                 = var.shape_names
   observation_id              = var.observation_id
   query_resource_availability = var.query_resource_availability
+  only_shapes_with_limits     = var.only_shapes_with_limits
 }
 
 locals {

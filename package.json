@@ -1,0 +1,7 @@
+{
+  "name": "oke-llm-serving-validation",
+  "private": true,
+  "type": "module",
+  "scripts": {"test": "node --test devops/tests/*.test.mjs"},
+  "devDependencies": {"yaml": "2.8.1"}
+}

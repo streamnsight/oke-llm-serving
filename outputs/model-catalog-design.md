@@ -1,3 +1,8 @@
+<!--
+Copyright (c) 2020-2022 Oracle and/or its affiliates. All rights reserved.
+Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
+-->
+
 # Curated model catalog and RMS packaging proposal
 
 Research date: November 11, 2026. Proposal only; the discovery schema and runtime behavior have not changed.

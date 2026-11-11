@@ -1,3 +1,5 @@
+# Copyright (c) 2020-2022 Oracle and/or its affiliates. All rights reserved.
+# Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
 mock_provider "oci" {}
 mock_provider "http" {}
 mock_provider "oci" {
@@ -39,4 +41,9 @@ run "select_ready_subscriptions" {
     condition     = output.discovery.assessed_regions == tolist(["us-chicago-1"]) && length(output.discovery.regions) == 1
     error_message = "Only READY subscriptions should activate regional modules."
   }
+}
+
+override_module {
+  target  = module.planner
+  outputs = { assessment = { candidates = [], status = "requires_validation" } }
 }

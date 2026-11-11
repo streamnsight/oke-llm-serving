@@ -1,0 +1,107 @@
+{
+  "schema_version": "1.0",
+  "observed_at": "2026-11-11T22:10:53Z",
+  "source": "https://huggingface.co/api/models",
+  "models": [
+    {
+      "id": "Qwen/Qwen3-0.6B",
+      "sha": "c1899de289a04d12100db370d81485cdf75e47ca",
+      "family": "qwen3",
+      "tier": "small",
+      "parameters": 751632384,
+      "downloads": 20199784,
+      "license": "apache-2.0",
+      "support_evidence": "architecture_and_metadata_only"
+    },
+    {
+      "id": "Qwen/Qwen3-14B",
+      "sha": "40c069824f4251a91eefaf281ebe4c544efd3e18",
+      "family": "qwen3",
+      "tier": "medium",
+      "parameters": 14768307200,
+      "downloads": 12939734,
+      "license": "apache-2.0",
+      "support_evidence": "architecture_and_metadata_only"
+    },
+    {
+      "id": "Qwen/Qwen3-8B",
+      "sha": "b968826d9c46dd6066d109eabc6255188de91218",
+      "family": "qwen3",
+      "tier": "medium",
+      "parameters": 8190735360,
+      "downloads": 6419992,
+      "license": "apache-2.0",
+      "support_evidence": "architecture_and_metadata_only"
+    },
+    {
+      "id": "Qwen/Qwen2.5-7B-Instruct",
+      "sha": "a09a35458c702b33eeacc393d103063234e8bc28",
+      "family": "qwen2",
+      "tier": "small",
+      "parameters": 7615616512,
+      "downloads": 6258699,
+      "license": "apache-2.0",
+      "support_evidence": "architecture_and_metadata_only"
+    },
+    {
+      "id": "Qwen/Qwen2.5-1.5B-Instruct",
+      "sha": "989aa7980e4cf806f80c7fef2b1adb7bc71aa306",
+      "family": "qwen2",
+      "tier": "small",
+      "parameters": 1543714304,
+      "downloads": 5122359,
+      "license": "apache-2.0",
+      "support_evidence": "architecture_and_metadata_only"
+    },
+    {
+      "id": "Qwen/Qwen3-1.7B",
+      "sha": "70d244cc86ccca08cf5af4e1e306ecf908b1ad5e",
+      "family": "qwen3",
+      "tier": "small",
+      "parameters": 2031739904,
+      "downloads": 3420311,
+      "license": "apache-2.0",
+      "support_evidence": "architecture_and_metadata_only"
+    },
+    {
+      "id": "Qwen/Qwen2.5-Coder-14B-Instruct",
+      "sha": "aedcc2d42b622764e023cf882b6652e646b95671",
+      "family": "qwen2",
+      "tier": "medium",
+      "parameters": 14770033664,
+      "downloads": 1875986,
+      "license": "apache-2.0",
+      "support_evidence": "architecture_and_metadata_only"
+    },
+    {
+      "id": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+      "sha": "b2cff646eb4bb1d68355c01b18ae02e7cf42d120",
+      "family": "qwen3_moe",
+      "tier": "medium",
+      "parameters": 30532122624,
+      "downloads": 1703031,
+      "license": "apache-2.0",
+      "support_evidence": "architecture_and_metadata_only"
+    },
+    {
+      "id": "mistralai/Mistral-7B-Instruct-v0.2",
+      "sha": "63a8b081895390a26e140280378bc85ec8bce07a",
+      "family": "mistral",
+      "tier": "small",
+      "parameters": 7241732096,
+      "downloads": 1390685,
+      "license": "apache-2.0",
+      "support_evidence": "architecture_and_metadata_only"
+    },
+    {
+      "id": "Qwen/Qwen3-30B-A3B",
+      "sha": "ad44e777bcd18fa416d9da3bd8f70d33ebb85d39",
+      "family": "qwen3_moe",
+      "tier": "medium",
+      "parameters": 30532122624,
+      "downloads": 1150222,
+      "license": "apache-2.0",
+      "support_evidence": "architecture_and_metadata_only"
+    }
+  ]
+}

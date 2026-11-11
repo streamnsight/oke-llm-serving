@@ -1,3 +1,8 @@
+<!--
+Copyright (c) 2020-2022 Oracle and/or its affiliates. All rights reserved.
+Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
+-->
+
 # Resource Manager workflow
 
 The user-facing workflow has two stacks. The implemented first stack is `terraform/stacks/discovery`. The second stack, for allocation and DevOps, is subsequent work. An RMS job never invokes another Terraform process.
