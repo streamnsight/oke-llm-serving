@@ -1,9 +1,11 @@
+# Copyright (c) 2020-2022 Oracle and/or its affiliates. All rights reserved.
+# Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
 terraform {
   required_version = ">= 1.5.0"
   required_providers {
     oci = {
       source  = "oracle/oci"
-      version = "~> 7.0"
+      version = "~> 9.12"
     }
   }
 }
@@ -34,6 +36,7 @@ data "oci_limits_limit_values" "compute" {
 }
 
 locals {
+  gpu_catalog = jsondecode(file("${path.module}/../../../catalogs/gpus.json"))
   definitions = { for definition in data.oci_limits_limit_definitions.compute.limit_definitions : definition.name => definition }
   shapes_by_ad = {
     for ad, listing in data.oci_core_shapes.domain : ad => [
@@ -47,7 +50,9 @@ locals {
         rdma_ports                    = shape.rdma_ports
         rdma_bandwidth_in_gbps        = shape.rdma_bandwidth_in_gbps
         quota_names                   = shape.quota_names == null ? [] : shape.quota_names
-        gpu_memory_gib                = null
+        gpu_memory_gib                = try(local.gpu_catalog.shapes[shape.name].memory_bytes_per_gpu / pow(1024, 3), null)
+        gpu_memory_bytes_per_gpu      = try(local.gpu_catalog.shapes[shape.name].memory_bytes_per_gpu, null)
+        gpu_memory_source             = try(local.gpu_catalog.shapes[shape.name].memory_bytes_per_gpu > 0, false) ? local.gpu_catalog.source : null
         nvlink_topology               = null
       } if coalesce(shape.gpus, 0) > 0 && (length(var.shape_names) == 0 || contains(var.shape_names, shape.name))
     ]

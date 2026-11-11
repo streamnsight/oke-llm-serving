@@ -1,0 +1,124 @@
+# Copyright (c) 2020-2022 Oracle and/or its affiliates. All rights reserved.
+# Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
+title: OKE LLM deployment
+description: Apply the selected discovery configuration to an existing regional OKE cluster. Creates billable GPU/CPU pools and DevOps resources; pipelines run separately.
+schemaVersion: 1.1.0
+version: "0.1.0"
+variableGroups:
+  - title: Selected allocation
+    variables: ["${name}", "${region}", "${compartment_id}", "${cluster_id}", "${availability_domain}", "${gpu_shape}", "${node_count}", "${requires_rdma}", "${gpu_image_id}", "${subnet_id}", "${cpu_image_id}", "${cpu_subnet_id}", "${devops_subnet_id}", "${pod_subnet_id}", "${cpu_node_count}", "${boot_volume_gib}"]
+  - title: Selected model and engine
+    variables: ["${model}", "${model_revision}", "${engine_image}", "${engine_version}", "${tensor_parallel_size}", "${pipeline_parallel_size}", "${replicas}", "${context_length}", "${concurrency}", "${kv_dtype}", "${runtime_gib}", "${margin}"]
+  - title: Delivery and benchmark
+    variables: ["${install_gpu_operator}", "${benchmark_requests}", "${benchmark_input_tokens}", "${benchmark_output_tokens}"]
+  - title: Discovery evidence
+    variables: ["${observation_id}", "${assessment_id}"]
+  - title: Resource Manager context
+    visible: false
+    variables: ["${tenancy_ocid}"]
+variables:
+  tenancy_ocid:
+    type: string
+    required: true
+  name:
+    type: string
+    title: Name
+  region:
+    type: string
+    title: Region
+  compartment_id:
+    type: string
+    title: Compartment id
+  cluster_id:
+    type: string
+    title: Cluster id
+  availability_domain:
+    type: string
+    title: Availability domain
+  gpu_shape:
+    type: string
+    title: Gpu shape
+  node_count:
+    type: integer
+    title: Node count
+  requires_rdma:
+    type: boolean
+    title: Requires rdma
+  gpu_image_id:
+    type: string
+    title: Gpu image id
+  subnet_id:
+    type: string
+    title: Subnet id
+  cpu_image_id:
+    type: string
+    title: Cpu image id
+  cpu_subnet_id:
+    type: string
+    title: Cpu subnet id
+  devops_subnet_id:
+    type: string
+    title: Devops subnet id
+  pod_subnet_id:
+    type: string
+    title: Pod subnet id
+  cpu_node_count:
+    type: integer
+    title: Cpu node count
+  boot_volume_gib:
+    type: integer
+    title: Boot volume gib
+  model:
+    type: string
+    title: Model
+  model_revision:
+    type: string
+    title: Model revision
+  engine_image:
+    type: string
+    title: Engine image
+  engine_version:
+    type: string
+    title: Engine version
+  tensor_parallel_size:
+    type: integer
+    title: Tensor parallel size
+  pipeline_parallel_size:
+    type: integer
+    title: Pipeline parallel size
+  replicas:
+    type: integer
+    title: Replicas
+  context_length:
+    type: integer
+    title: Context length
+  concurrency:
+    type: integer
+    title: Concurrency
+  kv_dtype:
+    type: string
+    title: Kv dtype
+  runtime_gib:
+    type: number
+    title: Runtime gib
+  margin:
+    type: number
+    title: Margin
+  install_gpu_operator:
+    type: boolean
+    title: Install gpu operator
+  benchmark_requests:
+    type: integer
+    title: Benchmark requests
+  benchmark_input_tokens:
+    type: integer
+    title: Benchmark input tokens
+  benchmark_output_tokens:
+    type: integer
+    title: Benchmark output tokens
+  observation_id:
+    type: string
+    title: Observation id
+  assessment_id:
+    type: string
+    title: Assessment id

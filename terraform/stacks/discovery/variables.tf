@@ -1,3 +1,5 @@
+# Copyright (c) 2020-2022 Oracle and/or its affiliates. All rights reserved.
+# Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
 variable "tenancy_ocid" {
   description = "RMS tenancy root; used for capacity reports."
   type        = string
@@ -9,6 +11,12 @@ variable "region" {
 variable "model" {
   description = "Public Hugging Face repository URL or owner/model."
   type        = string
+  default     = null
+}
+variable "model_choice" {
+  description = "Catalog ID or custom. Catalog choices use their frozen commit SHA."
+  type        = string
+  default     = "custom"
 }
 variable "revision" {
   type    = string

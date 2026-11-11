@@ -1,3 +1,8 @@
+<!--
+Copyright (c) 2020-2022 Oracle and/or its affiliates. All rights reserved.
+Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
+-->
+
 # Native Terraform OCI discovery
 
 OCI inventory and capacity assessment now use only the oracle/oci Terraform provider and Terraform expressions. There are no OCI Python SDK calls, external programs, shell provisioners or OCI CLI dependencies. The old inventory, capacity and terraform-oci Python commands have been removed.

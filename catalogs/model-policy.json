@@ -1,0 +1,10 @@
+{
+  "schema_version": "1.0",
+  "publishers": ["Qwen", "mistralai", "HuggingFaceTB", "HuggingFaceH4", "tiiuae", "google", "meta-llama"],
+  "model_types": ["llama", "mistral", "mixtral", "qwen2", "qwen2_moe", "qwen3", "qwen3_moe"],
+  "per_family_tier": 2,
+  "maximum_models": 30,
+  "candidate_limit": 75,
+  "excluded_name_pattern": "(?i)(gguf|awq|gptq|mlx|fp8|fp4|bnb|lora|(^|[-_/])base($|[-_/]))",
+  "scope": "Public canonical text chat checkpoints with native engine architecture and memory-estimator coverage. Model-size tiers are retained independently."
+}

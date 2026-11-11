@@ -1,3 +1,5 @@
+# Copyright (c) 2020-2022 Oracle and/or its affiliates. All rights reserved.
+# Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
 # Static regional aliases: Oracle public OC1 catalog/Go SDK, reviewed 2026-11-11.
 # Subscription-driven counts activate only selected READY regions. No nested Terraform.
 # Sources: https://docs.oracle.com/en-us/iaas/Content/General/Concepts/regions.htm

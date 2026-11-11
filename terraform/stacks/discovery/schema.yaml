@@ -1,24 +1,48 @@
+# Copyright (c) 2020-2022 Oracle and/or its affiliates. All rights reserved.
+# Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
 title: OKE LLM discovery
 description: Inspect a public Hugging Face model and assess GPU shapes, entitlement and host capacity across READY subscribed regions. Creates no GPU instances.
 schemaVersion: 1.1.0
 version: "0.1.0"
 variableGroups:
   - title: Model and serving assumptions
-    variables: [model, revision, context_length, concurrency, kv_dtype, runtime_gib, margin]
+    variables: ["${model_choice}", "${model}", "${revision}", "${context_length}", "${concurrency}", "${kv_dtype}", "${runtime_gib}", "${margin}"]
   - title: Capacity observation
-    variables: [observation_id, compartment_id, regions, shape_names, query_resource_availability]
+    variables: ["${observation_id}", "${compartment_id}", "${regions}", "${shape_names}", "${query_resource_availability}"]
   - title: Resource Manager context
     visible: false
-    variables: [tenancy_ocid, region]
+    variables: ["${tenancy_ocid}", "${region}"]
 variables:
+  model_choice:
+    type: enum
+    title: Model
+    default: custom
+    enum:
+      # BEGIN GENERATED MODEL CHOICES
+      - custom
+      - Qwen/Qwen3-0.6B
+      - Qwen/Qwen3-14B
+      - Qwen/Qwen3-8B
+      - Qwen/Qwen2.5-7B-Instruct
+      - Qwen/Qwen2.5-1.5B-Instruct
+      - Qwen/Qwen3-1.7B
+      - Qwen/Qwen2.5-Coder-14B-Instruct
+      - Qwen/Qwen3-Coder-30B-A3B-Instruct
+      - mistralai/Mistral-7B-Instruct-v0.2
+      - Qwen/Qwen3-30B-A3B
+      # END GENERATED MODEL CHOICES
   model:
     type: string
     title: Public Hugging Face model URL
     required: true
     description: https://huggingface.co/owner/model or owner/model
+    visible:
+      eq: ["${model_choice}", custom]
   revision:
     type: string
     title: Model revision
+    visible:
+      eq: ["${model_choice}", custom]
   context_length:
     type: integer
     title: Context tokens per sequence
@@ -30,10 +54,10 @@ variables:
   kv_dtype:
     type: enum
     enum: [bfloat16, float16, float32]
-    title: KV cache dtype
+    title: Compute and KV cache dtype
   runtime_gib:
     type: number
-    title: Assumed aggregate runtime overhead (GiB)
+    title: Assumed runtime overhead per GPU (GiB)
     minimum: 0
   margin:
     type: number

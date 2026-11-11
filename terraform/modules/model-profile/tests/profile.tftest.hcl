@@ -1,3 +1,5 @@
+# Copyright (c) 2020-2022 Oracle and/or its affiliates. All rights reserved.
+# Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
 mock_provider "http" {}
 
 variables {
@@ -93,4 +95,29 @@ run "reject_invalid_assumptions" {
   command = plan
   variables { concurrency = 0 }
   expect_failures = [var.concurrency]
+}
+
+override_data {
+  target = data.http.card
+  values = { status_code = 404, response_body = "" }
+}
+
+run "extract_card_version_evidence" {
+  command = plan
+  override_data {
+    target = data.http.card
+    values = { status_code = 200, response_body = "Use vllm>=0.8.5 or sglang>=0.4.6.post1.\nNo minimum is implied by a bare framework name." }
+  }
+  assert {
+    condition     = output.profile.serving_requirements.status == "version_hints_found" && length(output.profile.serving_requirements.version_hints) == 2 && output.profile.serving_requirements.version_hints[0].operator == ">=" && output.profile.serving_requirements.version_hints[1].version == "0.4.6.post1"
+    error_message = "Version extraction must preserve explicit expressions and evidence without inventing minimum versions."
+  }
+}
+run "float32_resident_conversion_is_reserved" {
+  command = plan
+  variables { kv_dtype = "float32" }
+  assert {
+    condition     = output.profile.weights.tensor_data_bytes == 12 && output.profile.memory.weight_bytes == 24 && output.profile.memory.kv_bytes == 25600
+    error_message = "Serving float32 must reserve converted weights and KV, without altering measured checkpoint byte metadata."
+  }
 }
