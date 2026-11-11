@@ -1,57 +1,41 @@
-variable "profile" {
-  description = "Local OCI configuration profile."
+variable "tenancy_ocid" {
+  description = "Root tenancy OCID. Capacity reports do not use a target deployment compartment."
   type        = string
-  default     = "DEFAULT"
+  nullable    = false
 }
-variable "config_file" {
-  description = "Optional OCI configuration file path; never key contents."
+variable "region" {
+  description = "Region label matching the inherited OCI provider."
   type        = string
-  default     = null
+  nullable    = false
 }
-variable "auth" {
-  description = "OCI authentication mode."
+variable "availability_domain" {
+  description = "Full tenancy-specific AD name in the provider's region."
   type        = string
-  default     = "config"
-  validation {
-    condition     = contains(["config", "instance_principal", "resource_principal"], var.auth)
-    error_message = "Use config, instance_principal or resource_principal."
-  }
-}
-variable "tenancy_id" {
-  description = "Root tenancy OCID for principal authentication when it cannot be derived."
-  type        = string
-  default     = null
-}
-variable "python_executable" {
-  description = "Python 3.11+ with the OCI SDK installed."
-  type        = string
-  default     = "python3"
+  nullable    = false
 }
 variable "shape_names" {
-  description = "Explicit shape names for the capacity report; counts represent instances."
-  type        = list(string)
+  description = "Explicit shapes for the report."
+  type        = set(string)
   validation {
     condition     = length(var.shape_names) > 0 && length(var.shape_names) <= 100 && alltrue([for shape in var.shape_names : length(trimspace(shape)) > 0])
     error_message = "Supply between 1 and 100 nonempty shape names."
   }
 }
-variable "region" {
-  description = "OCI region containing the requested availability domain."
+variable "observation_id" {
+  description = "Change this run identifier to create a fresh report. Keep fixed for reproducible re-applies of a snapshot."
   type        = string
-  nullable    = false
-}
-variable "availability_domain" {
-  description = "Full tenancy-specific AD name from inventory."
-  type        = string
-  nullable    = false
+  validation {
+    condition     = length(trimspace(var.observation_id)) > 0
+    error_message = "An explicit nonempty observation_id is required."
+  }
 }
 variable "fault_domain" {
-  description = "Optional fault-domain scope; not an OKE compute-cluster placement configuration."
+  description = "Optional report scope; not an OKE compute-cluster placement setting."
   type        = string
   default     = null
 }
 variable "requested_instances" {
-  description = "Instances required per shape; this is not an individual GPU count."
+  description = "Instance count to compare per shape/FD row; not a GPU count."
   type        = number
   default     = 1
   validation {

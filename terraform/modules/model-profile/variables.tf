@@ -1,6 +1,21 @@
 variable "model" {
   description = "Hugging Face owner/model or repository URL."
   type        = string
+  default     = null
+}
+variable "profile_json" {
+  description = "Previously generated model-profile JSON; bypasses external execution for RMS."
+  type        = string
+  default     = null
+  validation {
+    condition     = var.profile_json == null ? true : try(jsondecode(var.profile_json).schema_version == "1.0" && length(jsondecode(var.profile_json).model.resolved_revision) == 40, false)
+    error_message = "Supply a schema_version 1.0 model profile with a resolved 40-character revision."
+  }
+}
+variable "enable_external_analysis" {
+  description = "Explicitly allow bundled Python analysis. Leave false on RMS and supply profile_json instead."
+  type        = bool
+  default     = false
 }
 variable "revision" {
   description = "Model revision; use a commit SHA for repeatable subsequent reads."

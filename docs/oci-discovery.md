@@ -1,92 +1,104 @@
-# OCI accelerator inventory and capacity assessment
+# Native Terraform OCI discovery
 
-This milestone adds two independent observations: GPU shape/entitlement inventory and physical host-capacity reports. It does not create instances, reservations, Compute Clusters or node pools. The capacity command does invoke CreateComputeCapacityReport, which creates a report without allocating hardware.
+OCI inventory and capacity assessment now use only the oracle/oci Terraform provider and Terraform expressions. There are no OCI Python SDK calls, external programs, shell provisioners or OCI CLI dependencies. The old inventory, capacity and terraform-oci Python commands have been removed.
 
-## Installation and authentication
+## Modules
 
-Python 3.11+ is required. OCI discovery requires the optional OCI SDK dependency; Hugging Face inspection remains dependency-free.
-
-```sh
-python3 -m pip install -e '.[oci]'
-```
-
-Use a virtual environment for installation where appropriate. From the source checkout, `PYTHONPATH=src python3 -m oke_llm_serving ...` also works if the SDK is already installed in that interpreter.
-
-Default authentication uses the DEFAULT profile in the standard OCI configuration file. Use `--profile` and `--config-file` to select another configuration. Resource-principal and instance-principal modes are available through `--auth`; supply the tenancy ID when the signer cannot derive it. Inventory can take its bootstrap region from `--regions`; capacity takes an explicit region. Local security-token session authentication is not yet a separate supported mode.
-
-Keep keys/tokens out of Terraform variables and configuration artifacts. SDK errors are returned as sanitized status/code observations rather than raw request headers or service messages.
-
-## Inventory
-
-```sh
-PYTHONPATH=src python3 -m oke_llm_serving inventory \
-  --profile DEFAULT --shapes VM.GPU.A10.1
-```
-
-The initial scan uses only the profile's configured region. All subscribed regions are listed, but they are not all scanned automatically. To scan more, supply `--regions region-one region-two`. Requested regions not READY in the subscription list are marked not_ready_or_unsubscribed and skipped. If subscription enumeration is denied, explicitly requested regions are still attempted, with partial coverage recorded.
-
-The inventory lists availability domains, then lists GPU shapes visible in the target compartment per AD. It retains GPU counts/descriptions, host memory, OCPUs, local disk capacity and RDMA ports/bandwidth. GPU VRAM and NVLink topology remain null: those require a separate sourced hardware catalog and must not be inferred from host RAM or marketing names.
-
-Supply `--compartment-id` for the intended deployment compartment. When omitted, resource availability is queried at the tenancy root and the report records that scope. Root headroom does not establish that a child compartment has equivalent quota or permissions.
-
-Limit definitions and values are queried at the tenancy root. Resource availability is queried in the selected target compartment. AD-scoped limits include the corresponding AD; regional/global calls omit AD. API-provided quota names are matched exactly to limit names. An unmatched name is recorded, not guessed from shape strings. The tool does not convert quota units into a number of deployable GPU instances.
-
-The availability data retains available, used, fractional_availability, fractional_usage and effective_quota_value. A null effective quota is not presented as unlimited capacity. Raw quota-policy statements and inherited policy syntax are not independently parsed; the tool relies on the service's effective resource-availability result where supported.
-
-Without a shape filter, GPU-named compute limits are also included as context. With a shape filter, only exact quota-name matches are checked. `--max-limit-checks` bounds availability calls across the entire run; default 100. A budget of zero lists shapes/limits without querying headroom and records those checks as unknown.
-
-## Physical host capacity
-
-```sh
-PYTHONPATH=src python3 -m oke_llm_serving capacity \
-  --profile DEFAULT --region REGION \
-  --availability-domain 'FULL-TENANCY-SPECIFIC-AD-NAME' \
-  --shapes VM.GPU.A10.1 --requested-instances 2
-```
-
-Use the full AD name from inventory. Optional `--fault-domain` scopes the report; it is not a recommendation to set fault-domain placement on an OKE Compute Cluster pool.
-
-There is intentionally no deployment compartment input. The report always uses the root tenancy derived from authentication. A shape count is a count of instances, not GPUs. Each requested shape gets one or more scoped rows. Fault-domain rows are preserved separately and never summed across potentially overlapping scopes.
-
-| Capacity observation | reported_sufficient |
+| Module | Native constructs |
 |---|---|
-| AVAILABLE with a nonnegative count | Comparison with requested_instances |
-| OUT_OF_HOST_CAPACITY | false |
-| HARDWARE_NOT_SUPPORTED | null; unsupported observation is not treated as a permanent absence of hardware |
-| Missing shape/count, denied API or unknown status | null |
+| accelerator-inventory | oci_identity_region_subscriptions, oci_identity_availability_domains, oci_core_shapes, oci_limits_limit_definitions, oci_limits_limit_values, oci_limits_resource_availability |
+| capacity-assessment | oci_core_compute_capacity_report plus terraform_data for explicit report replacement |
 
-Reports are timestamped and not reservations. Counts can change before allocation, and they do not establish successful RDMA/Compute Cluster placement. Every Terraform data-source refresh requests a new report, rather than reusing a stored report as if it were fresh. Recheck again before eventual allocation.
+Each module inherits its OCI provider from its caller. The caller supplies tenancy_ocid and a region label matching that provider. Credentials belong to the provider, not module variables or Python configuration. The example uses the local DEFAULT profile through the provider's normal authentication chain. Resource Manager supplies credentials to the OCI provider; its documented minimum provider configuration is region.
 
-## Result and error contract
+```hcl
+provider "oci" {
+  region = var.region
+}
 
-Both operations return schema_version 1.0. Top-level status is complete or partial. Each API observation contains status observed or unknown, observed_at, data, and sanitized error status/code on request failure. Inventory also records the target compartment and region-by-region coverage.
+module "inventory" {
+  source         = "../../modules/accelerator-inventory"
+  tenancy_ocid   = var.tenancy_ocid
+  region         = var.region
+  compartment_id = var.compartment_id
+  shape_names    = ["VM.GPU.A10.1"]
+}
+```
 
-Complete means the requested observations were obtained, not that capacity is sufficient. Zero headroom and OUT_OF_HOST_CAPACITY are valid known observations. Permission errors, unsupported availability APIs, missing fields, unresolved quota-name mappings and exhausted query budgets produce partial results instead of fabricated zeroes.
+## Running the example
 
-API observations that fail do not abort successful observations from other regions/ADs. Authentication/input errors are fatal, write structured JSON to stderr and exit 2. Partial discovery returns JSON and exit 0 so a planner can inspect the evidence. A deploying caller must explicitly check both completeness and sufficiency rather than treating exit 0 as permission to allocate.
-
-Calls are sequential, SDK retries are disabled, and client timeouts are connection 10/read 30 seconds. API pagination is handled by the SDK. Explicit region selection and a headroom-query budget keep scope visible. Reports may contain tenancy/compartment IDs and operational capacity details; store them according to the tenancy's access policy. Live test artifacts are kept in ignored work/ and Terraform state is ignored.
-
-## Terraform modules
-
-- `terraform/modules/accelerator-inventory` returns `result` with inventory and entitlement observations.
-- `terraform/modules/capacity-assessment` returns `result` with a freshly created capacity report and normalized shape rows. It accepts no deployment compartment.
-- `terraform/examples/oci-discovery` demonstrates both. Capacity is disabled until availability_domain is set; set capacity_region at the same time.
+Use terraform/examples/oci-discovery. Set tenancy_ocid and region through your local uncommitted variable file or Resource Manager inputs. Resource Manager prepopulates those named variables in its Console workflow.
 
 ```sh
 terraform -chdir=terraform/examples/oci-discovery init
-terraform -chdir=terraform/examples/oci-discovery plan
-terraform -chdir=terraform/examples/oci-discovery apply
+terraform -chdir=terraform/examples/oci-discovery plan -var-file=/path/to/discovery.tfvars.json
+terraform -chdir=terraform/examples/oci-discovery apply -var-file=/path/to/discovery.tfvars.json
 ```
 
-The wrappers use hashicorp/external, require the full repository source layout and require the OCI SDK in the selected Python executable. All query values are strings and the result is a string map containing result_json, decoded into a Terraform object by the module. These modules have no OCI allocation resources. Data observations and errors become part of Terraform state on apply.
+Only data sources run unless availability_domain is set. Supplying that AD enables creation of a capacity report and a local Terraform bookkeeping resource. Neither allocates instances, reservations, Compute Clusters or node pools.
 
-For Resource Manager, package the source and SDK dependencies and configure an appropriate resource principal. Managed-runner execution and principal authentication have not yet been live-validated; local DEFAULT profile execution has. Deploying from a different compartment requires its own scoped eligibility check.
+The provider is constrained to OCI 7.x and the tested example lock file pins 7.32.0. Other module callers should maintain their own lock files. Provider download, network access and IAM remain deployment requirements; avoiding external runtimes does not remove those dependencies.
 
-## Validation and remaining scope
+## Inventory scope and output
 
-Tests cover quota/target scope, AD/regional handling, pagination invocation, null/fractional availability, permissions, query budgets, unsupported capacity, FD count preservation, real SDK request serialization and subprocess entry points. Live validation uses the local DEFAULT profile without allocating instances. See [validation record](../outputs/oci-discovery-validation.md).
+The result schema is 2.0. It lists subscriptions, but one module instance scans one provider region. The old regions-list input is removed. For several regions, instantiate the module with explicit provider aliases or run one regional Resource Manager stack/job per selected subscribed region. Terraform does not dynamically instantiate provider configurations from subscription data.
 
-This is not yet the complete deployment planner. Remaining work includes the sourced GPU-memory/topology catalog, OKE cluster and existing-node allocation inspection, image compatibility, model-to-shape planning and infrastructure provisioning. The current result never claims that listing a shape proves it is OKE-compatible.
+Within the region, shapes are listed for every AD. shape_names filters GPU shapes; an empty set retains all visible GPU shapes. image_id optionally filters for image-compatible shapes. Returned fields include GPU count/description, host_memory_gb, OCPUs, local disk capacity and RDMA ports/bandwidth. GPU VRAM and NVLink topology remain null until catalog enrichment is implemented. A visible shape is not itself proof of OKE compatibility or launch capacity.
 
-Primary references: [LimitsClient](https://docs.oracle.com/en-us/iaas/tools/python/latest/api/limits/client/oci.limits.LimitsClient.html), [ResourceAvailability](https://docs.oracle.com/en-us/iaas/tools/python/latest/api/limits/models/oci.limits.models.ResourceAvailability.html), [capacity-report root scope](https://docs.oracle.com/en-us/iaas/tools/python/latest/api/core/models/oci.core.models.CreateComputeCapacityReportDetails.html).
+Limit definitions/values use the tenancy root. Shape lookup and resource availability use compartment_id, defaulting to root. Thus root entitlement observations do not prove a child compartment has the same entitlement or launch permissions.
+
+Quota-name matching is exact. Limits retain their name, scope, tenancy limit, description, available/used values, fractional values and effective quota. No quota-to-instance conversion is inferred. Unmapped shape quota names remain visible.
+
+Only limits whose metadata explicitly supports resource availability and whose scope can be resolved are queried. Regional/global queries omit AD; AD queries use the AD from the limit value. max_limit_checks bounds calls deterministically by sorted key. query_resource_availability=false disables all headroom calls. exclude_limit_names explicitly omits named queries. Skipped/unsupported/budget-limited headroom is unknown, not zero. A response without available/fractional availability also remains unknown. A null effective quota is not presented as unlimited capacity.
+
+## API errors fail the plan
+
+Native provider data sources fail Terraform on permission errors, unsupported API errors not reflected in metadata, transport failures and other API diagnostics. Terraform try() cannot catch these provider request failures. This differs from the removed SDK wrapper's partial-error JSON behavior.
+
+Known unsupported queries are skipped using limit metadata. If an endpoint still fails, examine the provider diagnostic, correct IAM/scope or explicitly exclude that limit/disable headroom queries and rerun. The resulting omitted headroom remains unknown. A cross-region coordinator can run independent regional jobs to keep one region's error from preventing others from completing.
+
+Successful outputs can still be complete or partial depending on omitted/null entitlement data. Complete means the selected observations were obtained, not that enough resources exist.
+
+## Capacity snapshots and freshness
+
+Capacity reports always use tenancy_ocid, not the target deployment compartment. Set availability_domain and shape_names; fault_domain is an optional report scope. requested_instances is compared per returned shape/FD row. Counts are instances rather than GPUs, and rows are never summed across scopes. Missing/invalid counts and HARDWARE_NOT_SUPPORTED remain unknown. OUT_OF_HOST_CAPACITY is a known negative result.
+
+The OCI 7.x provider exposes available_count as a string. The module converts numeric values explicitly and treats unparseable values as unknown.
+
+The module requires observation_id. Change it to create a new report through replace_triggered_by. Keeping it fixed preserves the report snapshot. An ordinary Terraform refresh is not a promise of a new physical-capacity observation. The example defaults to initial for convenience; a discovery pipeline should pass its unique run ID before each new assessment.
+
+Before allocating hardware, request a fresh report again. A report is not a reservation, and available counts do not guarantee a subsequent launch or RDMA/Compute Cluster placement.
+
+## Migration from schema 1.0 wrappers
+
+- Remove the OCI SDK dependency and stop using the removed OCI Python commands and discover.py scripts.
+- Replace profile/auth/python_executable module inputs with a caller-configured OCI provider and explicit tenancy_ocid/region.
+- Replace regions lists with regional provider aliases or regional stack runs.
+- Consume the result schema 2.0 directly; resource-availability fields are now directly inside the observation rather than a generic SDK data envelope.
+- Capacity is now a Terraform-managed report created during apply. It cannot supply fresh computed capacity as if it had already been queried during the first plan.
+- Changing observation_id replaces only the report and its local bookkeeping, not GPU instances.
+- Old external data-source entries are removed from state on apply. They did not own allocated hardware. Do not remove unrelated infrastructure state.
+
+## RMS and model analysis
+
+OCI discovery requires no Python or Bash runtime beyond the Terraform provider execution environment. Hugging Face analysis is different: binary-header parsing, architecture interpretation, estimates and tests remain in Python. A shell rewrite would require its own HTTP/JSON/binary tooling and would not provide an unconditional reliability guarantee.
+
+For RMS, generate model-profile JSON in a controlled, versioned build environment and supply it to the model-profile module's profile_json input. That path never executes Python. External analysis is disabled by default and requires explicit enable_external_analysis=true on a prepared runner. See terraform/examples/model-profile-rms and [model tool documentation](model-profile.md).
+
+## Verification
+
+Run Python model tests and Terraform native-provider tests:
+
+```sh
+PYTHONPATH=src python3 -m unittest discover -s tests -v
+terraform -chdir=terraform/modules/accelerator-inventory init -backend=false
+terraform -chdir=terraform/modules/accelerator-inventory test
+terraform -chdir=terraform/modules/capacity-assessment init -backend=false
+terraform -chdir=terraform/modules/capacity-assessment test
+terraform -chdir=terraform/modules/model-profile init -backend=false
+terraform -chdir=terraform/modules/model-profile test
+```
+
+Terraform's mock-provider tests require Terraform 1.7+; modules themselves require 1.5+. See the [validation record](../outputs/oci-discovery-validation.md) for live checks. Actual RMS execution, additional authentication modes and target-child-compartment checks remain to be validated there.
+
+Sources: [Resource Manager requirements](https://docs.oracle.com/en-us/iaas/Content/ResourceManager/Concepts/terraformconfigresourcemanager.htm), [shape data source](https://docs.oracle.com/en-us/iaas/tools/terraform-provider-oci/latest/docs/d/core_shapes.html), [resource availability](https://docs.oracle.com/en-us/iaas/tools/terraform-provider-oci/latest/docs/d/limits_resource_availability.html), [capacity report resource](https://docs.oracle.com/en-us/iaas/tools/terraform-provider-oci/latest/docs/r/core_compute_capacity_report.html).

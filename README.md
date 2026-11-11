@@ -38,13 +38,15 @@ The Terraform example is in `terraform/examples/model-profile`. It allocates no 
 
 ## OCI inventory and capacity
 
-GPU shape discovery, limit/quota headroom and separate host-capacity reports are implemented. See [OCI discovery usage](docs/oci-discovery.md) and the [live validation record](outputs/oci-discovery-validation.md).
+OCI discovery uses native Terraform data sources and capacity-report resources. No OCI SDK, Python or shell program is required. See [usage and migration](docs/oci-discovery.md) and the [validation record](outputs/oci-discovery-validation.md).
 
 ```sh
-python3 -m pip install -e '.[oci]'
-PYTHONPATH=src python3 -m oke_llm_serving inventory --profile DEFAULT --shapes VM.GPU.A10.1
+terraform -chdir=terraform/examples/oci-discovery init
+terraform -chdir=terraform/examples/oci-discovery plan -var-file=/path/to/discovery.tfvars.json
 ```
 
-Terraform wrappers are in `terraform/modules/accelerator-inventory` and `terraform/modules/capacity-assessment`, with an example in `terraform/examples/oci-discovery`. Capacity reports use the tenancy root, independently of the deployment compartment used for quota checks. These operations allocate no GPU instances.
+Supply tenancy_ocid and region; local authentication uses DEFAULT and RMS supplies its own provider credentials. Capacity reports use the tenancy root, independently of the compartment used for entitlement checks. They allocate no GPU instances. Change observation_id for a fresh capacity report.
+
+For RMS model discovery, supply precomputed profile_json through terraform/examples/model-profile-rms. Python execution is opt-in for prepared local/build runners, not an assumption about RMS.
 
 Hardware topology/VRAM catalog enrichment, model-to-shape planning, cluster inspection and GPU provisioning remain subsequent work.

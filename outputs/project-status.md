@@ -4,7 +4,7 @@ Updated November 11 2026
 
 ## Current status
 
-The first implementation is complete: dependency-free Python model inspection, conventional transformer memory estimation and a Terraform external-data-source wrapper. Verification includes 16 unit tests, Terraform format/validation, a live public Hugging Face inspection, and a successful Terraform plan/apply with the real wrapper. No OCI infrastructure was allocated. Resource Manager execution and private/gated model access have not yet been tested against live credentials.
+Model inspection and native Terraform OCI discovery are implemented. Python remains only for Hugging Face analysis. RMS can consume precomputed model profiles without Python execution; the native OCI modules require no external scripts. Live local-provider validation is complete; actual RMS and private/gated model execution remain pending.
 
 ## Documents
 
@@ -15,7 +15,7 @@ The first implementation is complete: dependency-free Python model inspection, c
 
 - Start with an existing regional OKE cluster.
 - Begin with Hugging Face model inspection, including architecture and weight/runtime/KV memory estimates with explicit assumptions.
-- Expose the inspection tool through a Terraform data-only wrapper where runner compatibility permits.
+- Use native OCI Terraform discovery. Feed precomputed model profiles into RMS; external model analysis is opt-in on prepared runners.
 - Discover entitlement headroom and physical capacity separately. Use CreateComputeCapacityReport before allocation, preserving observation timestamps and unknown states.
 - Support an RDMA managed-node-pool path using an OCI Compute Cluster on supported hardware and an enhanced OKE cluster.
 - Consider a regular managed node pool when RDMA is unavailable only if the alternative remains feasible. Freeze the selected topology before apply.
@@ -36,16 +36,16 @@ The first implementation is complete: dependency-free Python model inspection, c
 
 See [model tool usage](../docs/model-profile.md) and [live example profile](example-model-profile.json).
 
-## Completed OCI discovery milestone
+## Completed native OCI discovery refactor
 
-- [x] Add optional OCI SDK integration with DEFAULT-profile and principal-authentication interfaces.
-- [x] Discover subscriptions, per-AD GPU shapes and compute limit metadata.
-- [x] Query effective entitlement headroom in an explicit target compartment, preserving unknown/null/error outcomes.
-- [x] Create independent host-capacity reports in the tenancy root, preserving AD/FD scope and instance-count semantics.
-- [x] Add Terraform accelerator-inventory and capacity-assessment modules and a runnable example.
-- [x] Pass 36 tests, Terraform validation and live DEFAULT-profile CLI/Terraform plan/apply checks.
+- [x] Replace the OCI SDK implementation with native Terraform data sources and a capacity-report resource.
+- [x] Remove OCI SDK dependencies, Python commands and external wrapper scripts.
+- [x] Keep tenancy-root capacity reporting separate from target-compartment entitlement queries.
+- [x] Add explicit observation IDs for report freshness and document native provider fail-fast errors.
+- [x] Default model-profile Terraform to runtime-free precomputed JSON; external Python analysis requires explicit opt-in.
+- [x] Validate 16 Python tests and 14 Terraform test runs, plus live DEFAULT native-provider plan/apply and local runtime-free profile plan/apply.
 
-The live VM.GPU.A10.1 capacity query returned OUT_OF_HOST_CAPACITY in the inspected AD. No hardware was allocated. See [OCI usage](../docs/oci-discovery.md) and [validation record](oci-discovery-validation.md). Resource Manager and live principal-authentication validation remain pending.
+The live VM.GPU.A10.1 query returned OUT_OF_HOST_CAPACITY in the inspected AD. No hardware was allocated. See [native OCI usage](../docs/oci-discovery.md) and [validation record](oci-discovery-validation.md). Actual RMS execution remains pending.
 
 Next: source the GPU VRAM/topology catalog, inspect OKE compatibility/existing allocation, and combine these observations with model profiles to propose configurations. Allocation and DevOps deployment follow validated candidate planning.
 

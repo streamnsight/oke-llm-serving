@@ -63,13 +63,17 @@ terraform apply
 terraform output -json profile
 ```
 
-This example uses hashicorp/external and reads the bundled `src` package through the module entry point. It requires the full repository layout, not a copy of the module directory by itself. There is no OCI provider or infrastructure resource in the example. Apply persists the data-source result as Terraform state and outputs; it does not create GPU nodes.
+This local example explicitly sets enable_external_analysis=true and uses hashicorp/external and reads the bundled `src` package through the module entry point. It requires the full repository layout, not a copy of the module directory by itself. There is no OCI provider or infrastructure resource in the example. Apply persists the data-source result as Terraform state and outputs; it does not create GPU nodes.
 
 The module returns `profile` as a decoded object. The external protocol returns a string map with one `profile_json` value. Override module input `python_executable` if Python is not on PATH. Pass secrets through the execution environment. Model metadata and estimates are stored in state even though the token is not intentionally included in the result.
 
 For reproducibility, replace the example's `main` revision with `profile.model.resolved_revision`. The observation timestamp changes on refresh; profile consumers should compare pinned model/configuration fields, not require byte-identical timestamped outputs.
 
-Resource Manager must have Python 3.11+, outbound HTTPS to Hugging Face and its artifact hosts, and the complete source bundle. Resource Manager and gated-model authentication have not yet been validated. A DevOps discovery job can run the same dependency-free CLI and publish JSON if managed-runner constraints prevent the external wrapper.
+External analysis is disabled by default. There is no guarantee that a managed RMS host provides Python 3.11+ or any particular external tools. The preferred RMS path is to generate the profile in a controlled build environment, then pass it as profile_json. The module does not launch Python when that input is supplied. The precomputed profile is authoritative; context/dtype estimator inputs do not recompute it.
+
+The runtime-free example is terraform/examples/model-profile-rms. Supply model_profile_json as a JSON string input (for example through an uncommitted tfvars JSON file or a pipeline variable). This path has been tested locally without external-program execution; the RMS service itself remains untested.
+
+Python remains appropriate for model JSON, binary safetensors headers and tested memory arithmetic. Bash would still need HTTP, JSON and binary-processing dependencies; neither language can guarantee an uncontrolled managed runtime. A versioned build image and precomputed artifact avoid that dependency in RMS. Gated-model authentication remains a live validation item.
 
 ## Verification
 

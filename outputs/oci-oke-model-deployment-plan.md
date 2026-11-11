@@ -39,10 +39,10 @@ The user should see meaningful states such as Fits with these assumptions, Needs
 | Option | Benefits | Costs and limits |
 |---|---|---|
 | Terraform-only discovery and deployment | One familiar tool and direct provider reuse | Awkward model analysis, dynamic region enumeration, interactive comparison, volatile capacity and estimates; mixes observation with resource ownership |
-| Python SDK advisor plus Terraform executor | Structured discovery, testable model analysis, explainable comparisons, explicit reproducible deployment input | Two cooperating components with a versioned contract |
+| Model-analysis tool plus native OCI Terraform | Structured discovery, testable model analysis, explainable comparisons, explicit reproducible deployment input | Two cooperating components with a versioned contract |
 | Browser portal from the beginning | Most approachable interface and shared deployment catalog | Adds authentication, backend operations, persistent state and UI work before feasibility tooling is proven |
 
-Proposed direction: Python advisor using Hugging Face Hub and OCI SDKs, a CLI first, Terraform for durable resources, and OCI DevOps coordinating Resource Manager and application deployment. A portal is a later presentation layer over the same tool interfaces.
+Current direction: Python for Hugging Face model analysis, native OCI Terraform data sources/resources for cloud discovery and infrastructure, and OCI DevOps coordinating Resource Manager and application deployment. RMS consumes precomputed model-profile JSON by default; it does not assume Python is installed. A portal can later present the same profiles and deployment specifications.
 
 ## Model inspection tool
 
@@ -177,7 +177,7 @@ Kubernetes/Helm resource ownership can be either Terraform Helm-provider states 
 ### Initial MVP
 
 - Existing same-region OKE cluster; discovery inspects whether basic/enhanced type meets the chosen recipe.
-- CLI with readable HTML/Markdown and JSON results; no portal required.
+- Model-analysis CLI and native Terraform discovery outputs; no portal required.
 - Hugging Face safetensors metadata, dense and explicitly recognized MoE architectures; uncertainty reported honestly.
 - NVIDIA shapes with a small curated topology catalog, live OCI shape/limit/capacity queries and partial-permission handling.
 - Comparison of single-GPU, single-node multi-GPU and supported multi-node layouts; unsupported configurations rejected with explanations.
@@ -204,7 +204,7 @@ The main MVP scope decision is whether multi-node deployment and durable Convers
 
 - [x] Define versioned model profiles, evidence and confidence states.
 - [x] Implement Hugging Face metadata inspection and initial conventional-attention estimators, with unsupported results for other architectures.
-- [x] Implement OCI region/shape/limit/capacity discovery with live DEFAULT-profile validation.
+- [x] Implement Native OCI Terraform region/shape/limit/capacity discovery with live DEFAULT-profile validation.
 - [ ] Implement OKE cluster and existing-allocation discovery.
 - [ ] Seed the sourced hardware catalog.
 - [ ] Verify gated models, duplicate formats, MoE sizing, unsupported limits, permission failures and partial results.
@@ -261,11 +261,11 @@ This path differs from older self-managed-node deployments using Cluster Network
 | gpu_allocation | Selected immutable deployment specification | Optional Compute Cluster plus GPU managed node pool, optional CPU pool, storage/IAM references |
 | delivery_pipeline | Allocated resource IDs and pinned deployment artifacts | DevOps deployment environments, artifacts, stages and configuration |
 
-Modules are reusable code units, not necessarily separate Resource Manager stacks. Pure planning can be shared Python code exposed through a Terraform external data-source wrapper. A module itself cannot introduce a new native data-source type; that requires a provider. An optional custom provider can be added later if justified.
+Modules are reusable code units, not necessarily separate Resource Manager stacks. OCI inventory now uses native data sources and capacity assessment uses a native report resource. No OCI SDK or external script is required. Model-analysis logic remains Python, with an optional external wrapper for prepared runners and a runtime-free profile_json input for RMS.
 
-For model_profile, the external program reads string query values and emits a JSON object containing a string-encoded profile. Terraform jsondecode converts that profile to structured values. Pin and package interpreter/library dependencies for the runner. Resource Manager execution compatibility must be tested; do not rely on its host having Hugging Face or OCI Python packages preinstalled. A separate DevOps discovery job emitting a versioned JSON artifact is the portable fallback, with the same domain logic and output contract.
+For model_profile, precompute a JSON profile in a controlled build environment and pass profile_json to RMS. External Python analysis is disabled by default and requires enable_external_analysis=true for local/prepared runners. Neither Python nor a Bash rewrite can guarantee an uncontrolled managed runtime. A versioned build image and an immutable JSON artifact remove that execution dependency from RMS.
 
-The capacity API's Terraform implementation is a resource, oci_core_compute_capacity_report, rather than a data source. It creates a report, not instances. A module can expose its results but needs an explicit freshness strategy; re-reading an old report is not a fresh host-capacity test. Prefer a new discovery-run report or a pre-apply SDK check. The provider documentation requires the report compartment to be the tenancy root. Limits and target-compartment quota observations have different scopes and must remain separate.
+The capacity API's Terraform implementation is a resource, oci_core_compute_capacity_report, rather than a data source. It creates a report, not instances. A module can expose its results but needs an explicit freshness strategy; re-reading an old report is not a fresh host-capacity test. Change observation_id to deliberately create a fresh native report for the discovery run and again before allocation. The provider documentation requires the report compartment to be the tenancy root. Limits and target-compartment quota observations have different scopes and must remain separate.
 
 [Terraform external protocol](https://registry.terraform.io/providers/hashicorp/external/latest/docs/data-sources/external), [capacity report lifecycle](https://docs.oracle.com/en-us/iaas/tools/terraform-provider-oci/latest/docs/r/core_compute_capacity_report.html).
 
@@ -299,4 +299,4 @@ Assess writes a timestamped discovery-run artifact. Select produces deployment-s
 
 Use content hashes or immutable version identifiers for cross-stage artifacts. Repeated discovery must not rewrite the specification of an already deployed model. If the same request is retried after partial failure, the coordinator should resume against its existing allocation stack and acquired nodes. Shared-component installation must be serialized or otherwise coordinated across concurrent model requests.
 
-The immediate implementation target is the HF model-profile tool and its Terraform data-only wrapper, including tests for gated access, model revisions, duplicate checkpoint variants, dense/MoE interpretation, context/concurrency-dependent memory estimates and unsupported architectures. The next target is OCI inventory plus capacity assessment. Infrastructure modules should consume these contracts only after their outputs are validated.
+The HF model-profile tool, opt-in local wrapper, runtime-free profile input, native OCI inventory and capacity modules are implemented and locally validated. Next work is the hardware topology/VRAM catalog, OKE inspection and candidate planning before infrastructure allocation.

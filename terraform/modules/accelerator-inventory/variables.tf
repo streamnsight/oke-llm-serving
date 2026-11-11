@@ -1,49 +1,40 @@
-variable "profile" {
-  description = "Local OCI configuration profile."
+variable "tenancy_ocid" {
+  description = "Root tenancy OCID for subscriptions, ADs and service-limit metadata."
   type        = string
-  default     = "DEFAULT"
+  nullable    = false
 }
-variable "config_file" {
-  description = "Optional OCI configuration file path; never key contents."
+variable "region" {
+  description = "Region label; must match the OCI provider passed by the caller. One module instance scans one provider region."
   type        = string
-  default     = null
-}
-variable "auth" {
-  description = "OCI authentication mode."
-  type        = string
-  default     = "config"
-  validation {
-    condition     = contains(["config", "instance_principal", "resource_principal"], var.auth)
-    error_message = "Use config, instance_principal or resource_principal."
-  }
-}
-variable "tenancy_id" {
-  description = "Root tenancy OCID for principal authentication when it cannot be derived."
-  type        = string
-  default     = null
-}
-variable "python_executable" {
-  description = "Python 3.11+ with the OCI SDK installed."
-  type        = string
-  default     = "python3"
-}
-variable "shape_names" {
-  description = "GPU shape names to inspect. Empty means all visible GPU shapes for inventory."
-  type        = list(string)
-  default     = []
+  nullable    = false
 }
 variable "compartment_id" {
-  description = "Target compartment for entitlement headroom; defaults to tenancy root."
+  description = "Target compartment for shapes and entitlement headroom; null selects the root tenancy."
   type        = string
   default     = null
 }
-variable "regions" {
-  description = "Subscribed regions to scan. Empty selects only the profile's configured region."
-  type        = list(string)
+variable "image_id" {
+  description = "Optional image OCID to filter compatible shapes in this region."
+  type        = string
+  default     = null
+}
+variable "shape_names" {
+  description = "Selected GPU shapes; empty retains every visible GPU shape."
+  type        = set(string)
+  default     = []
+}
+variable "query_resource_availability" {
+  description = "Whether to query headroom for limits whose metadata explicitly supports the API."
+  type        = bool
+  default     = true
+}
+variable "exclude_limit_names" {
+  description = "Explicitly omit problematic limit APIs; omitted headroom remains unknown."
+  type        = set(string)
   default     = []
 }
 variable "max_limit_checks" {
-  description = "Maximum resource-availability calls across this inventory run."
+  description = "Maximum deterministic headroom queries in this region."
   type        = number
   default     = 100
   validation {
