@@ -63,3 +63,41 @@ RMS does not fetch the external dropdown interactively. Refresh the snapshot thr
 - [ ] Validate the RMS form; add GPU inference evidence as infrastructure becomes available.
 
 SGLang can be added as a separate compatibility manifest later. Support by one engine must never be inferred from support by the other.
+
+## Refinement: image selection and an optional advisor plugin
+
+The engine image is selected by assessment and pinned afterward. Users do not need to select a fixed vLLM version before entering a model. Maintain a catalog of candidate released engine images with their architecture/backend/format support and relevant dependency/GPU constraints. Resolve model requirements against that catalog and the possible GPU configurations. An assessment can return several feasible model/image/GPU combinations; deployment receives one selected combination with an immutable image digest.
+
+An arbitrary model ID does not necessarily need a model-specific recipe. Many new fine-tunes use an already-supported architecture and checkpoint format. Structured config and engine support evidence can establish a candidate automatically. Unstructured publisher instructions become an additional evidence source when needed. The transformers_version field is serialization provenance, not a minimum engine version. Model cards sometimes state genuine minimum versions; those need source attribution and release-specific verification.
+
+An LLM can extract such instructions and investigate unknown cases. It cannot establish that missing kernels exist, that an unknown architecture fits our memory estimator, or that inference succeeds on a particular GPU merely by interpreting prose. Keep reviewed compatibility and runtime validation separate.
+
+Recommended workflow:
+
+1. User selects a catalog entry or custom ID. Native discovery returns model facts, GPU/entitlement/capacity observations and explicit missing information.
+2. Deterministic checks select candidate engines/configurations or return requires_validation with reasons.
+3. For unresolved cases, generate [the assessment prompt](model-compatibility-assessment-prompt.md). The user can run it with an assistant, or an advisor plugin can execute the same investigation step and return a structured artifact.
+4. The user selects a proposed configuration. Resolve/verify the image digest and bind the specification to the model SHA, engine image, GPU topology and serving assumptions.
+5. The deployment stack and DevOps pipeline allocate/install and perform load/inference tests. Record runtime validity only for the exact tested combination.
+
+The whole workflow could be exposed through an assistant plugin: discover, assess, select configuration, submit/poll RMS jobs, and inspect DevOps validation results. Terraform retains infrastructure/state ownership. The advisor step is independently usable through a prompt, so the initial RMS flow does not require an LLM service or plugin installation.
+
+Prefer keeping the LLM investigation in this explicit workflow step rather than executing it during Terraform plan refresh. This makes review, retries, evidence and caching visible. If a future automated service performs the investigation, key its artifact by model SHA, engine-catalog version and request configuration; validate the artifact before consuming it. The provider/host adapter and its authentication are not selected or implemented by this proposal.
+
+Assessment evidence should distinguish:
+
+- static compatibility: supported, unsupported or unknown, with engine-specific reasons;
+- memory/layout: estimated, infeasible or unknown, independently of engine architecture support;
+- review: not required, pending or completed, with source references;
+- runtime test: not run, passed or failed, with exact environment and logs.
+
+A missing model from the curated list is not proof that it is unsupported. A reviewed model is not automatically runtime-tested. Newest available engine is not automatically the best image for the user's GPUs or required integrations.
+
+Implementation additions:
+
+- [ ] Define candidate-engine catalog and deterministic version/image selection.
+- [ ] Generate an assessment request/prompt for unresolved models and accept a validated result artifact.
+- [ ] Add the optional plugin adapter after its host and authentication model are chosen.
+- [ ] Bind assessment results to exact model/image/GPU/configuration identities and runtime evidence.
+
+References: [vLLM model registry and runtime checks](https://docs.vllm.ai/en/stable/models/supported_models/), [vLLM Docker images](https://docs.vllm.ai/en/stable/deployment/docker/), [example publisher version instructions](https://huggingface.co/Qwen/Qwen3-8B), [Transformers config serialization](https://github.com/huggingface/transformers/blob/main/src/transformers/configuration_utils.py).
