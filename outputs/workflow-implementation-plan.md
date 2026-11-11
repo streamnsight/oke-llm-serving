@@ -61,4 +61,6 @@ Consolidation verification: the combined implementation passed 53 Terraform test
 - [x] Phase 2: add root Make targets for separate discovery/deployment ZIPs, preserving relative dependencies and committed-source provenance.
 - [x] Phase 3: expose blocking reasons and evaluated-layout count; test unsupported architectures with positive hardware observations.
 - [x] Phase 4: document RMS Outputs versus exact JSON state extraction, and refresh outdated workflow guidance.
-- [ ] Phase 5: build/inspect both packages and validate their extracted Terraform roots. Actual RMS UI/job execution remains separate live validation.
+- [x] Phase 5: build/inspect both packages and validate their extracted Terraform roots. Actual RMS UI/job execution remains separate live validation.
+
+Packaging verification: both Make targets produced isolated, integrity-checked ZIPs with state/private files/tests excluded. Both extracted stack roots initialized and passed Terraform validation. Planner tests passed 13 runs, including unsupported Flint architecture with positive capacity/headroom. Flint runtime support remains unimplemented in this stack despite upstream support; its specific image/recipe, hybrid-attention estimate and hardware coverage still need integration.
