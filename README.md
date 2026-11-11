@@ -18,6 +18,8 @@ terraform -chdir=terraform/stacks/discovery apply /path/to/discovery.tfplan
 terraform -chdir=terraform/stacks/discovery output -json discovery
 ```
 
+For RMS packages, run `make package` from the repository root. This writes separate discovery and deployment ZIPs to `work/packages/`; select the corresponding `terraform/stacks/...` working directory when uploading. Packages use committed HEAD. See [RMS packaging and JSON export](docs/rms-discovery.md).
+
 For RMS, use this repository as the configuration source and set the working directory to `terraform/stacks/discovery`. Its `schema.yaml` describes the user inputs. See [RMS setup, scope and limitations](docs/rms-discovery.md).
 
 Everything in the discovery path uses Terraform providers and HCL. Hugging Face JSON comes through `hashicorp/http`; OCI observations use `oracle/oci`. There are no Python/Bash analyzers, external-program wrappers or nested Terraform invocations. The model-only example remains at `terraform/examples/model-profile`.

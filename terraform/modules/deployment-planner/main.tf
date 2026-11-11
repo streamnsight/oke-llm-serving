@@ -29,6 +29,12 @@ locals {
     ])
   }]
   usable_engines = [for check in local.engine_checks : check.engine if check.architecture_ok && check.hints_ok]
+  blocking_reasons = compact(concat(
+    [local.memory_supported ? "" : "Model memory/layout estimator unsupported: ${join("; ", try(local.profile.memory.reasons, []))}"],
+    [anytrue([for check in local.engine_checks : check.architecture_ok]) ? "" : "No reviewed engine supports the declared architecture: ${join(", ", try(local.profile.architecture.architectures, []))}. This is a catalog coverage limit, not proof the upstream engine cannot serve it."],
+    [length(local.usable_engines) > 0 || !anytrue([for check in local.engine_checks : check.architecture_ok]) ? "" : "No architecture-compatible engine satisfies the extracted version hints."],
+    [try(local.profile.model.pipeline_tag == "text-generation" && local.profile.model.chat_template_available, false) ? "" : "The initial recipe requires text generation and a declared chat template."]
+  ))
   shape_rows = flatten([for region in var.regions : [for ad in region.inventory.availability_domains : [for shape in ad.shapes : {
     region   = region.inventory.region, ad = ad.name, shape = shape
     gpu      = try(local.catalog[shape.shape], null)
@@ -86,6 +92,8 @@ output "assessment" {
     shape_observations             = [for row in local.availability_observations : merge(row, { catalog_known = try(local.catalog[row.shape], null) != null })]
     capacity_and_headroom_shapes   = local.capacity_and_headroom_shapes
     limit_increase_recommendations = local.limit_increase_recommendations
+    blocking_reasons               = local.blocking_reasons
+    evaluated_layout_count         = length(local.evaluated)
     rejection_counts = {
       layout_or_catalog = length([for layout in local.evaluated : true if length(layout.reasons) > 0])
       memory            = length([for layout in local.evaluated : true if !layout.memory_fit])

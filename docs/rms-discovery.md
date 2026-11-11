@@ -5,11 +5,11 @@ Licensed under the Universal Permissive License v 1.0 as shown at http://oss.ora
 
 # Resource Manager workflow
 
-The user-facing workflow has two stacks. The implemented first stack is `terraform/stacks/discovery`. The second stack, for allocation and DevOps, is subsequent work. An RMS job never invokes another Terraform process.
+The user-facing workflow has two stacks. Both stacks are implemented: `terraform/stacks/discovery` and `terraform/stacks/deployment`. Live RMS/GPU/DevOps end-to-end validation remains pending. An RMS job never invokes another Terraform process.
 
 ## 1. Discovery
 
-Use the full repository as the RMS configuration source and set its working directory to **terraform/stacks/discovery**. Relative module paths require the full repository. Use a current RMS Terraform version compatible with the configuration (`>= 1.5`); local tests use Terraform 1.9.8. `schema.yaml` supplies the RMS input form; its Console rendering has not yet been tested.
+Run `make package` at the repository root. Upload `work/packages/oke-llm-discovery.zip` and set its RMS working directory to **terraform/stacks/discovery**. The ZIP preserves the relative module/catalog paths. For deployment, upload `work/packages/oke-llm-deployment.zip` and select **terraform/stacks/deployment**. `make package-discovery` and `make package-deployment` build just one package. Packages use committed HEAD; commit intended source changes before building. `DIST_DIR=/path` overrides the destination and `REFRESH_CATALOG=true` requests a packaging-time catalog refresh. Use a current RMS Terraform version compatible with the configuration (`>= 1.5`); local tests use Terraform 1.9.8. `schema.yaml` supplies the RMS input form; its Console rendering has not yet been tested.
 
 User inputs:
 
@@ -56,13 +56,36 @@ The static catalog is authored before execution. No generator runs in RMS, and n
 
 Reusing `observation_id` preserves existing report resources. Changing it replaces reports to obtain a fresh observation. Report counts are instances, not GPUs. FD alternatives must not be summed, and different shapes may draw from overlapping host capacity. Reported capacity is a snapshot, not a reservation, launch guarantee or proof of RDMA placement feasibility. Node capacity must be acquired/retained in the later allocation step.
 
-The initial model path trusts Hub-published dtype counts and supports public models only. Host shape memory is not GPU VRAM. This stack exposes evidence; it does not yet generate validated model-to-shape layouts or recommended node quantities. VRAM/topology catalog enrichment, per-rank fit and serving-engine checks remain required before selecting quantities.
+The initial model path trusts Hub-published dtype counts and supports public models only. Host shape memory is not GPU VRAM. This stack generates analytical model-to-shape candidates using the GPU and engine catalogs. Candidates require runtime validation. `assessment.blocking_reasons` explains model/engine prerequisites; `evaluated_layout_count` distinguishes no eligible engines from rejected GPU layouts. Physical capacity and positive quota/headroom observations do not depend on model compatibility.
 
-## 2. Allocation and DevOps (planned)
+## Obtain the discovery JSON after an RMS apply
 
-The user selects region, AD, existing OKE cluster, GPU shape and **node quantity** using discovery evidence and the forthcoming layout assessment. Keep node count, GPUs per node and total GPUs distinct. Pass the pinned model SHA and context/concurrency assumptions as well.
+Open the completed **Apply job → Outputs**. The configuration exposes structured `discovery` and `assessment` outputs. The console presentation is not a guaranteed copy of `terraform output -json`; use the state download for an exact machine-readable handoff. A Plan-only job does not publish these completed apply outputs.
 
-The deployment stack will validate cluster/shape/topology compatibility, create the retained node pool or RDMA compute-cluster-backed pool where supported, and create the DevOps resources. DevOps then deploys cluster components/CRDs, serving frameworks and API components and validates inference. It must not auto-deploy merely because discovery found capacity.
+Download the apply job's Terraform state from the console, or use OCI CLI (specify the region where the RMS job runs):
+
+```sh
+mkdir -p work
+oci resource-manager job get-job-tf-state \
+  --job-id YOUR_APPLY_JOB_OCID --region YOUR_RMS_REGION \
+  --file work/rms-discovery-state.json
+jq -e '.outputs.discovery.value | select(type == "object")' \
+  work/rms-discovery-state.json > work/discovery.json
+```
+
+This produces the same object shape as local `terraform output -json discovery`, suitable for `scripts/select-deployment.sh`. For inspecting job outputs through the API instead, use `oci resource-manager job-output-summary list-job-outputs --job-id YOUR_APPLY_JOB_OCID --region YOUR_RMS_REGION --all`; its response is an OCI output-summary envelope rather than the discovery object itself. A new Terraform output added in source appears only after rerunning the stack; existing saved JSON is unchanged.
+
+## Why capacity can be positive with no candidates
+
+`capacity.reported_sufficient` compares reported physical **instances** with the capacity report's requested instance quantity. Candidate selection additionally requires a reviewed engine architecture/version, a supported memory estimator and chat template, known GPU capability/VRAM, feasible TP/PP partitions, enough hosts for PP × replicas, and no known zero entitlement. Unknown quota units still need quantity validation during deployment.
+
+For example, `RecursiveSI/flint` declares `FlintForCausalLM`. The current reviewed engine catalog and dedicated estimator coverage do not include it. The profile therefore reports `memory.status = "unsupported"`, and no engine/layout is eligible even when a region has positive capacity and headroom. This is a limitation of this stack's reviewed coverage, not a claim that upstream vLLM cannot serve Flint. Adding only its name to an allowlist would not establish safe memory or runtime support.
+
+## 2. Allocation and DevOps
+
+The user selects region, AD, existing OKE cluster, GPU shape and **node quantity** using discovery evidence and the layout assessment. Keep node count, GPUs per node and total GPUs distinct. Pass the pinned model SHA and context/concurrency assumptions as well.
+
+The deployment stack validates cluster/shape/topology compatibility, creates the retained node pool or RDMA compute-cluster-backed pool where supported, and creates the DevOps resources. DevOps then deploys cluster components/CRDs, serving frameworks and API components and validates inference. It must not auto-deploy merely because discovery found capacity.
 
 The stack-to-stack boundary uses explicit selected inputs or a versioned deployment specification. Initially the user transfers the selection; later a coordinator can read completed RMS job outputs. RMS does not automatically wire every output to another stack, and discovery does not provision the deployment stack recursively.
 

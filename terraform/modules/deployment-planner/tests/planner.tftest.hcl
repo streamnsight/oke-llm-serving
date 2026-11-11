@@ -58,3 +58,18 @@ run "unmet_engine_version" {
     error_message = "Engine selection must honor extracted stable version expressions."
   }
 }
+
+run "unsupported_architecture_explains_zero_layouts" {
+  command = plan
+  variables {
+    profile = {
+      model = {pipeline_tag="text-generation",chat_template_available=true}
+      architecture = {architectures=["FlintForCausalLM"]}
+      memory = {status="unsupported",reasons=["Architecture requires a dedicated estimator."]}
+    }
+  }
+  assert {
+    condition = output.assessment.evaluated_layout_count == 0 && length(output.assessment.candidates) == 0 && length(output.assessment.blocking_reasons) == 2 && strcontains(output.assessment.blocking_reasons[1], "FlintForCausalLM")
+    error_message = "Positive hardware observations must not hide unsupported model/engine blockers."
+  }
+}
