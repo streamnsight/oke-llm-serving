@@ -34,7 +34,20 @@ The first implementation is complete: dependency-free Python model inspection, c
 - [x] Verify dense/MoE fixtures, duplicate checkpoint variants, simulated gated-access failures and unsupported architectures, plus live public dense-model inspection.
 - [x] Document local execution and Resource Manager compatibility requirements.
 
-Next: implement OCI inventory and capacity assessment. Allocation and deployment modules consume the validated discovery contracts afterward. See [tool usage](../docs/model-profile.md) and [live example profile](example-model-profile.json).
+See [model tool usage](../docs/model-profile.md) and [live example profile](example-model-profile.json).
+
+## Completed OCI discovery milestone
+
+- [x] Add optional OCI SDK integration with DEFAULT-profile and principal-authentication interfaces.
+- [x] Discover subscriptions, per-AD GPU shapes and compute limit metadata.
+- [x] Query effective entitlement headroom in an explicit target compartment, preserving unknown/null/error outcomes.
+- [x] Create independent host-capacity reports in the tenancy root, preserving AD/FD scope and instance-count semantics.
+- [x] Add Terraform accelerator-inventory and capacity-assessment modules and a runnable example.
+- [x] Pass 36 tests, Terraform validation and live DEFAULT-profile CLI/Terraform plan/apply checks.
+
+The live VM.GPU.A10.1 capacity query returned OUT_OF_HOST_CAPACITY in the inspected AD. No hardware was allocated. See [OCI usage](../docs/oci-discovery.md) and [validation record](oci-discovery-validation.md). Resource Manager and live principal-authentication validation remain pending.
+
+Next: source the GPU VRAM/topology catalog, inspect OKE compatibility/existing allocation, and combine these observations with model profiles to propose configurations. Allocation and DevOps deployment follow validated candidate planning.
 
 ## Decisions still to finalize
 

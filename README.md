@@ -34,4 +34,17 @@ PYTHONPATH=src python3 -m oke_llm_serving inspect Qwen/Qwen2.5-0.5B-Instruct \
   --context-length 4096 --concurrency 4
 ```
 
-The Terraform example is in `terraform/examples/model-profile`. It allocates no cloud infrastructure. A [live example profile](outputs/example-model-profile.json) records a successful Terraform run. OCI inventory, capacity assessment and GPU provisioning remain subsequent work.
+The Terraform example is in `terraform/examples/model-profile`. It allocates no cloud infrastructure. A [live example profile](outputs/example-model-profile.json) records a successful Terraform run.
+
+## OCI inventory and capacity
+
+GPU shape discovery, limit/quota headroom and separate host-capacity reports are implemented. See [OCI discovery usage](docs/oci-discovery.md) and the [live validation record](outputs/oci-discovery-validation.md).
+
+```sh
+python3 -m pip install -e '.[oci]'
+PYTHONPATH=src python3 -m oke_llm_serving inventory --profile DEFAULT --shapes VM.GPU.A10.1
+```
+
+Terraform wrappers are in `terraform/modules/accelerator-inventory` and `terraform/modules/capacity-assessment`, with an example in `terraform/examples/oci-discovery`. Capacity reports use the tenancy root, independently of the deployment compartment used for quota checks. These operations allocate no GPU instances.
+
+Hardware topology/VRAM catalog enrichment, model-to-shape planning, cluster inspection and GPU provisioning remain subsequent work.

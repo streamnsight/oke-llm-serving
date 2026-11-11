@@ -9,6 +9,9 @@ description = "Model-first requirements discovery for OCI OKE LLM serving"
 requires-python = ">=3.11"
 dependencies = []
 
+[project.optional-dependencies]
+oci = ["oci>=2.185,<3"]
+
 [project.scripts]
 oke-llm = "oke_llm_serving.cli:main"
 

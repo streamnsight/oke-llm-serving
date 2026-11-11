@@ -204,7 +204,8 @@ The main MVP scope decision is whether multi-node deployment and durable Convers
 
 - [x] Define versioned model profiles, evidence and confidence states.
 - [x] Implement Hugging Face metadata inspection and initial conventional-attention estimators, with unsupported results for other architectures.
-- [ ] Implement OCI region/shape/limit/capacity and cluster discovery.
+- [x] Implement OCI region/shape/limit/capacity discovery with live DEFAULT-profile validation.
+- [ ] Implement OKE cluster and existing-allocation discovery.
 - [ ] Seed the sourced hardware catalog.
 - [ ] Verify gated models, duplicate formats, MoE sizing, unsupported limits, permission failures and partial results.
 
