@@ -27,3 +27,24 @@ run "Flint_H100_adapts_TP_instead_of_copying_an_undersized_rendering" {
   error_message="Flint BF16 must retain its flags but suggest TP2 rather than blindly copying TP1 into an undersized H100 memory budget."
  }
 }
+
+run "NVFP4_keeps_its_checkpoint_and_exposes_config_staging_requirements" {
+ command=plan
+ variables {
+  regions=[{inventory={region="region-one",availability_domains=[{name="AD-1",shapes=[{shape="BM.GPU.B200.8",gpus=8,rdma_ports=0,quota_names=[]}]}],limits=[]},capacity={region="region-one",availability_domains=[]}}]
+  profile={model={repository="RecursiveSI/flint-nvfp4-gguf",resolved_revision="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",pipeline_tag="text-generation",chat_template_available=true,config_sources={config_repository="RecursiveSI/flint"}},architecture={architectures=["FlintForCausalLM"],attention={heads=32,kv_heads=4}},memory={status="unsupported",runtime_allowance_bytes=2147483648,assumptions={context_length=4096,concurrency=4,kv_dtype="bfloat16"},reasons=["GGUF resident memory unknown"]}}
+ }
+ override_data {
+ target=data.http.recipe_metadata[0]
+ values={status_code=200,response_body="{\"model\": {\"model_id\": \"RecursiveSI/flint\", \"context_length\": 262144}, \"variants\": {\"default\": {\"precision\": \"bf16\", \"vram_minimum_gb\": 96}, \"nvfp4\": {\"model_id\": \"RecursiveSI/flint-nvfp4-gguf\", \"precision\": \"nvfp4\", \"vram_minimum_gb\": 29}}, \"meta\": {\"tasks\": [\"text\"]}}"}
+ }
+ override_data {
+ target=data.http.recipe_rendering["b200"]
+ values={status_code=200,response_body="{\"hf_id\": \"RecursiveSI/flint\", \"hardware\": \"b200\", \"strategy\": \"single_node_tp\", \"variant\": \"nvfp4\", \"node_count\": 1, \"deploy_type\": \"single_node\", \"env\": {}, \"docker_image\": \"vllm/vllm-openai:latest\", \"command\": \"vllm serve RecursiveSI/flint-nvfp4-gguf \\\\\\n  --hf-config-path RecursiveSI/flint \\\\\\n  --tokenizer RecursiveSI/flint \\\\\\n  --tensor-parallel-size 1 \\\\\\n  --enable-auto-tool-choice \\\\\\n  --tool-call-parser glm47 \\\\\\n  --exclude-tools-when-tool-choice-none \\\\\\n  --reasoning-parser glm47\", \"argv\": [\"vllm\", \"serve\", \"RecursiveSI/flint-nvfp4-gguf\", \"--hf-config-path\", \"RecursiveSI/flint\", \"--tokenizer\", \"RecursiveSI/flint\", \"--tensor-parallel-size\", \"1\", \"--enable-auto-tool-choice\", \"--tool-call-parser\", \"glm47\", \"--exclude-tools-when-tool-choice-none\", \"--reasoning-parser\", \"glm47\"], \"docker_command\": \"docker run --gpus all \\\\\\n  --privileged --ipc=host -p 8000:8000 \\\\\\n  -v ~/.cache/huggingface:/root/.cache/huggingface \\\\\\n  vllm/vllm-openai:latest RecursiveSI/flint-nvfp4-gguf \\\\\\n  --hf-config-path RecursiveSI/flint \\\\\\n  --tokenizer RecursiveSI/flint \\\\\\n  --tensor-parallel-size 1 \\\\\\n  --enable-auto-tool-choice \\\\\\n  --tool-call-parser glm47 \\\\\\n  --exclude-tools-when-tool-choice-none \\\\\\n  --reasoning-parser glm47\", \"docker_argv\": [\"docker\", \"run\", \"--gpus\", \"all\", \"--privileged\", \"--ipc=host\", \"-p\", \"8000:8000\", \"-v\", \"~/.cache/huggingface:/root/.cache/huggingface\", \"vllm/vllm-openai:latest\", \"RecursiveSI/flint-nvfp4-gguf\", \"--hf-config-path\", \"RecursiveSI/flint\", \"--tokenizer\", \"RecursiveSI/flint\", \"--tensor-parallel-size\", \"1\", \"--enable-auto-tool-choice\", \"--tool-call-parser\", \"glm47\", \"--exclude-tools-when-tool-choice-none\", \"--reasoning-parser\", \"glm47\"], \"selection\": {\"hardware\": \"b200\", \"variant\": \"nvfp4\", \"strategy\": \"single_node_tp\", \"nodes\": 1, \"features\": [\"tool_calling\", \"reasoning\"], \"modes\": {}, \"advanced\": [], \"frontend\": \"python\", \"kv_offload\": null, \"pd\": null, \"preset\": null, \"point\": null, \"adjusted\": []}, \"page_url\": \"https://recipes.vllm.ai/RecursiveSI/flint?hardware=b200&variant=nvfp4&strategy=single_node_tp\", \"markdown_url\": \"https://recipes.vllm.ai/RecursiveSI/flint.md?hardware=b200&variant=nvfp4&strategy=single_node_tp\"}"}
+ }
+
+ assert {
+  condition=output.assessment.suggestions[0].tensor_parallel_size==1 && length(output.assessment.suggestions[0].deployment_requirements)==1 && contains(output.assessment.suggestions[0].serving_configuration.recipe.args,"--hf-config-path") && output.assessment.suggestions[0].serving_configuration.model.repository=="RecursiveSI/flint-nvfp4-gguf"
+  error_message="The NVFP4 option must retain its own model/config flags and explicit staging requirement, without claiming a ready validated launch."
+ }
+}

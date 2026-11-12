@@ -41,15 +41,15 @@ Validation is scoped to exact model revision, image, GPU/topology, workload, fea
 ### Phase 1: complete recipe evidence
 
 - [x] Inspect live API, H100 renderings and A10 substitution behavior.
-- [ ] Deduplicate bounded API requests by recipe/variant/hardware/strategy, independent of regional AD count; preserve API failures and schema changes.
+- [x] Deduplicate bounded API requests by recipe/variant/hardware/strategy, independent of regional AD count; preserve API failures and schema changes.
 - [x] Retain argv/env, default features, recipe image/dependencies, related variants and source identities; test adjusted selections.
 
 ### Phase 2: suggestion generation
 
 - [x] Separate estimator support, serving mode, configuration origin and validation status.
-- [ ] Generate exact/adapted/heuristic suggestions with explicit unresolved fields and no false per-rank guarantee.
+- [x] Generate exact/adapted/heuristic suggestions with explicit unresolved fields and no false per-rank guarantee.
 - [ ] Extend hybrid/recurrent memory estimates incrementally, independently of recipe configuration extraction.
-- [ ] Cover Qwen H100/A10, Flint BF16/NVFP4, GGUF config fallback, kernel constraints and OCI host topology.
+- [x] Cover Qwen H100/A10, Flint BF16/NVFP4, GGUF config fallback, kernel constraints and OCI host topology.
 
 ### Phase 3: deployment handoff
 
@@ -58,8 +58,9 @@ Validation is scoped to exact model revision, image, GPU/topology, workload, fea
 
 ### Phase 4: verification
 
-- [ ] Test extraction, adjustment detection, identity, image/dependency selection, memory caveats and generated Kubernetes launches.
-- [ ] Run Qwen/Flint RMS discovery and verify useful suggested configurations alongside raw hardware observations.
+- [x] Test extraction, adjustment detection, identity, image/dependency selection, memory caveats and generated Kubernetes launches.
+- [x] Run Qwen RMS discovery and verify useful suggestions, cache plans and actual JSON-to-deployment handoff.
+- [ ] Run Flint RMS discovery with this new suggestion path; BF16/NVFP4 API-based fixtures and config-fallback checks pass locally.
 - [ ] Run actual GPU validation/benchmark when allocation is authorized; retain not-run status until then.
 
 ## Current use and boundaries
@@ -71,3 +72,9 @@ Single-node TP1/2/4/8 suggestions use the greatest of a recipe's decimal-GB memo
 Optional CPU-offload/LMCache renderings are kept under `assessment.recipe_options.cache_options`, including dependencies and companion commands. They are not enabled by default: Kubernetes cache services, transport and host-memory sizing still require integration. Recipe dependency install commands are never executed automatically; the image and actual inference must be validated in the pipeline. Related variants are metadata alternatives; selecting another checkpoint requires a new discovery run rather than silently switching model identity.
 
 The profile can follow explicit GGUF config/tokenizer references and pins their revisions independently. Automatic staging of these separate repositories is not implemented. Deployment identifies this requirement and requires staged paths with expert argv, instead of using the weights SHA against another repository. Suggested multi-node/PP adaptation and full multimodal validation are not implemented; existing multi-node candidates and expert settings remain available.
+
+## Verification evidence
+
+The final Qwen/Qwen3.8-27B RMS Plan succeeded across all 16 READY subscribed regions. It returned 22 suggestions and four optional cache renderings. The single handoff is retained privately at `work/deployment-inputs.tfvars.json`, with the source plan at `work/recipe-api-final-rms-plan.json`. Passing that actual JSON into a deployment Terraform test with cloud resources mocked inherited model, image, TP4/node count and parser settings successfully. No GPUs or DevOps resources were allocated by these checks; no inference or benchmark was run.
+
+Local checks cover 24 planner tests, 10 profile tests, 14 deployment-root tests, seven discovery-root tests, an additional actual-JSON handoff test and 24 script/render checks. Optional LMCache plans retain installation/companion commands but require explicit Kubernetes integration. A local live lookup encountered the host's Docker Hub TLS trust issue; TLS verification was not bypassed, and the RMS image lookup succeeded.
