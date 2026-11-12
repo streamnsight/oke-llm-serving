@@ -1,85 +1,73 @@
 # Copyright (c) 2020-2022 Oracle and/or its affiliates. All rights reserved.
 # Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
-mock_provider "oci" {}
+mock_provider "external" {}
 mock_provider "http" {}
-mock_provider "oci" {
-  alias = "us_chicago_1"
-}
 variables {
   tenancy_ocid = "test-root"
-  region       = "us-chicago-1"
-  model        = "org/model"
+  region = "us-chicago-1"
+  model = "org/model"
+}
+override_data {
+  target = data.external.oci_discovery
+  values = {result={result="{\"subscribed_regions\": [\"us-chicago-1\", \"new-future-region-1\"], \"assessed_regions\": [\"us-chicago-1\", \"new-future-region-1\"], \"regions\": []}"}}
 }
 override_module {
-  target  = module.model_profile
-  outputs = { profile = { memory = { status = "unsupported" } } }
+  target = module.model_profile
+  outputs = {profile={memory={status="unsupported"}}}
 }
-
-run "unmapped_subscription_fails" {
-  command = plan
-  override_data {
-    target = data.oci_identity_region_subscriptions.subscribed
-    values = { region_subscriptions = [{ region_name = "new-region-1", state = "READY" }] }
-  }
-  expect_failures = [output.discovery]
-}
-
-run "select_ready_subscriptions" {
-  command = plan
-  override_data {
-    target = data.oci_identity_region_subscriptions.subscribed
-    values = { region_subscriptions = [{ region_name = "us-chicago-1", state = "READY" }, { region_name = "us-ashburn-1", state = "IN_PROGRESS" }] }
-  }
-  override_module {
-    target = module.us_chicago_1[0]
-    outputs = {
-      result    = { region = "us-chicago-1", availability_domains = [] }
-      inventory = { region = "us-chicago-1", limits = [] }
-    }
-  }
-  assert {
-    condition     = output.discovery.assessed_regions == tolist(["us-chicago-1"]) && length(output.discovery.regions) == 1 && length(var.regions) == 0 && length(var.shape_names) == 0
-    error_message = "Only READY subscriptions should activate regional modules."
-  }
-}
-
 override_module {
-  target  = module.planner
-  outputs = { assessment = { candidates = [], status = "requires_validation" } }
+  target = module.planner
+  outputs = {assessment={candidates=[],status="requires_validation"}}
 }
-run "recipe_choice_resolves_model_revision_at_discovery" {
+run "all_ready_subscriptions_include_new_regions" {
   command = plan
-  variables { model_choice = "RecursiveSI/flint" }
-  override_data {
-    target = data.oci_identity_region_subscriptions.subscribed
-    values = { region_subscriptions = [{ region_name = "us-chicago-1", state = "READY" }] }
-  }
-  override_module {
-    target  = module.us_chicago_1[0]
-    outputs = { result = { region = "us-chicago-1", availability_domains = [] }, inventory = { region = "us-chicago-1", limits = [] } }
-  }
   assert {
-    condition     = local.effective_model == "RecursiveSI/flint" && local.effective_revision == "main"
-    error_message = "A recipe commit must never be used as the Hugging Face model revision."
+    condition = length(var.regions)==0 && length(var.shape_names)==0 && contains(output.discovery.assessed_regions,"new-future-region-1")
+    error_message = "Empty scope must accept SDK-discovered regions without provider aliases."
   }
 }
-
-run "null_scope_inputs_use_empty_defaults" {
+run "explicit_scope_is_forwarded_to_sdk" {
   command = plan
   variables {
-    regions     = null
-    shape_names = null
-  }
-  override_data {
-    target = data.oci_identity_region_subscriptions.subscribed
-    values = { region_subscriptions = [{ region_name = "us-chicago-1", state = "READY" }] }
-  }
-  override_module {
-    target  = module.us_chicago_1[0]
-    outputs = { result = { region = "us-chicago-1", availability_domains = [] }, inventory = { region = "us-chicago-1", limits = [] } }
+    regions = ["new-future-region-1"]
+    shape_names = ["BM.GPU.H100.8"]
   }
   assert {
-    condition     = length(var.regions) == 0 && length(var.shape_names) == 0 && output.discovery.assessed_regions == tolist(["us-chicago-1"])
-    error_message = "Null optional scope inputs must retain default all-region/all-GPU discovery."
+    condition = data.external.oci_discovery.query.regions==jsonencode(["new-future-region-1"]) && data.external.oci_discovery.query.shape_names==jsonencode(["BM.GPU.H100.8"])
+    error_message = "Explicit region/shape subsets must reach the dynamic SDK lookup."
+  }
+}
+run "legacy_recipe_choice_resolves_model_revision" {
+  command = plan
+  variables {
+    model_choice = "RecursiveSI/flint"
+    model = null
+  }
+  assert {
+    condition = local.effective_model=="RecursiveSI/flint" && local.effective_revision=="main"
+    error_message = "A legacy recipe choice remains supported without using recipe commits as model commits."
+  }
+}
+run "explicit_model_takes_priority_over_saved_choice" {
+  command = plan
+  variables {
+    model_choice = "RecursiveSI/flint"
+    model = "org/another-model"
+    revision = "requested-revision"
+  }
+  assert {
+    condition = local.effective_model=="org/another-model" && local.effective_revision=="requested-revision"
+    error_message = "The visible URL input must not be ignored because an old RMS stack saved a catalog choice."
+  }
+}
+run "null_scopes_use_empty_defaults" {
+  command = plan
+  variables {
+    regions = null
+    shape_names = null
+  }
+  assert {
+    condition = data.external.oci_discovery.query.regions=="[]" && data.external.oci_discovery.query.shape_names=="[]"
+    error_message = "Null filters must become empty arrays rather than malformed external inputs."
   }
 }

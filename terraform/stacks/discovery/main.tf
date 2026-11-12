@@ -3,9 +3,9 @@
 terraform {
   required_version = ">= 1.5.0"
   required_providers {
-    oci = {
-      source  = "oracle/oci"
-      version = "~> 9.12"
+    external = {
+      source  = "hashicorp/external"
+      version = "~> 2.3"
     }
     http = {
       source  = "hashicorp/http"
@@ -14,23 +14,32 @@ terraform {
   }
 }
 
-# RMS supplies authentication. Local runs use the DEFAULT profile.
-provider "oci" {
-  region = var.region
-}
-
-data "oci_identity_region_subscriptions" "subscribed" {
-  tenancy_id = var.tenancy_ocid
+# The Go SDK lookup uses resource-principal credentials in RMS, DEFAULT locally.
+data "external" "oci_discovery" {
+  program = ["bash", "${path.module}/../../../scripts/run-discovery-sdk.sh"]
+  query = {
+    tenancy_ocid                = var.tenancy_ocid
+    compartment_id              = coalesce(var.compartment_id, var.tenancy_ocid)
+    region                      = var.region
+    regions                     = jsonencode(sort(tolist(var.regions)))
+    shape_names                 = jsonencode(sort(tolist(var.shape_names)))
+    query_resource_availability = tostring(var.query_resource_availability)
+    only_shapes_with_limits     = tostring(var.only_shapes_with_limits)
+    observation_id              = var.observation_id
+    gpu_catalog                 = file("${path.module}/../../../catalogs/gpus.json")
+  }
 }
 
 locals {
   model_catalog      = jsondecode(file("${path.module}/../../../catalogs/models.json"))
   catalog_choice     = try([for model in local.model_catalog.models : model if model.id == var.model_choice][0], null)
-  effective_model    = var.model_choice == "custom" ? (var.model == null ? "" : var.model) : try(local.catalog_choice.id, "")
-  effective_revision = var.model_choice == "custom" ? var.revision : coalesce(try(local.catalog_choice.sha, null), var.revision)
-  subscribed_regions = toset([for sub in data.oci_identity_region_subscriptions.subscribed.region_subscriptions : sub.region_name if sub.state == "READY"])
-  requested_regions  = length(var.regions) == 0 ? local.subscribed_regions : var.regions
-  selected_regions   = setintersection(local.requested_regions, local.subscribed_regions)
+  explicit_model     = try(length(trimspace(var.model)) > 0, false)
+  effective_model    = local.explicit_model ? trimspace(var.model) : try(local.catalog_choice.id, "")
+  effective_revision = local.explicit_model ? var.revision : coalesce(try(local.catalog_choice.sha, null), var.revision)
+  oci_discovery      = jsondecode(data.external.oci_discovery.result.result)
+  subscribed_regions = toset(local.oci_discovery.subscribed_regions)
+  selected_regions   = toset(local.oci_discovery.assessed_regions)
+  regional_results   = local.oci_discovery.regions
 }
 
 module "model_profile" {
@@ -55,18 +64,7 @@ output "discovery" {
     regions            = local.regional_results
     next_step          = "Select region, AD, OKE cluster, shape and node quantity after per-rank VRAM/topology assessment; pass pinned model revision and serving settings to the deployment stack."
   }
-  precondition {
-    condition     = length(setsubtract(local.requested_regions, local.subscribed_regions)) == 0
-    error_message = "Requested regions must be READY subscriptions."
-  }
-  precondition {
-    condition     = length(setsubtract(local.selected_regions, local.supported_regions)) == 0
-    error_message = "A selected subscribed region has no checked-in provider alias. Update regions.tf before claiming complete coverage."
-  }
-  precondition {
-    condition     = length(local.selected_regions) > 0
-    error_message = "No READY subscribed regions selected."
-  }
+
 }
 
 module "planner" {

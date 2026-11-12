@@ -14,17 +14,24 @@ staging=$(mktemp -d)
 trap 'rm -rf "$staging"' EXIT
 git -C "$repo" archive HEAD | tar -x -C "$staging"
 if [[ ${2:-} == --refresh-catalog ]]; then bash "$repo/scripts/refresh-model-catalog.sh" "$staging"; fi
-bash "$staging/scripts/generate-model-schema.sh" "$staging/catalogs/models.json" "$staging/terraform/stacks/discovery/schema.yaml"
+bash "$staging/scripts/validate-model-catalog.sh" "$staging/catalogs/models.json"
 if [[ "$package_stack" != all ]]; then
   for stack in discovery deployment; do
     [[ "$stack" == "$package_stack" ]] || rm -rf "$staging/terraform/stacks/$stack"
   done
 fi
 jq -n --arg selected "$package_stack" --arg commit "$(git -C "$repo" rev-parse HEAD)" --arg catalog "$(shasum -a 256 "$staging/catalogs/models.json" | cut -d ' ' -f 1)" '{source_commit:$commit,model_catalog_sha256:$catalog,working_directories:(if $selected=="all" then ["terraform/stacks/discovery","terraform/stacks/deployment"] else ["terraform/stacks/"+$selected] end)}' > "$staging/package-manifest.json"
+if [[ "$package_stack" != deployment ]]; then
+  GOPATH="${GOPATH:-$repo/work/go}" GOCACHE="${GOCACHE:-$repo/work/go-build-cache}" bash "$staging/scripts/build-discovery-sdk.sh" linux amd64
+  jq --arg binary "$(cat "$staging/bin/linux_amd64/oci-discovery.sha256")" '. + {discovery_binary_sha256:$binary,discovery_binary_platform:"linux_amd64"}' "$staging/package-manifest.json" > "$staging/manifest.tmp"
+  mv "$staging/manifest.tmp" "$staging/package-manifest.json"
+fi
 # Tracked repository source only; private state/work files never enter the archive.
 rm -rf "$staging/work" "$staging/devops/tests"
 find "$staging/terraform" -type d -name tests -prune -exec rm -rf {} +
-(cd "$staging" && zip -qr "$staging/stack.zip" terraform catalogs devops scripts outputs docs README.md LICENSE.txt SECURITY.md package-manifest.json)
+find "$staging/tools" -name "*_test.go" -delete
+(cd "$staging" && zip -qr "$staging/stack.zip" terraform catalogs devops scripts outputs docs tools README.md LICENSE.txt SECURITY.md package-manifest.json)
+if [[ -d "$staging/bin" ]]; then (cd "$staging" && zip -qr "$staging/stack.zip" bin); fi
 mkdir -p "$(dirname "$output")"
 mv "$staging/stack.zip" "$output"
 echo "$output"

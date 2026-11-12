@@ -13,7 +13,7 @@ Repository consolidation: all built serving/discovery work, research reports, an
 
 Two user-facing Resource Manager stacks: discovery from a public model URL and serving assumptions, followed by allocation/DevOps from an explicitly selected configuration. Existing OKE cluster first; retain scarce GPU allocations and scale serving inside them.
 
-All model/OCI discovery now uses native Terraform providers and HCL. Python, Bash analyzers, external wrappers and the precomputed-profile path have been removed. No Terraform process launches another Terraform process. Older planning notes describing those paths are superseded.
+Model profiling uses native HTTP/HCL. Regional discovery now uses a compiled Go OCI SDK lookup behind hashicorp/external, enumerating READY regions dynamically without regions.tf. There is no runtime Python/CLI dependency or nested Terraform invocation. Deployment allocation and its admission checks retain native OCI resources. The RMS model input is a URL/ID field; the full alphabetical recipe catalog remains as reference metadata.
 
 ## Phase 1 — discovery
 
@@ -53,3 +53,5 @@ The first native metadata estimator supports public conventional-attention model
 See [deployment workflow](../docs/deployment-workflow.md), [RMS workflow](../docs/rms-discovery.md), [model-profile limitations](../docs/model-profile.md) and [deployment plan](oci-oke-model-deployment-plan.md).
 
 Recipe list update: the RMS dropdown is generated from commit-pinned vLLM, vLLM recipes and vLLM-Omni YAML sources, including named variants. It is sorted alphabetically by full model ID, without popularity/publisher/task/estimator filters. Recipe dates are retained; optional age filtering uses recipe addition dates, not model release dates. Runtime support remains assessed separately.
+
+Dynamic SDK validation: local lookup successfully covered all 16 READY subscriptions and created 19 diagnostic capacity reports with no hardware allocation. A real Terraform HTTP-profile → SDK lookup → planner integration for Qwen/Qwen2.5-0.5B-Instruct produced 14 estimated candidates and one capacity/headroom shape in the selected Melbourne A10 test. These are discovery results, not serving-runtime validation. The RMS repair Plan using the prior native configuration returned INTERNAL_SERVICE_ERROR without Terraform logs; SDK-based RMS validation remains pending.

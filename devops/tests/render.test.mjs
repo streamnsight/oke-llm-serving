@@ -39,11 +39,15 @@ test('distributed groups have correct ranks, anti-affinity, RDMA requests and pi
   assert.match(benchmark.image,/^vllm\/vllm-openai-cpu@sha256:/);
   assert.deepEqual(benchmark.command,['bash','/benchmark/benchmark.sh']);
 });
-test('RMS catalog and generated dropdown agree, preserving the custom path',()=>{
+test('RMS uses a direct model input while the recipe catalog remains alphabetic',()=>{
   const schema=parse(readFileSync(`${root}/terraform/stacks/discovery/schema.yaml`,'utf8'));
   const catalog=JSON.parse(readFileSync(`${root}/catalogs/models.json`));
-  assert.deepEqual(schema.variables.model_choice.enum,['custom',...catalog.models.map(m=>m.id)]);
-  assert.deepEqual(schema.variables.model.visible.eq,['${model_choice}','custom']);
+  assert.equal(schema.variables.model.type,'string');
+  assert.equal(schema.variables.model.required,true);
+  assert.equal(schema.variables.model.visible,undefined);
+  assert.equal(schema.variables.model_choice.visible,false);
+  assert.equal(schema.variables.model_choice.enum,undefined);
+  assert.deepEqual(catalog.models.map(m=>m.id),catalog.models.map(m=>m.id).sort((a,b)=>a.toLowerCase()<b.toLowerCase()?-1:a.toLowerCase()>b.toLowerCase()?1:a<b?-1:a>b?1:0));
   assert.equal(new Set(catalog.models.map(m=>m.id)).size,catalog.models.length);
 });
 test('released production-stack chart produces valid single-node pod structure',{skip:!process.env.HELM_CHART_FILE},()=>{

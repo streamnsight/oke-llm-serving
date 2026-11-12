@@ -78,12 +78,10 @@ export async function refresh(root) {
   if(!catalog.models.length)throw new Error('No catalog models; existing files retained');
   const temporary=await mkdtemp(join(tmpdir(),'oke-recipe-catalog-'));
   try {
-    const catalogPath=join(temporary,'models.json'), schemaPath=join(temporary,'schema.yaml');
+    const catalogPath=join(temporary,'models.json');
     await writeFile(catalogPath,JSON.stringify(catalog,null,2)+'\n');
-    await copyFile(join(root,'terraform/stacks/discovery/schema.yaml'),schemaPath);
-    execFileSync('bash',[join(root,'scripts/generate-model-schema.sh'),catalogPath,schemaPath],{stdio:'inherit'});
+    execFileSync('bash',[join(root,'scripts/validate-model-catalog.sh'),catalogPath],{stdio:'inherit'});
     await copyFile(catalogPath,join(root,'catalogs/models.json'));
-    await copyFile(schemaPath,join(root,'terraform/stacks/discovery/schema.yaml'));
   } finally {await rm(temporary,{recursive:true,force:true});}
   process.stderr.write(`Updated ${catalog.models.length} alphabetically ordered models across all recipe tasks.\n`);
 }

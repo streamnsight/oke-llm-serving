@@ -15,3 +15,5 @@ outputs/capacity-scans/
 .DS_Store
 
 node_modules/
+
+/bin/

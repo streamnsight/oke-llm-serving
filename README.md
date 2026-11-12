@@ -12,6 +12,7 @@ Deploy open-weight models onto GPUs in an existing OKE cluster through a model-f
 The first stack is implemented at [terraform/stacks/discovery](terraform/stacks/discovery). Supply a public Hugging Face model URL, context length and concurrency. It returns a model profile, GPU shapes, limit/headroom observations and AD-scoped host capacity across READY subscribed regions.
 
 ```sh
+make build-discovery-sdk
 terraform -chdir=terraform/stacks/discovery init
 terraform -chdir=terraform/stacks/discovery plan -var-file=/path/to/request.tfvars.json -out=/path/to/discovery.tfplan
 terraform -chdir=terraform/stacks/discovery apply /path/to/discovery.tfplan
@@ -22,7 +23,7 @@ For RMS packages, run `make package` from the repository root. This writes separ
 
 For RMS, use this repository as the configuration source and set the working directory to `terraform/stacks/discovery`. Its `schema.yaml` describes the user inputs. See [RMS setup, scope and limitations](docs/rms-discovery.md).
 
-Everything in the discovery path uses Terraform providers and HCL. Hugging Face JSON comes through `hashicorp/http`; OCI observations use `oracle/oci`. There are no Python/Bash analyzers, external-program wrappers or nested Terraform invocations. The model-only example remains at `terraform/examples/model-profile`.
+Hugging Face profiling uses `hashicorp/http` and HCL. OCI regional discovery uses a compiled Go SDK lookup through `hashicorp/external`, dynamically scanning subscribed regions without provider aliases. RMS packages include the Linux executable; local runs build their platform executable first. There is no runtime Python/OCI CLI dependency and no nested Terraform invocation. Deployment admission/allocation remains native `oracle/oci`.
 
 Discovery creates reports, not GPU allocations. Counts represent available instances at the observation time and do not reserve them. Hub-published model counts are declared metadata, not independent tensor inspection. Discovery now includes conservative per-rank GPU layouts and engine compatibility assessment. Actual RMS execution still needs validation; local provider execution is tested.
 

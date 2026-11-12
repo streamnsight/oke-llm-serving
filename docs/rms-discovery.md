@@ -2,71 +2,37 @@
 Copyright (c) 2020-2022 Oracle and/or its affiliates. All rights reserved.
 Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
 -->
+# Resource Manager discovery
 
-# Resource Manager workflow
+Use two separate stacks: `terraform/stacks/discovery` for assessment and `terraform/stacks/deployment` for a selected allocation. Discovery allocates no GPU/CPU nodes. No Terraform process launches another Terraform process.
 
-The user-facing workflow has two stacks. Both stacks are implemented: `terraform/stacks/discovery` and `terraform/stacks/deployment`. Live RMS/GPU/DevOps end-to-end validation remains pending. An RMS job never invokes another Terraform process.
+## Package and inputs
 
-## 1. Discovery
+Run `make package`. Upload `work/packages/oke-llm-discovery.zip` and select working directory `terraform/stacks/discovery`. The deployment ZIP uses `terraform/stacks/deployment`.
 
-Run `make package` at the repository root. Upload `work/packages/oke-llm-discovery.zip` and set its RMS working directory to **terraform/stacks/discovery**. The ZIP preserves the relative module/catalog paths. For deployment, upload `work/packages/oke-llm-deployment.zip` and select **terraform/stacks/deployment**. `make package-discovery` and `make package-deployment` build just one package. Packages use committed HEAD; commit intended source changes before building. `DIST_DIR=/path` overrides the destination and `REFRESH_CATALOG=true` requests a packaging-time catalog refresh. Use a current RMS Terraform version compatible with the configuration (`>= 1.5`); local tests use Terraform 1.9.8. `schema.yaml` supplies the RMS input form; its Console rendering has not yet been tested.
+Discovery takes a public Hugging Face URL or `owner/model`, revision, context length and concurrency. The form deliberately uses a text field: RMS does not provide a general dependent namespace/model selector for arbitrary static catalogs. The full alphabetical recipe catalog remains in `catalogs/models.json` as evidence/reference; it is not a 517-choice form control. `model_choice` is hidden legacy compatibility input, and an explicit `model` always takes priority.
 
-Model choices include every upstream recipe model/variant, alphabetically by full ID, across all tasks. Model revisions are pinned at discovery; recipe source commits are catalog provenance. Some listed tasks require serving support beyond the current deployment recipe.
+The bootstrap region selector defaults to `${session.region}`. It is only the initial connection region, not a restriction on the scan. `regions` and `shape_names` are optional list controls with hidden typed items and the serialized default `"[]"`. Empty or null scope inputs mean all READY subscriptions/all visible GPU shapes. Region-scope items use a region selector; shape-scope items accept exact names such as `BM.GPU.H100.8`.
 
-User inputs:
+RMS Terraform receives collection overrides as expressions. An empty string (`""`) is not an empty collection. A confirmed failed job had `regions=""` and `shape_names=""`, causing `Missing expression` before defaults could apply; bootstrap `region` was already set. Remove old blank overrides or replace each with the literal string `"[]"` in the RMS variable map. Replacing a ZIP alone may preserve these old overrides.
 
-- Public Hugging Face model URL, model revision, context tokens and concurrency.
-- Optional KV dtype, runtime allowance and memory margin.
-- Capacity observation identifier; change it to request new reports.
-- Optional intended deployment compartment for quota headroom. Root headroom does not establish entitlement in a child compartment.
+## Dynamic SDK lookup
 
-RMS supplies `tenancy_ocid` and the stack's `region`. That region is a bootstrap for subscription lookup, not the user's final GPU deployment region. Local execution uses the DEFAULT profile.
+Hugging Face model profiling remains HTTP-provider/HCL based. Regional OCI discovery uses `hashicorp/external` with a compiled Go OCI SDK executable. The lookup enumerates READY subscriptions, instantiates regional clients dynamically, lists paginated shapes/limits, queries supported compartment headroom and requests AD capacity reports. `regions.tf` and its fixed provider aliases are removed. Native regional modules remain available for examples and deployment-time allocation admission.
 
-One plan reads the model through native HTTP data sources, enumerates READY subscriptions, lists GPU shapes in their ADs, and reads compute limits and supported resource-headroom APIs. Apply creates **capacity report resources and Terraform bookkeeping only**. It allocates no instances, node pools, clusters or DevOps resources. Host capacity values are available after apply, not just plan.
+The Go lookup uses RMS resource-principal credentials when present and local DEFAULT credentials otherwise. There is no runtime Python, OCI CLI, Go compiler, custom-provider registry or custom-provider bucket dependency. Package builds require Go 1.26+ (or Go's automatic toolchain download); the SDK/module dependencies are pinned in `tools/oci-discovery/go.mod` and `go.sum`. The ZIP includes a static Linux AMD64 executable and SHA256 sidecar; the launcher verifies that checksum. Local development runs `make build-discovery-sdk` before Terraform. `make test-discovery-sdk` exercises query/contract/error/pagination logic.
 
-```sh
-terraform -chdir=terraform/stacks/discovery init
-terraform -chdir=terraform/stacks/discovery plan -var-file=/path/to/request.tfvars.json -out=/path/to/discovery.tfplan
-terraform -chdir=terraform/stacks/discovery apply /path/to/discovery.tfplan
-terraform -chdir=terraform/stacks/discovery output -json discovery
-```
+Four regional scans run concurrently. API failures fail the snapshot rather than becoming capacity zero. The headroom budget remains 1000 queries per region, with shape-relevant quota names first; omitted/unsupported/disabled headroom remains unknown. Capacity uses the tenancy root and shape listings separately from target-compartment entitlement. Only known AD-matched zero limits suppress capacity calls when `only_shapes_with_limits` is enabled; unmapped quotas remain included.
 
-Example request (substitute your root OCID):
+Capacity diagnostic reports are now requested when the data source is read, including during Plan/refresh. `observation_id` labels the result rather than controlling resource recreation. No instances are allocated or reserved. Counts represent instances, not GPUs, and candidate alternatives may share the same supply. An SDK/API snapshot does not establish runtime compatibility or RDMA placement.
 
-```json
-{
-  "tenancy_ocid": "YOUR_TENANCY_OCID",
-  "region": "us-chicago-1",
-  "model": "https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct",
-  "context_length": 4096,
-  "concurrency": 4,
-  "observation_id": "assessment-001"
-}
-```
+### Existing native discovery state
 
-`discovery` includes the model profile, all READY subscriptions, selected regions, per-region inventory and AD capacity reports. Consumers must check model estimate status, inventory status, unmatched quota names, capacity status and timestamps. A region with no visible GPU shapes is **not** treated as proof of physical capacity zero.
+A stack that previously applied the alias-based discovery may retain report/bookkeeping state referring to old provider aliases. Back up that state before migration. Use a new discovery stack/state, or deliberately remove only the legacy diagnostic-report/module entries after inspection; do not apply a plan blindly or discard deployment allocation state. This project does not automatically rewrite existing state. A failed job that never created resources does not require that cleanup.
 
-`regions` and `shape_names` are optional. Omit them or supply `[]` to scan all READY subscriptions and visible GPU shapes; explicit `null` also uses the empty defaults. In the RMS form they use optional `list` controls with hidden `valueType` item definitions and the serialized empty default `"[]"`. The bootstrap `region` has an explicit visible region selector defaulting to `${session.region}`. Variable groups reference plain field names, not interpolated values. Empty-string values are not valid collection values: if a saved stack has blank entries, remove those overrides or set each to the literal JSON array `[]`. The input is `shape_names`, not `shapes`. After updating the ZIP, update the existing RMS stack configuration as well; changing local source does not update an already uploaded stack. An error naming a required variable despite these defaults needs the exact job log/configuration checked.
+## Obtain JSON
 
-Native Terraform errors fail the job. There is no shell workaround that catches API errors and returns an apparently complete assessment. For troubleshooting, `regions` and `shape_names` accept explicit subsets and `query_resource_availability` can disable headroom calls; outputs record which regions were selected. RMS access needs tenancy subscription/AD visibility, relevant shape/limit/headroom permissions and capacity-report creation permission in root. Authentication/network failure is not a capacity observation.
-
-### Regional provider constraint
-
-Classic Terraform configurations cannot create provider aliases dynamically from a data-source result or select a provider through an expression. `regions.tf` therefore contains checked-in OCI regional aliases and module calls, with subscription-driven counts. The catalog covers public OC1 regions in the reviewed Oracle catalog/SDK, including the subscribed Chennai/Delhi endpoints. New/dedicated/other-realm regions require explicit catalog additions. A selected subscription absent from the catalog **fails** discovery instead of being silently skipped.
-
-The static catalog is authored before execution. No generator runs in RMS, and no external data source launches Terraform. HashiCorp Terraform Stacks' dynamic-provider feature is a different product and is not assumed here.
-
-### Freshness and interpretation
-
-Reusing `observation_id` preserves existing report resources. Changing it replaces reports to obtain a fresh observation. Report counts are instances, not GPUs. FD alternatives must not be summed, and different shapes may draw from overlapping host capacity. Reported capacity is a snapshot, not a reservation, launch guarantee or proof of RDMA placement feasibility. Node capacity must be acquired/retained in the later allocation step.
-
-The initial model path trusts Hub-published dtype counts and supports public models only. Host shape memory is not GPU VRAM. This stack generates analytical model-to-shape candidates using the GPU and engine catalogs. Candidates require runtime validation. `assessment.blocking_reasons` explains model/engine prerequisites; `evaluated_layout_count` distinguishes no eligible engines from rejected GPU layouts. Physical capacity and positive quota/headroom observations do not depend on model compatibility.
-
-## Obtain the discovery JSON after an RMS apply
-
-Open the completed **Apply job → Outputs**. The configuration exposes structured `discovery` and `assessment` outputs. The console presentation is not a guaranteed copy of `terraform output -json`; use the state download for an exact machine-readable handoff. A Plan-only job does not publish these completed apply outputs.
-
-Download the apply job's Terraform state from the console, or use OCI CLI (specify the region where the RMS job runs):
+After a completed Apply job, open **Job → Outputs** for `discovery` and `assessment`. For an exact machine-readable handoff, download the Terraform state:
 
 ```sh
 mkdir -p work
@@ -77,28 +43,14 @@ jq -e '.outputs.discovery.value | select(type == "object")' \
   work/rms-discovery-state.json > work/discovery.json
 ```
 
-This produces the same object shape as local `terraform output -json discovery`, suitable for `scripts/select-deployment.sh`. For inspecting job outputs through the API instead, use `oci resource-manager job-output-summary list-job-outputs --job-id YOUR_APPLY_JOB_OCID --region YOUR_RMS_REGION --all`; its response is an OCI output-summary envelope rather than the discovery object itself. A new Terraform output added in source appears only after rerunning the stack; existing saved JSON is unchanged.
+For a successful Plan, the SDK data is already read. Download its JSON plan with `oci resource-manager job get-job-tf-plan --job-id YOUR_PLAN_JOB_OCID --region YOUR_RMS_REGION --tf-plan-format JSON --file work/discovery-plan.json`, then inspect `.planned_values.outputs.discovery.value` if fully known. Plan jobs do not publish the usual completed-Apply Outputs view.
 
-## Why capacity can be positive with no candidates
+`assessment.blocking_reasons` and `evaluated_layout_count` distinguish unsupported models/engines from rejected layouts. `capacity.reported_sufficient` only compares physical instance counts with the report's requested quantity. Candidates additionally require estimator/engine coverage, compatible hardware and TP/PP partitioning, per-rank memory fit, enough hosts and no known blocked entitlement.
 
-`capacity.reported_sufficient` compares reported physical **instances** with the capacity report's requested instance quantity. Candidate selection additionally requires a reviewed engine architecture/version, a supported memory estimator and chat template, known GPU capability/VRAM, feasible TP/PP partitions, enough hosts for PP × replicas, and no known zero entitlement. Unknown quota units still need quantity validation during deployment.
+Flint is supported upstream by vLLM v0.33.0, while this stack's engine/estimator coverage is still limited. A recipe/catalog entry is not a promise this deployment implementation can serve it. Live recipe/flag resolution and multimodal/audio serving validation remain separate work.
 
-For example, `RecursiveSI/flint` declares `FlintForCausalLM`. The current reviewed engine catalog and dedicated estimator coverage do not include it. The profile therefore reports `memory.status = "unsupported"`, and no engine/layout is eligible even when a region has positive capacity and headroom. This is a limitation of this stack's reviewed coverage, not a claim that upstream vLLM cannot serve Flint. Adding only its name to an allowlist would not establish safe memory or runtime support. The current standard vLLM v0.32.0 release was published October 18, before Flint's upstream merge on October 22. The October 21 announcement used `vllm/vllm-openai:flint`; the v0.33.0rc3 source registry includes Flint. Its official structured recipe additionally specifies GLM-4.7 parsers, a Python rather than Rust frontend, BF16 versus NVFP4 variants, and single-node TP=1 strategy coverage. Those requirements are not represented by our generic recipe. The engine catalog currently contains one limited baseline recipe; it is not a complete list of vLLM-supported models or images.
+## Deploy a selected configuration
 
-Sources: [Flint announcement](https://vllm.ai/blog/2026-10-21-flint), [upstream merge](https://github.com/vllm-project/vllm/pull/62938), [v0.33.0rc3 model registry](https://github.com/vllm-project/vllm/blob/v0.33.0rc3/vllm/model_executor/models/registry.py), [structured Flint recipe](https://github.com/vllm-project/vllm/blob/v0.33.0rc3/recipes/models/RecursiveSI/flint.yaml).
+Fill `terraform/stacks/deployment/target.example.json` with an existing cluster and compatible regional images/subnets. Use `scripts/select-deployment.sh` with a candidate ID to export deployment variables. The second stack uses native OCI Terraform to create retained GPU/CPU infrastructure and DevOps resources. Apply the emitted Kubernetes RBAC manifest, then run the deploy pipeline; validation follows automatically and benchmarking runs separately. See [the complete workflow](deployment-workflow.md).
 
-## 2. Allocation and DevOps
-
-The user selects region, AD, existing OKE cluster, GPU shape and **node quantity** using discovery evidence and the layout assessment. Keep node count, GPUs per node and total GPUs distinct. Pass the pinned model SHA and context/concurrency assumptions as well.
-
-The deployment stack validates cluster/shape/topology compatibility, creates the retained node pool or RDMA compute-cluster-backed pool where supported, and creates the DevOps resources. DevOps then deploys cluster components/CRDs, serving frameworks and API components and validates inference. It must not auto-deploy merely because discovery found capacity.
-
-The stack-to-stack boundary uses explicit selected inputs or a versioned deployment specification. Initially the user transfers the selection; later a coordinator can read completed RMS job outputs. RMS does not automatically wire every output to another stack, and discovery does not provision the deployment stack recursively.
-
-References: [Terraform provider configuration](https://developer.hashicorp.com/terraform/language/providers/configuration), [providers in modules](https://developer.hashicorp.com/terraform/language/modules/develop/providers), [RMS registry sourcing](https://docs.oracle.com/en-us/iaas/Content/ResourceManager/Concepts/providers.htm), [RMS job outputs](https://docs.oracle.com/en-us/iaas/Content/ResourceManager/Tasks/list-job-outputs.htm).
-
-### Confirmed RMS blank-collection failure
-
-Inspection of an actual failed Apply job showed `Missing expression` for `var.regions` and `var.shape_names`. The saved RMS variables were empty strings (`""`), while bootstrap `region` was correctly populated. Terraform parses complex input expressions before applying defaults; `nullable = false` cannot repair an empty string that is not a valid expression. The saved collection values must be removed or set to the string `"[]"` in the RMS variable map. The corrected schema uses typed list controls with the serialized empty default. Existing stack overrides may survive replacing its ZIP and must be corrected separately. Group field names were aligned with Oracle's documented form; this is not evidence that grouping caused the Terraform parsing failure.
-
-OCI's home region can list region subscriptions, but Compute shapes, quota availability and capacity reports use regional endpoints. Standard Terraform OCI resources do not expose a per-resource region override, and provider aliases cannot use runtime `for_each` in ordinary `.tf` configuration. A fully dynamic scan therefore needs another query mechanism, such as a CLI helper or custom provider. Keeping native regional resources requires configurations generated before the job; automating that generation avoids hand-maintaining aliases but does not remove the Terraform limitation.
+References: [Oracle RMS schema/control specification](https://docs.oracle.com/en-us/iaas/Content/ResourceManager/Concepts/terraformconfigresourcemanager_topic-schema.htm), [OCI regional APIs](https://docs.oracle.com/en-us/iaas/Content/API/Concepts/usingapi.htm), [external data-source protocol](https://registry.terraform.io/providers/hashicorp/external/latest/docs/data-sources/external), [RMS job outputs](https://docs.oracle.com/en-us/iaas/Content/ResourceManager/Tasks/list-job-outputs.htm).

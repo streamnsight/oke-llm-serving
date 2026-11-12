@@ -5,11 +5,11 @@ Licensed under the Universal Permissive License v 1.0 as shown at http://oss.ora
 
 # Model discovery to OKE deployment
 
-The source now contains both Terraform stacks. Discovery is native HCL/providers; packaging and DevOps use Bash/curl/jq. No stack invokes another Terraform process. Infrastructure application does not automatically run a deployment pipeline.
+The source now contains both Terraform stacks. Model profiling uses HCL/HTTP; dynamic regional discovery uses a packaged Go SDK executable behind the external data source. Packaging and DevOps use Bash/curl/jq. No stack invokes another Terraform process. Infrastructure application does not automatically run a deployment pipeline.
 
 ## Discover and choose
 
-Run `terraform/stacks/discovery` locally or set that working directory in OCI Resource Manager. Choose a catalog model or `model_choice = "custom"` plus a public Hugging Face URL/ID. Supply context, concurrency, compute/KV dtype and a new observation ID. The catalog pins upstream recipe provenance; model revisions are resolved and pinned during discovery for both listed and custom models.
+Run `terraform/stacks/discovery` locally or set that working directory in OCI Resource Manager. Enter a public Hugging Face URL/ID. Supply context, concurrency, compute/KV dtype and a new observation ID. The catalog pins upstream recipe provenance; model revisions are resolved and pinned during discovery for both listed and custom models.
 
 ```sh
 terraform -chdir=terraform/stacks/discovery output -json discovery > work/discovery.json
@@ -31,7 +31,7 @@ terraform -chdir=terraform/stacks/deployment plan -var-file="$PWD/work/deploymen
 terraform -chdir=terraform/stacks/deployment apply "$PWD/work/deployment.tfplan"
 ```
 
-For RMS, create a second stack with working directory `terraform/stacks/deployment` and use the exported variables. The deployment form describes the handoff fields; discovery cannot dynamically change the form of another stack. Re-run discovery when requirements change. Change `observation_id` before a new allocation attempt to refresh the native capacity report.
+For RMS, create a second stack with working directory `terraform/stacks/deployment` and use the exported variables. The deployment form describes the handoff fields; discovery cannot dynamically change the form of another stack. Re-run discovery when requirements change. Change `observation_id` before a new allocation attempt to refresh the deployment module’s native capacity report; discovery itself now reads fresh SDK reports during Plan.
 
 Allocation rechecks target-compartment entitlement in GPU units, selected quantity, image/shape compatibility, active cluster and hardware capacity. It creates a retained GPU pool and separate CPU pool. Supported RDMA selections also create a Compute Cluster and scoped node-pool launch policy; enhanced OKE is required. Multi-node Ethernet remains possible for other supported shapes, with performance requiring measurement. Capacity reports neither reserve hosts nor guarantee RDMA placement. A failed allocation may still require retrying later or selecting another AD/shape.
 
@@ -82,8 +82,8 @@ Sources: [vLLM benchmark CLI](https://docs.vllm.ai/en/latest/cli/bench/serve/), 
 
 ## Recipe list maintenance
 
-Run `npm ci`, then `make refresh-model-catalog`. Review and commit `catalogs/models.json` and the generated discovery schema before `make package`. The refresh uses Node only as a build-time YAML parser; RMS discovery still uses native Terraform providers/HCL. A failed/truncated source fetch leaves the prior catalog in place.
+Run `npm ci`, then `make refresh-model-catalog`. Review and commit `catalogs/models.json` before `make package`. The refresh uses Node only as a build-time YAML parser; RMS discovery requires only the packaged SDK executable and standard Terraform providers. A failed/truncated source fetch leaves the prior catalog in place.
 
 `catalogs/model-policy.json` controls sources and `max_recipe_age_days`. The default `null` retains every recipe regardless of age. Setting a nonnegative number filters recipes by upstream `meta.date_added`; undated recipes remain included. `date_updated` is recorded separately. Neither date is a model release date: `release_date` remains null rather than substituting Hugging Face repository creation or recipe publication. A model remains listed if any of its recipe references survives filtering. Upstream recipe provenance is preserved per model/variant.
 
-The dropdown now includes multimodal, embedding and vLLM-Omni entries even where the current estimator/deployment recipe cannot serve them. Listing does not authorize a deployment or imply the vLLM-Omni runtime is implemented. Live recipe/flag resolution remains separate work.
+The reference catalog includes multimodal, embedding and vLLM-Omni entries even where the current estimator/deployment recipe cannot serve them. Listing does not authorize a deployment or imply the vLLM-Omni runtime is implemented. Live recipe/flag resolution remains separate work.

@@ -14,7 +14,7 @@ variable "model" {
   default     = null
 }
 variable "model_choice" {
-  description = "Recipe catalog ID or custom. Unpinned model revisions are resolved during discovery."
+  description = "Legacy catalog selection for existing stacks. An explicit model URL/ID takes priority."
   type        = string
   default     = "custom"
 }
