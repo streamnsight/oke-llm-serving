@@ -39,3 +39,9 @@ variable "serving_resolution" {
   type        = any
   default     = null
 }
+
+variable "recipe_api_enabled" {
+  description = "Resolve hardware-specific recipe JSON and generate untested single-node suggestions."
+  type        = bool
+  default     = false
+}

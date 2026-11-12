@@ -16,14 +16,15 @@ module "model_profile" {
   margin         = local.margin
 }
 locals {
-  engines       = jsondecode(file("${path.module}/../../../catalogs/engines.json")).engines
-  engine        = jsondecode(local.resolution != null ? jsonencode(local.resolved_engine) : jsonencode(try([for engine in local.engines : engine if engine.image == local.image_override && engine.version == local.version_override][0], local.engines[0])))
-  engine_args   = var.engine_args != null ? var.engine_args : try(tolist(local.serving_configuration.recipe.args), [])
-  engine_env    = var.engine_env != null ? var.engine_env : try(tomap(local.serving_configuration.recipe.env), {})
-  managed_flags = ["--model", "--revision", "--served-model-name", "--host", "--port", "--tensor-parallel-size", "-tp", "--pipeline-parallel-size", "-pp", "--max-model-len", "--max-num-seqs", "--dtype", "--kv-cache-dtype", "--gpu-memory-utilization", "--distributed-executor-backend", "--nnodes", "--node-rank", "--master-addr", "--headless"]
-  gpu           = try(jsondecode(file("${path.module}/../../../catalogs/gpus.json")).shapes[local.gpu_shape], null)
-  profile       = module.model_profile.profile
-  a             = local.profile.architecture.attention
+  engines              = jsondecode(file("${path.module}/../../../catalogs/engines.json")).engines
+  engine               = jsondecode(local.resolution != null ? jsonencode(local.resolved_engine) : jsonencode(try([for engine in local.engines : engine if engine.image == local.image_override && engine.version == local.version_override][0], local.engines[0])))
+  engine_args          = var.engine_args != null ? var.engine_args : try(tolist(local.serving_configuration.recipe.args), [])
+  engine_env           = var.engine_env != null ? var.engine_env : try(tomap(local.serving_configuration.recipe.env), {})
+  managed_flags        = ["--model", "--revision", "--served-model-name", "--host", "--port", "--tensor-parallel-size", "-tp", "--pipeline-parallel-size", "-pp", "--max-model-len", "--max-num-seqs", "--dtype", "--kv-cache-dtype", "--gpu-memory-utilization", "--distributed-executor-backend", "--nnodes", "--node-rank", "--master-addr", "--headless"]
+  gpu                  = try(jsondecode(file("${path.module}/../../../catalogs/gpus.json")).shapes[local.gpu_shape], null)
+  profile              = module.model_profile.profile
+  a                    = local.profile.architecture.attention
+  selected_rank_budget = try(local.suggested ? local.selected.estimated_rank_bytes : null, null)
   rank_bytes = try(ceil((
     local.profile.memory.weight_bytes / local.tp * min(local.a.layers, ceil(local.a.layers / local.pp) + (local.pp > 1 ? 1 : 0)) / local.a.layers +
     (local.tp * local.pp == 1 ? 0 : 2 * local.a.vocab_size * local.a.hidden_size * max([for dtype in keys(local.profile.weights.elements_by_dtype) : lookup({ F64 = 8, F32 = 4, F16 = 2, BF16 = 2 }, dtype, 8)]...) * (local.kv_dtype == "float32" ? 2 : 1)) +
@@ -73,16 +74,16 @@ resource "terraform_data" "specification" {
       error_message = "Select only features identified by discovery; otherwise supply explicit engine_args/env overrides without selecting an unknown feature."
     }
     precondition {
-      condition     = try(local.profile.model.chat_template_available && local.profile.model.pipeline_tag == "text-generation", false) && local.engine.image == local.engine_image && local.engine.version == local.engine_version && (var.expert_configuration || alltrue([for check in module.engine_check.assessment.engine_checks : check.architecture_supported && check.version_hints_satisfied]))
+      condition     = try(local.profile.model.chat_template_available && (local.profile.model.pipeline_tag == "text-generation" || (local.suggested && try(local.resolution.recipe.serving_mode == "text", false))), false) && local.engine.image == local.engine_image && local.engine.version == local.engine_version && (var.expert_configuration || local.suggested || alltrue([for check in module.engine_check.assessment.engine_checks : check.architecture_supported && check.version_hints_satisfied]))
       error_message = "Selected image/version must match the frozen discovery configuration or legacy catalog. Unsupported engine evidence requires explicit expert configuration."
     }
     precondition {
       condition = try(
         local.profile.model.resolved_revision == local.model_revision &&
-        (var.expert_configuration && var.expert_rank_memory_gib != null ? var.expert_rank_memory_gib * pow(1024, 3) : local.rank_bytes) > 0 &&
-        (var.expert_configuration && var.expert_rank_memory_gib != null ? var.expert_rank_memory_gib * pow(1024, 3) : local.rank_bytes) <= local.gpu.memory_bytes_per_gpu * 0.9 &&
-      ((local.profile.memory.status == "estimated" && contains(local.engine.gpu_compute_capabilities, local.gpu.compute_capability)) || (var.expert_configuration && var.expert_rank_memory_gib != null && local.gpu.compute_capability >= 75)), false)
-      error_message = "Per-rank GPU memory must fit. Unsupported estimation requires an explicit expert rank-memory bound; aggregate sizing is not a per-rank proof."
+        (var.expert_configuration && var.expert_rank_memory_gib != null ? var.expert_rank_memory_gib * pow(1024, 3) : coalesce(local.selected_rank_budget, local.rank_bytes)) > 0 &&
+        (var.expert_configuration && var.expert_rank_memory_gib != null ? var.expert_rank_memory_gib * pow(1024, 3) : coalesce(local.selected_rank_budget, local.rank_bytes)) <= local.gpu.memory_bytes_per_gpu * 0.9 &&
+      ((local.suggested && contains(local.engine.gpu_compute_capabilities, local.gpu.compute_capability)) || (local.profile.memory.status == "estimated" && contains(local.engine.gpu_compute_capabilities, local.gpu.compute_capability)) || (var.expert_configuration && var.expert_rank_memory_gib != null && local.gpu.compute_capability >= 75)), false)
+      error_message = "Estimated/heuristic rank budget must fit. Unsupported estimation requires an explicit expert rank-memory bound; aggregate sizing is not a per-rank proof."
     }
     precondition {
       condition = try(contains([1, 2, 4, 8], local.tp) && local.tp <= local.gpu.gpus && local.pp >= 1 && floor(local.pp) == local.pp && local.replicas >= 1 && floor(local.replicas) == local.replicas && local.node_count == local.pp * local.replicas &&
@@ -94,16 +95,24 @@ resource "terraform_data" "specification" {
       condition = local.serving_configuration == null ? true : try(
         local.serving_configuration.model.resolved_revision == local.model_revision && local.serving_configuration.model.repository == local.model &&
         local.engine.platform == "linux/${local.gpu.cpu_architecture}" &&
-      (var.expert_configuration || local.serving_configuration.status == "resolved_requires_validation"), false)
+      (var.expert_configuration || local.suggested || local.serving_configuration.status == "resolved_requires_validation"), false)
       error_message = "Frozen configuration must match the model revision and GPU node CPU platform. Unresolved recipe settings need explicit expert configuration."
     }
     precondition {
-      condition = local.serving_configuration == null || var.expert_configuration ? true : try(
+      condition = local.serving_configuration == null || var.expert_configuration || local.suggested ? true : try(
         local.serving_configuration.recipe.hardware[local.gpu.recipe_hardware] == "verified" &&
         local.serving_configuration.recipe.selected_hardware == local.gpu.recipe_hardware &&
         contains(local.serving_configuration.recipe.compatible_strategies, "single_node_tp") && local.pp == 1 &&
       local.tp == coalesce(try(tonumber(local.serving_configuration.recipe.variant_metadata.tp), null), try(tonumber(local.serving_configuration.recipe.strategy_overrides.single_node_tp.tp), null), try(tonumber(local.serving_configuration.recipe.strategy_overrides.single_node_tp.tp[local.gpu.recipe_hardware]), null)), false)
       error_message = "No matching tested recipe configuration for this GPU/TP/PP. Supply an explicit expert configuration; hardware similarity alone is not validation."
+    }
+    precondition {
+      condition = !local.suggested || var.expert_configuration || try(
+        local.tp == local.selected.tensor_parallel_size && local.pp == local.selected.pipeline_parallel_size &&
+        local.context_length == local.discovery_input.profile.memory.assumptions.context_length &&
+        local.concurrency == local.discovery_input.profile.memory.assumptions.concurrency &&
+      local.kv_dtype == local.discovery_input.profile.memory.assumptions.kv_dtype, false)
+      error_message = "Changing suggested topology or workload requires a fresh assessment or explicit expert settings."
     }
     precondition {
       condition     = alltrue([for a in local.engine_args : !contains(local.managed_flags, split("=", a)[0])]) && alltrue([for k, v in local.engine_env : can(regex("^[A-Za-z_][A-Za-z0-9_]*$", k)) && !contains(["VLLM_HOST_IP", "LWS_GROUP_SIZE", "LWS_WORKER_INDEX", "LWS_LEADER_ADDRESS"], k)])
@@ -158,3 +167,7 @@ module "delivery" {
 output "allocation" { value = module.allocation.allocation }
 output "delivery" { value = module.delivery.delivery }
 output "bootstrap_rbac" { value = module.delivery.delivery.bootstrap_rbac }
+
+output "selected_configuration" {
+  value = { selection_id = local.assessment_id, region = local.region, gpu_shape = local.gpu_shape, tp = local.tp, pp = local.pp, node_count = local.node_count, engine_image = local.engine_image, engine_args = local.engine_args, engine_env = local.engine_env, runtime_validation = "not_run", configuration_status = try(local.selected.configuration_status, "manual"), warnings = try(local.selected.warnings, []), dependencies = try(local.serving_configuration.recipe.dependencies, []) }
+}

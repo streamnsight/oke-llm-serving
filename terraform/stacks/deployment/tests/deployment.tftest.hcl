@@ -241,3 +241,59 @@ run "RMS_accepts_the_same_handoff_as_one_JSON_text_field" {
     error_message="RMS must accept exactly the same single JSON document through literal text transport."
   }
 }
+
+run "suggestion_supplies_its_own_image_topology_and_parser_flags" {
+ command=plan
+
+  variables {
+    model=null
+    model_revision=null
+    engine_image=null
+    engine_version=null
+    region=null
+    availability_domain=null
+    gpu_shape=null
+    context_length=null
+    concurrency=null
+    kv_dtype=null
+    observation_id=null
+    assessment_id=null
+    node_count=null
+    tensor_parallel_size=null
+    pipeline_parallel_size=null
+    replicas=null
+    discovery=jsondecode(file("tests/fixtures/suggestion.json"))
+ }
+ override_module {
+  target=module.model_profile
+  outputs={profile={model={resolved_revision="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",pipeline_tag="image-text-to-text",chat_template_available=true},architecture={architectures=["LlamaForCausalLM"],attention={layers=4,heads=8,kv_heads=2,hidden_size=64,vocab_size=100}},weights={tensor_data_bytes=1000000},memory={status="unsupported"},serving_requirements={version_hints=[]}}}
+ }
+ assert {
+  condition=local.engine_version=="recipe-qwen38" && local.tp==1 && local.pp==1 && contains(local.engine_args,"qwen3_coder") && local.engine_env.VLLM_USE_RUST_FRONTEND=="1" && output.selected_configuration.runtime_validation=="not_run"
+  error_message="A suggested configuration must be deployable without repeating its settings or claiming validation."
+ }
+}
+run "changed_suggestion_workload_requires_reassessment" {
+ command=plan
+
+  variables {
+    model=null
+    model_revision=null
+    engine_image=null
+    engine_version=null
+    region=null
+    availability_domain=null
+    gpu_shape=null
+    concurrency=null
+    kv_dtype=null
+    observation_id=null
+    assessment_id=null
+    node_count=null
+    tensor_parallel_size=null
+    pipeline_parallel_size=null
+    replicas=null
+    discovery=jsondecode(file("tests/fixtures/suggestion.json"))
+ context_length=65536
+ }
+ expect_failures=[terraform_data.specification]
+}

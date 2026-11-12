@@ -52,7 +52,7 @@ data "http" "config" {
   request_timeout_ms = 60000
   lifecycle {
     postcondition {
-      condition     = self.status_code == 200 && can(keys(jsondecode(self.response_body)))
+      condition     = (self.status_code == 200 && can(keys(jsondecode(self.response_body)))) || self.status_code == 404
       error_message = "Could not read config.json at the resolved revision."
     }
   }
@@ -82,7 +82,7 @@ locals {
 }
 
 locals {
-  config                    = jsondecode(data.http.config.response_body)
+  config                    = jsondecode(data.http.config.status_code == 200 ? data.http.config.response_body : try(data.http.fallback_config[0].response_body, "{}"))
   text                      = try(local.config.text_config, local.config)
   model_type                = try(local.text.model_type, local.config.model_type, "unknown")
   experts                   = try(local.text.num_local_experts, local.text.num_experts, null)
@@ -106,6 +106,7 @@ locals {
   has_index                 = contains([for file in try(local.info.siblings, []) : file.rfilename], "model.safetensors.index.json")
   canonical                 = local.has_index || (length(local.root_checkpoints) == 1 && contains(local.root_checkpoints, "model.safetensors"))
   reasons = compact([
+    length(keys(local.config)) > 0 ? "" : "No config.json or explicit recipe fallback is available.",
     local.conventional ? "" : "Architecture requires a dedicated estimator.",
     local.counts_valid ? "" : "Hub safetensors counts are missing, inconsistent or use unsupported dtypes.",
     local.canonical ? "" : "No unambiguous canonical safetensors checkpoint is declared.",
@@ -133,9 +134,10 @@ output "profile" {
       resolved_revision       = local.sha
       url                     = "https://huggingface.co/${local.repository}/tree/${local.sha}"
       gated                   = try(local.info.gated, false)
-      pipeline_tag            = try(local.info.pipeline_tag, null)
+      pipeline_tag            = try(local.info.pipeline_tag, try(contains(local.fallback_metadata.meta.tasks, "text"), false) ? "text-generation" : null)
       license                 = try(local.info.cardData.license, null)
-      chat_template_available = try(length(local.metadata_chat_template) > 0, false) || try(length(jsondecode(data.http.tokenizer[0].response_body).chat_template) > 0, false) || contains([for file in try(local.info.siblings, []) : file.rfilename], "chat_template.jinja")
+      config_sources          = { config_repository = local.config_repository, tokenizer_repository = local.tokenizer_repository, revisions = { for k, r in data.http.fallback_model : k => jsondecode(r.response_body).sha } }
+      chat_template_available = try(length(jsondecode(data.http.fallback_tokenizer[0].response_body).chat_template) > 0, false) || try(length(local.metadata_chat_template) > 0, false) || try(length(jsondecode(data.http.tokenizer[0].response_body).chat_template) > 0, false) || contains([for file in try(local.info.siblings, []) : file.rfilename], "chat_template.jinja")
     }
     architecture = {
       model_type              = local.model_type
@@ -161,7 +163,7 @@ output "profile" {
     }
     weights = {
       selected_checkpoint       = local.has_index ? "model.safetensors.index.json" : local.canonical ? "model.safetensors" : null
-      checkpoint_download_bytes = local.checkpoint_download_bytes
+      checkpoint_download_bytes = try(coalesce(local.checkpoint_download_bytes, one([for f in local.info.siblings : try(f.size, f.lfs.size) if endswith(f.rfilename, ".gguf")])), null)
       storage_source            = "Hub-published root safetensors file sizes; storage only, never resident GPU memory"
       tensor_data_bytes         = local.weight_bytes
       tensor_elements           = try(local.info.safetensors.total, null)

@@ -1,6 +1,9 @@
 # Copyright (c) 2020-2022 Oracle and/or its affiliates. All rights reserved.
 # Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
-terraform { required_version = ">= 1.5.0" }
+terraform {
+  required_version = ">= 1.5.0"
+  required_providers { http = { source = "hashicorp/http", version = "~> 3.4" } }
+}
 
 locals {
   engines                 = jsondecode(var.engines == null ? jsonencode(jsondecode(file("${path.module}/../../../catalogs/engines.json")).engines) : jsonencode(var.engines))
@@ -100,7 +103,12 @@ output "assessment" {
   value = {
     schema_version                 = "1.0"
     candidates                     = local.candidates
-    status                         = length(local.candidates) > 0 ? "candidates_found" : length(local.sizing_options) > 0 ? "expert_options_available" : "requires_validation"
+    status                         = length(local.suggestions) > 0 ? "suggestions_available" : length(local.candidates) > 0 ? "candidates_found" : length(local.sizing_options) > 0 ? "expert_options_available" : "requires_validation"
+    recommended_selection_id       = try(local.ranked_suggestions[0].id, null)
+    suggestions                    = local.ranked_suggestions
+    recipe_options                 = { features = try(local.api.features, {}), kv_offload_support = try(local.api.kv_offload_support, {}), source = try(local.api.source, {}) }
+    recipe_alternatives            = try(local.api.variants, {})
+    recipe_api_diagnostics         = { for k, r in local.renderings : k => r.selection if !contains(keys(local.valid_renderings), k) }
     sizing_options                 = local.sizing_options
     recipe_hardware_targets        = local.recipe_targets
     serving_configuration_status   = try(var.serving_resolution.status, "legacy_catalog")

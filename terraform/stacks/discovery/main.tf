@@ -79,6 +79,11 @@ output "deployment_inputs" {
     schema_version        = "2.0", observation_id = var.observation_id, profile = module.model_profile.profile,
     serving_configuration = module.serving_resolution.resolution,
     assessment = {
+      recommended_selection_id       = try(module.planner.assessment.recommended_selection_id, null)
+      suggestions                    = try(module.planner.assessment.suggestions, [])
+      recipe_options                 = try(module.planner.assessment.recipe_options, {})
+      recipe_alternatives            = try(module.planner.assessment.recipe_alternatives, {})
+      recipe_api_diagnostics         = try(module.planner.assessment.recipe_api_diagnostics, {})
       status                         = try(module.planner.assessment.status, "requires_validation"),
       blocking_reasons               = try(module.planner.assessment.blocking_reasons, []),
       warnings                       = try(module.planner.assessment.warnings, []),
@@ -92,6 +97,7 @@ output "deployment_inputs" {
 
 module "planner" {
   source             = "../../modules/deployment-planner"
+  recipe_api_enabled = true
   profile            = module.model_profile.profile
   regions            = local.regional_results
   engines            = try(module.serving_resolution.resolution.engine.image != null && length(module.serving_resolution.resolution.engine_issues) == 0, false) ? [module.serving_resolution.resolution.engine] : []

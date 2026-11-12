@@ -1,0 +1,145 @@
+{
+  "discovery": {
+    "observation_id": "test",
+    "profile": {
+      "model": {
+        "repository": "org/model",
+        "resolved_revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "memory": {
+        "assumptions": {
+          "context_length": 2048,
+          "concurrency": 3,
+          "kv_dtype": "bfloat16"
+        }
+      }
+    },
+    "serving_configuration": {
+      "status": "suggested_requires_validation",
+      "model": {
+        "repository": "org/model",
+        "resolved_revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "engine": {
+        "id": "recipe-a10",
+        "channel": "recipe",
+        "framework": "vllm",
+        "version": "recipe-qwen38",
+        "image": "vllm/vllm-openai@sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "platform": "linux/amd64",
+        "architectures": [
+          "LlamaForCausalLM"
+        ],
+        "gpu_compute_capabilities": [
+          86,
+          100
+        ],
+        "multi_node_backend": "mp",
+        "available_images": {
+          "linux/amd64": "vllm/vllm-openai@sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          "linux/arm64": "vllm/vllm-openai@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+        }
+      },
+      "recipe": {
+        "args": [
+          "--reasoning-parser",
+          "qwen3",
+          "--tool-call-parser",
+          "qwen3_coder"
+        ],
+        "env": {
+          "VLLM_USE_RUST_FRONTEND": "1"
+        },
+        "hardware": {
+          "a10": "verified"
+        },
+        "selected_hardware": "a10",
+        "compatible_strategies": [
+          "single_node_tp"
+        ],
+        "strategy_overrides": {
+          "single_node_tp": {
+            "tp": 1
+          }
+        },
+        "variant_metadata": {},
+        "feature_options": {},
+        "serving_mode": "text"
+      }
+    },
+    "assessment": {
+      "suggestions": [
+        {
+          "id": "suggestion",
+          "region": "region-one",
+          "availability_domain": "AD-1",
+          "gpu_shape": "VM.GPU.A10.1",
+          "tensor_parallel_size": 1,
+          "pipeline_parallel_size": 1,
+          "node_count": 1,
+          "replicas": 1,
+          "configuration_status": "suggested_requires_validation",
+          "estimated_rank_bytes": 1000000,
+          "serving_configuration": {
+            "status": "suggested_requires_validation",
+            "model": {
+              "repository": "org/model",
+              "resolved_revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            },
+            "engine": {
+              "id": "recipe-a10",
+              "channel": "recipe",
+              "framework": "vllm",
+              "version": "recipe-qwen38",
+              "image": "vllm/vllm-openai@sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+              "platform": "linux/amd64",
+              "architectures": [
+                "LlamaForCausalLM"
+              ],
+              "gpu_compute_capabilities": [
+                86,
+                100
+              ],
+              "multi_node_backend": "mp",
+              "available_images": {
+                "linux/amd64": "vllm/vllm-openai@sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+                "linux/arm64": "vllm/vllm-openai@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+              }
+            },
+            "recipe": {
+              "args": [
+                "--reasoning-parser",
+                "qwen3",
+                "--tool-call-parser",
+                "qwen3_coder"
+              ],
+              "env": {
+                "VLLM_USE_RUST_FRONTEND": "1"
+              },
+              "hardware": {
+                "a10": "verified"
+              },
+              "selected_hardware": "a10",
+              "compatible_strategies": [
+                "single_node_tp"
+              ],
+              "strategy_overrides": {
+                "single_node_tp": {
+                  "tp": 1
+                }
+              },
+              "variant_metadata": {},
+              "feature_options": {},
+              "serving_mode": "text"
+            }
+          },
+          "warnings": [
+            "Not runtime validated"
+          ]
+        }
+      ],
+      "candidates": [],
+      "sizing_options": []
+    }
+  }
+}
