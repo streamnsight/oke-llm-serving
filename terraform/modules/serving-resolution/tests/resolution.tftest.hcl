@@ -123,25 +123,40 @@ run "feature_modes_are_not_silently_ignored" {
   }
 }
 run "legacy_recipe_reference_survives_source_migration" {
-  command=plan
+  command = plan
   variables {
-    profile={model={repository="black-forest-labs/flux-3-image-klein",resolved_revision="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},architecture={architectures=["FlintForCausalLM"]}}
-    recipe_features=[]
+    profile         = { model = { repository = "black-forest-labs/flux-3-image-klein", resolved_revision = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }, architecture = { architectures = ["FlintForCausalLM"] } }
+    recipe_features = []
   }
   override_data {
-    target=data.http.recipe
-    values={status_code=404,response_body="404: Not Found"}
+    target = data.http.recipe
+    values = { status_code = 404, response_body = "404: Not Found" }
   }
   override_data {
-    target=data.http.legacy_commit
-    values={status_code=200,response_body="{\"sha\":\"ffffffffffffffffffffffffffffffffffffffff\"}"}
+    target = data.http.legacy_commit
+    values = { status_code = 200, response_body = "{\"sha\":\"ffffffffffffffffffffffffffffffffffffffff\"}" }
   }
   override_data {
-    target=data.http.legacy_recipe
-    values={status_code=200,response_body="meta: {default_hardware: h100}\nmodel: {model_id: black-forest-labs/flux-3-image-klein}\nvariants: {default: {precision: bf16}}\n"}
+    target = data.http.legacy_recipe
+    values = { status_code = 200, response_body = "meta: {default_hardware: h100}\nmodel: {model_id: black-forest-labs/flux-3-image-klein}\nvariants: {default: {precision: bf16}}\n" }
   }
   assert {
-    condition=output.resolution.recipe.status=="resolved" && output.resolution.recipe.source_commit=="ffffffffffffffffffffffffffffffffffffffff" && strcontains(output.resolution.recipe.source_url,"vllm-project/recipes/")
-    error_message="Try the live core path first, then resolve a known legacy source at its own immutable commit."
+    condition     = output.resolution.recipe.status == "resolved" && output.resolution.recipe.source_commit == "ffffffffffffffffffffffffffffffffffffffff" && strcontains(output.resolution.recipe.source_url, "vllm-project/recipes/")
+    error_message = "Try the live core path first, then resolve a known legacy source at its own immutable commit."
+  }
+}
+run "discovery_assesses_nightly_without_requiring_a_user_choice" {
+  command = plan
+  variables {
+    assess_alternatives = true
+    recipe_features     = []
+  }
+  override_data {
+    target = data.http.alternative_image
+    values = { status_code = 200, response_body = "{\"images\":[{\"os\":\"linux\",\"architecture\":\"amd64\",\"digest\":\"sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\"}]}" }
+  }
+  assert {
+    condition     = length(output.resolution.engine_candidates) == 2 && output.resolution.engine_candidates[1].channel == "nightly" && length(output.resolution.recipe.args) == 0 && contains(keys(output.resolution.recipe.feature_options), "reasoning")
+    error_message = "Discovery should assess image/feature alternatives, leaving feature activation to deployment."
   }
 }

@@ -48,22 +48,16 @@ module "model_profile" {
   revision       = local.effective_revision
   context_length = var.context_length
   concurrency    = var.concurrency
-  kv_dtype       = var.kv_dtype
-  runtime_gib    = var.runtime_gib
-  margin         = var.margin
 }
 
 module "serving_resolution" {
-  source          = "../../modules/serving-resolution"
-  profile         = module.model_profile.profile
-  engine_channel  = var.engine_channel
-  engine_version  = var.engine_version
-  engine_platform = var.engine_platform
-  recipe_features = var.recipe_features
+  source              = "../../modules/serving-resolution"
+  profile             = module.model_profile.profile
+  assess_alternatives = true
 }
 
-output "discovery" {
-  value = {
+locals {
+  discovery_result = {
     schema_version        = "1.0"
     observation_id        = var.observation_id
     profile               = module.model_profile.profile
@@ -73,9 +67,27 @@ output "discovery" {
     subscribed_regions    = sort(tolist(local.subscribed_regions))
     assessed_regions      = sort(tolist(local.selected_regions))
     regions               = local.regional_results
-    next_step             = "Select region, AD, OKE cluster, shape and node quantity after per-rank VRAM/topology assessment; pass pinned model revision and serving settings to the deployment stack."
+    next_step             = "Pass deployment_inputs JSON to the deployment stack; select an assessment choice and target infrastructure there. Image, feature and expert overrides are deployment inputs."
   }
 
+}
+
+output "discovery" { value = local.discovery_result }
+output "deployment_inputs" {
+  description = "Single JSON handoff: use directly as deployment tfvars, or paste the object in the deployment discovery input."
+  value = { discovery = {
+    schema_version        = "2.0", observation_id = var.observation_id, profile = module.model_profile.profile,
+    serving_configuration = module.serving_resolution.resolution,
+    assessment = {
+      status                         = try(module.planner.assessment.status, "requires_validation"),
+      blocking_reasons               = try(module.planner.assessment.blocking_reasons, []),
+      warnings                       = try(module.planner.assessment.warnings, []),
+      limit_increase_recommendations = try(module.planner.assessment.limit_increase_recommendations, []),
+      candidates                     = [for c in try(module.planner.assessment.candidates, []) : { for k, v in c : k => v if !contains(["engine", "remaining_checks"], k) }],
+      sizing_options                 = [for c in try(module.planner.assessment.sizing_options, []) : { for k, v in c : k => v if !contains(["engine", "remaining_checks"], k) }],
+      recipe_hardware_targets        = [for t in try(module.planner.assessment.recipe_hardware_targets, []) : { for k, v in t : k => v if k != "observations" }]
+    }
+  } }
 }
 
 module "planner" {

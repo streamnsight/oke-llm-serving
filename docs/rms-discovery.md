@@ -34,25 +34,25 @@ A stack that previously applied the alias-based discovery may retain report/book
 
 ## Obtain JSON
 
-After a completed Apply job, open **Job → Outputs** for `discovery` and `assessment`. For an exact machine-readable handoff, download the Terraform state:
+After a completed Apply job, open **Job → Outputs** for `deployment_inputs` (the handoff) and `discovery` / `assessment` (full reports). For an exact machine-readable handoff, download the Terraform state:
 
 ```sh
 mkdir -p work
 oci resource-manager job get-job-tf-state \
   --job-id YOUR_APPLY_JOB_OCID --region YOUR_RMS_REGION \
   --file work/rms-discovery-state.json
-jq -e '.outputs.discovery.value | select(type == "object")' \
-  work/rms-discovery-state.json > work/discovery.json
+jq -e '.outputs.deployment_inputs.value | select(type == "object")' \
+  work/rms-discovery-state.json > work/deployment-inputs.tfvars.json
 ```
 
-For a successful Plan, the CLI data is already read. Download its JSON plan with `oci resource-manager job get-job-tf-plan --job-id YOUR_PLAN_JOB_OCID --region YOUR_RMS_REGION --tf-plan-format JSON --file work/discovery-plan.json`, then inspect `.planned_values.outputs.discovery.value` if fully known. Plan jobs do not publish the usual completed-Apply Outputs view.
+For a successful Plan, the CLI data is already read. Download its JSON plan with `oci resource-manager job get-job-tf-plan --job-id YOUR_PLAN_JOB_OCID --region YOUR_RMS_REGION --tf-plan-format JSON --file work/discovery-plan.json`, then extract `.planned_values.outputs.deployment_inputs.value` if fully known. Plan jobs do not publish the usual completed-Apply Outputs view.
 
 `assessment.blocking_reasons` and `evaluated_layout_count` distinguish unsupported models/engines from rejected layouts. `capacity.reported_sufficient` only compares physical instance counts with the report's requested quantity. Candidates additionally require estimator/engine coverage, compatible hardware and TP/PP partitioning, per-rank memory fit, enough hosts and no known blocked entitlement.
 
-Recipe and image resolution now run during discovery; `engine_channel`, `engine_version`, `engine_platform` and `recipe_features` control selection. `serving_configuration` freezes the result for deployment. `assessment.sizing_options` contains undetermined GPU alternatives requiring explicit expert settings. See [runtime serving resolution](runtime-serving-resolution.md). Flint resolves to supporting stable/nightly images, while per-rank estimation and GPU runtime validation remain limited. See [the Flint gap assessment](flint-assessment.md) for recipe evidence and required changes. A recipe/catalog entry is not a promise this deployment implementation can serve it. Multimodal/audio serving validation and GGUF resident-memory profiling remain separate work.
+Discovery assesses recipes, stable/nightly candidates, published image platforms and feature definitions automatically. Image/channel/version/platform and feature overrides are inputs of the deployment stack only. `serving_configuration` freezes the result for deployment. `assessment.sizing_options` contains undetermined GPU alternatives requiring explicit expert settings. See [runtime serving resolution](runtime-serving-resolution.md). Flint resolves to supporting stable/nightly images, while per-rank estimation and GPU runtime validation remain limited. See [the Flint gap assessment](flint-assessment.md) for recipe evidence and required changes. A recipe/catalog entry is not a promise this deployment implementation can serve it. Multimodal/audio serving validation and GGUF resident-memory profiling remain separate work.
 
 ## Deploy a selected configuration
 
-Fill `terraform/stacks/deployment/target.example.json` with an existing cluster and compatible regional images/subnets. Use `scripts/select-deployment.sh` with a candidate ID to export deployment variables. The second stack uses native OCI Terraform to create retained GPU/CPU infrastructure and DevOps resources. Apply the emitted Kubernetes RBAC manifest, then run the deploy pipeline; validation follows automatically and benchmarking runs separately. See [the complete workflow](deployment-workflow.md).
+Fill `terraform/stacks/deployment/target.example.json` with an existing cluster and compatible regional images/subnets. Pass the one deployment_inputs JSON unchanged, choose `selection_id` and target infrastructure in deployment. The selection shell script remains a legacy helper and is not needed for this flow. The second stack uses native OCI Terraform to create retained GPU/CPU infrastructure and DevOps resources. Apply the emitted Kubernetes RBAC manifest, then run the deploy pipeline; validation follows automatically and benchmarking runs separately. See [the complete workflow](deployment-workflow.md).
 
 References: [Oracle RMS schema/control specification](https://docs.oracle.com/en-us/iaas/Content/ResourceManager/Concepts/terraformconfigresourcemanager_topic-schema.htm), [OCI regional APIs](https://docs.oracle.com/en-us/iaas/Content/API/Concepts/usingapi.htm), [external data-source protocol](https://registry.terraform.io/providers/hashicorp/external/latest/docs/data-sources/external), [RMS job outputs](https://docs.oracle.com/en-us/iaas/Content/ResourceManager/Tasks/list-job-outputs.htm).

@@ -96,3 +96,148 @@ run "reject_conflicting_recipe_topology_flags" {
   variables { engine_args = ["--tensor-parallel-size", "8"] }
   expect_failures = [terraform_data.specification]
 }
+
+run "one_discovery_json_drives_deployment_choices_and_feature_overrides" {
+  command = plan
+  variables {
+    model                  = null
+    model_revision         = null
+    engine_image           = null
+    engine_version         = null
+    region                 = null
+    availability_domain    = null
+    gpu_shape              = null
+    context_length         = null
+    concurrency            = null
+    kv_dtype               = null
+    observation_id         = null
+    assessment_id          = null
+    selection_id           = "choice"
+    expert_configuration   = true
+    expert_rank_memory_gib = 10
+    recipe_features        = ["reasoning"]
+    discovery = { discovery = {
+      observation_id = "assessment-1"
+      profile        = { model = { repository = "org/model", resolved_revision = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }, memory = { assumptions = { context_length = 2048, concurrency = 3, kv_dtype = "bfloat16", runtime_allowance_gib = 2, safety_margin_fraction = 0.2 } } }
+      serving_configuration = {
+        status = "resolved_requires_validation", model = { repository = "org/model", resolved_revision = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }
+        engine = { id = "assessed", framework = "vllm", version = "0.33.0", image = "vllm/vllm-openai@sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", platform = "linux/amd64", architectures = ["LlamaForCausalLM"], gpu_compute_capabilities = [86], multi_node_backend = "mp", available_images = { "linux/amd64" = "vllm/vllm-openai@sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee" } }
+        recipe = { args = [], env = {}, feature_options = { reasoning = { args = ["--reasoning-parser", "glm47"], env = { FEATURE = "enabled" } } } }
+      }
+      assessment = { candidates = [], sizing_options = [{ id = "choice", region = "region-one", availability_domain = "AD-1", gpu_shape = "VM.GPU.A10.1", configuration_status = "undetermined_requires_expert" }] }
+    } }
+  }
+  assert {
+    condition     = local.model == "org/model" && local.model_revision == "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" && local.engine_version == "0.33.0" && local.context_length == 2048 && local.concurrency == 3 && local.region == "region-one"
+    error_message = "Model/workload/engine/target evidence must be derived from the single discovery JSON, without an export script or repeated inputs."
+  }
+  assert {
+    condition     = local.engine_args[0] == "--reasoning-parser" && local.engine_env.FEATURE == "enabled" && local.serving_configuration.recipe.selected_features == tolist(["reasoning"])
+    error_message = "Features belong to deployment and must be applied from frozen assessment definitions."
+  }
+}
+
+run "nightly_is_a_deployment_choice_from_the_assessment" {
+  command = plan
+  variables {
+    model                  = null
+    model_revision         = null
+    engine_image           = null
+    engine_version         = null
+    region                 = null
+    availability_domain    = null
+    gpu_shape              = null
+    context_length         = null
+    concurrency            = null
+    kv_dtype               = null
+    observation_id         = null
+    assessment_id          = null
+    node_count             = null
+    tensor_parallel_size   = null
+    pipeline_parallel_size = null
+    replicas               = null
+    discovery              = jsondecode(file("tests/fixtures/handoff.json"))
+
+    engine_channel = "nightly"
+  }
+  assert {
+    condition     = local.engine_version == "nightly" && local.engine_image == "vllm/vllm-openai@sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff" && local.node_count == 1 && local.tp == 1 && local.pp == 1
+    error_message = "Choose a frozen assessed nightly image at deployment without a discovery override or repeated model/topology fields."
+  }
+}
+run "missing_assessed_channel_is_rejected" {
+  command = plan
+  variables {
+    model                  = null
+    model_revision         = null
+    engine_image           = null
+    region                 = null
+    availability_domain    = null
+    gpu_shape              = null
+    context_length         = null
+    concurrency            = null
+    kv_dtype               = null
+    observation_id         = null
+    assessment_id          = null
+    node_count             = null
+    tensor_parallel_size   = null
+    pipeline_parallel_size = null
+    replicas               = null
+    discovery              = jsondecode(file("tests/fixtures/handoff.json"))
+
+    engine_version = "99.0.0"
+  }
+  expect_failures = [terraform_data.specification]
+}
+run "image_platform_must_match_the_target_cpu" {
+  command = plan
+  variables {
+    model                  = null
+    model_revision         = null
+    engine_image           = null
+    engine_version         = null
+    region                 = null
+    availability_domain    = null
+    gpu_shape              = null
+    context_length         = null
+    concurrency            = null
+    kv_dtype               = null
+    observation_id         = null
+    assessment_id          = null
+    node_count             = null
+    tensor_parallel_size   = null
+    pipeline_parallel_size = null
+    replicas               = null
+    discovery              = jsondecode(file("tests/fixtures/handoff.json"))
+
+    engine_platform = "linux/arm64"
+  }
+  expect_failures = [terraform_data.specification]
+}
+
+run "RMS_accepts_the_same_handoff_as_one_JSON_text_field" {
+  command=plan
+  variables {
+    discovery_json=file("tests/fixtures/handoff.json")
+    model=null
+    model_revision=null
+    engine_image=null
+    engine_version=null
+    region=null
+    availability_domain=null
+    gpu_shape=null
+    context_length=null
+    concurrency=null
+    kv_dtype=null
+    observation_id=null
+    assessment_id=null
+    node_count=null
+    tensor_parallel_size=null
+    pipeline_parallel_size=null
+    replicas=null
+  }
+  assert {
+    condition=local.model=="org/model" && local.engine_version=="0.33.0" && local.node_count==1 && local.region=="region-one"
+    error_message="RMS must accept exactly the same single JSON document through literal text transport."
+  }
+}

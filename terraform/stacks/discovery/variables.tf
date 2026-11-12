@@ -33,18 +33,6 @@ variable "concurrency" {
   type        = number
   default     = 1
 }
-variable "kv_dtype" {
-  type    = string
-  default = "bfloat16"
-}
-variable "runtime_gib" {
-  type    = number
-  default = 2
-}
-variable "margin" {
-  type    = number
-  default = 0.2
-}
 variable "observation_id" {
   description = "Snapshot label. Discovery requests fresh reports whenever its data source is read."
   type        = string
@@ -77,36 +65,4 @@ variable "only_shapes_with_limits" {
   description = "Skip capacity checks for shapes with a confirmed zero limit. False also finds capacity that needs a limit increase. Unknown mappings remain included."
   type        = bool
   default     = false
-}
-
-variable "engine_channel" {
-  type    = string
-  default = "auto"
-  validation {
-    condition     = contains(["auto", "stable", "nightly"], var.engine_channel)
-    error_message = "engine_channel must be auto, stable or nightly."
-  }
-}
-variable "engine_version" {
-  description = "Optional explicit stable X.Y.Z version. Null chooses the latest stable tag, with nightly fallback in auto mode."
-  type        = string
-  default     = null
-  validation {
-    condition     = var.engine_version == null ? true : trimspace(var.engine_version) == "" ? true : can(regex("^[0-9]+\\.[0-9]+\\.[0-9]+$", var.engine_version))
-    error_message = "Use an exact stable X.Y.Z engine_version, or engine_channel=nightly."
-  }
-}
-variable "engine_platform" {
-  type    = string
-  default = "linux/amd64"
-  validation {
-    condition     = contains(["linux/amd64", "linux/arm64"], var.engine_platform)
-    error_message = "Select linux/amd64 or linux/arm64."
-  }
-}
-variable "recipe_features" {
-  description = "Explicit optional recipe features such as reasoning and tool_calling."
-  type        = set(string)
-  default     = []
-  nullable    = false
 }

@@ -6,9 +6,7 @@ schemaVersion: 1.1.0
 version: "0.1.0"
 variableGroups:
   - title: Model and serving assumptions
-    variables: [model, revision, context_length, concurrency, kv_dtype, runtime_gib, margin]
-  - title: Engine and recipe
-    variables: [engine_channel, engine_version, engine_platform, recipe_features]
+    variables: [model, revision, context_length, concurrency]
   - title: Capacity observation
     variables: [observation_id, compartment_id, regions, shape_names, query_resource_availability, only_shapes_with_limits]
   - title: OCI context
@@ -49,19 +47,6 @@ variables:
     type: integer
     title: Concurrent sequences
     minimum: 1
-  kv_dtype:
-    type: enum
-    enum: [bfloat16, float16, float32]
-    title: Compute and KV cache dtype
-  runtime_gib:
-    type: number
-    title: Assumed runtime overhead per GPU (GiB)
-    minimum: 0
-  margin:
-    type: number
-    title: Additional memory margin (fraction)
-    minimum: 0
-    maximum: 1
   observation_id:
     type: string
     title: Capacity observation identifier
@@ -101,32 +86,4 @@ variables:
     type: string
     title: GPU shape name
     description: Exact OCI shape name, for example BM.GPU.H100.8. Leave the list empty to search all GPU shapes.
-    visible: false
-
-  engine_channel:
-    type: enum
-    enum: [auto, stable, nightly]
-    default: auto
-    title: vLLM image selection
-    description: Auto prefers stable source architecture support and falls back to nightly. Selected images are pinned by digest.
-  engine_version:
-    type: string
-    required: false
-    title: Optional stable vLLM version
-    description: Exact X.Y.Z version; leave unset for automatic discovery.
-  engine_platform:
-    type: enum
-    enum: [linux/amd64, linux/arm64]
-    default: linux/amd64
-    title: Serving image platform
-    description: Must match the target GPU node CPU architecture.
-  recipe_features:
-    type: list
-    valueType: recipe_feature_item
-    default: "[]"
-    required: false
-    title: Optional recipe features
-    description: Explicit feature keys such as reasoning and tool_calling; available keys appear in discovery output.
-  recipe_feature_item:
-    type: string
     visible: false

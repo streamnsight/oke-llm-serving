@@ -113,6 +113,6 @@ output "assessment" {
       entitlement_zero  = length([for layout in local.evaluated : true if layout.entitlement == "blocked"])
     }
     prompt_path = "outputs/model-compatibility-assessment-prompt.md"
-    warnings    = ["Per-rank values are analytical estimates, including an extra embedding allowance; not load-test evidence.", "Quota units are not assumed to be instances. Positive unconverted headroom requires quantity validation.", "Shapes may share host inventory. Candidates are alternatives; capacity counts are never summed.", "Engine selection precedes image pinning; all selected catalog images use immutable digests."]
+    warnings    = ["Per-rank values are analytical estimates, including an extra embedding allowance; not load-test evidence.", "Quota units are not assumed to be instances. Positive unconverted headroom requires quantity validation.", "Shapes may share host inventory. Candidates are alternatives; capacity counts are never summed.", "Resolved image references use immutable digests; hardware and serving validation remain required."]
   }
 }

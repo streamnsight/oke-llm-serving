@@ -12,29 +12,28 @@ The source now contains both Terraform stacks. Model profiling uses HCL/HTTP; dy
 
 ## Discover and choose
 
-Run `terraform/stacks/discovery` locally or set that working directory in OCI Resource Manager. Enter a public Hugging Face URL/ID. Supply context, concurrency, compute/KV dtype and a new observation ID. The catalog pins upstream recipe provenance; model revisions are resolved and pinned during discovery for both listed and custom models.
+Run `terraform/stacks/discovery` locally or set that working directory in OCI Resource Manager. Enter a public Hugging Face URL/ID. Supply context and concurrency. Image selection and serving overrides are deployment concerns; discovery uses stated automatic memory assumptions. The catalog pins upstream recipe provenance; model revisions are resolved and pinned during discovery for both listed and custom models.
 
 ```sh
-terraform -chdir=terraform/stacks/discovery output -json discovery > work/discovery.json
-jq '.assessment | {status, candidates}' work/discovery.json
+terraform -chdir=terraform/stacks/discovery output -json deployment_inputs > work/deployment-inputs.tfvars.json
+jq '.discovery.assessment | {status, candidates, sizing_options}' work/deployment-inputs.tfvars.json
 ```
 
-The planner checks a release-specific engine catalog, conventional attention architecture, explicit model-card version hints, GPU compute capability, per-rank VRAM, TP head divisibility/KV replication, PP stages and reported AD instance capacity. Runtime overhead applies per GPU. Weight and KV estimates are conservative assumptions rather than measured performance. TP stays within a host; PP spans hosts; replicas require separate hosts. Multiple candidates share the same physical supply and cannot be added together.
+The planner checks dynamically assessed engine evidence, conventional attention architecture, explicit model-card version hints, GPU compute capability, per-rank VRAM, TP head divisibility/KV replication, PP stages and reported AD instance capacity. Runtime overhead applies per GPU. Weight and KV estimates are conservative assumptions rather than measured performance. TP stays within a host; PP spans hosts; replicas require separate hosts. Multiple candidates share the same physical supply and cannot be added together.
 
 A candidate is eligible for an allocation attempt, not certified at runtime. Quota/headroom and hardware capacity are separate evidence. Unknown metadata or unsupported requirements need review; the assessment includes a validation prompt. A regex match from a model card does not authorize executing its instructions. Missing matches do not prove compatibility.
 
-## Export a selected deployment
+## Pass the assessment into deployment
 
 Copy `terraform/stacks/deployment/target.example.json` to an ignored local file and fill in the existing cluster, regional image/subnet OCIDs and target compartment. All target resources must be in the selected region. The GPU image must be an OKE-compatible image with the correct NVIDIA drivers/toolkit; the CPU image must match its shape.
 
 ```sh
-bash scripts/select-deployment.sh work/discovery.json CANDIDATE_ID work/target.json > work/deployment.tfvars.json
 terraform -chdir=terraform/stacks/deployment init
-terraform -chdir=terraform/stacks/deployment plan -var-file="$PWD/work/deployment.tfvars.json" -out="$PWD/work/deployment.tfplan"
+terraform -chdir=terraform/stacks/deployment plan -var-file="$PWD/work/deployment-inputs.tfvars.json" -var-file="$PWD/work/target.json" -out="$PWD/work/deployment.tfplan"
 terraform -chdir=terraform/stacks/deployment apply "$PWD/work/deployment.tfplan"
 ```
 
-For RMS, create a second stack with working directory `terraform/stacks/deployment` and use the exported variables. The deployment form describes the handoff fields; discovery cannot dynamically change the form of another stack. Re-run discovery when requirements change. Change `observation_id` before a new allocation attempt to refresh the deployment module’s native capacity report; discovery itself now reads fresh CLI reports during Plan.
+Add `selection_id` to target.json (candidate or sizing-option ID). Model identity, workload assumptions, assessed image and known topology are loaded from the JSON automatically. For an undetermined option, supply expert topology and per-rank memory in deployment. For RMS, create a second stack with working directory `terraform/stacks/deployment`, paste the entire deployment_inputs JSON into **Discovery JSON**, then fill target/selection/override fields. The deployment form describes the handoff fields; discovery cannot dynamically change the form of another stack. Re-run discovery when requirements change. Change `observation_id` before a new allocation attempt to refresh the deployment module’s native capacity report; discovery itself now reads fresh CLI reports during Plan.
 
 Allocation rechecks target-compartment entitlement in GPU units, selected quantity, image/shape compatibility, active cluster and hardware capacity. It creates a retained GPU pool and separate CPU pool. Supported RDMA selections also create a Compute Cluster and scoped node-pool launch policy; enhanced OKE is required. Multi-node Ethernet remains possible for other supported shapes, with performance requiring measurement. Capacity reports neither reserve hosts nor guarantee RDMA placement. A failed allocation may still require retrying later or selecting another AD/shape.
 

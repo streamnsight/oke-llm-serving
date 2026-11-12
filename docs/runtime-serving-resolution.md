@@ -8,24 +8,41 @@ Discovery now looks up the selected model's structured vLLM recipe during the Te
 
 `terraform/modules/serving-resolution` uses only HTTP-provider data and HCL (`yamldecode`, JSON and expressions). It extracts the matching checkpoint variant, base and variant arguments/environment, default-hardware overrides, selected optional features, upstream hardware labels and strategy evidence. It does not install packages or execute launch commands from the guide. Missing recipes, ambiguous variants, unresolved templates, custom-image requirements and conflicting managed flags are returned as issues requiring expert configuration. HTTP access/rate-limit failures fail the lookup rather than pretending a recipe is absent.
 
-## Engine policy
+## Discovery assesses; deployment chooses
 
-- `engine_channel = "auto"` prefers the latest stable `vX.Y.Z` tag observed in the first 100 upstream tags, checks the SHA-pinned source registry for the declared model architecture, and falls back to nightly when stable architecture/minimum coverage is missing or a variant explicitly requires nightly.
-- `engine_channel = "stable"` forbids automatic nightly fallback. `engine_version = "0.33.0"` selects an exact stable version. Blank optional version input is treated as unset.
-- `engine_channel = "nightly"` selects nightly explicitly. Do not also provide a stable version override.
-- A recipe's older `min_vllm_version: nightly` is retained as evidence; stable source architecture support can supersede that hint. An explicit `nightly_required` variant remains distinct. Unknown version expressions require review.
-- GitHub's `/releases/latest` is not used: it currently reports an rc tag despite the stable v0.33.0 tag and image existing.
-- Docker Hub platform metadata selects an immutable image digest for `engine_platform` (`linux/amd64` or `linux/arm64`). A missing platform digest stays unresolved. The selected source and image tag are upstream evidence, not independent proof that image contents match the source or that the model will run.
+Discovery asks for a public model/revision and context/concurrency requirements, plus optional scan scope. It does not ask users to predict an image override, CPU platform, feature flags, dtype or runtime tuning. Its automatic policy prefers a stable source tag declaring the architecture, retains a stale nightly hint as evidence, and falls back to nightly when required. It also assesses a supporting nightly alternative and publishes image digests by CPU platform. Optional feature definitions are retained without activation.
 
-`catalogs/engines.json` remains a legacy/offline fallback for pre-existing deployment inputs. Discovery passes its dynamically resolved engine to the planner; a new version does not require editing that file. Deployment consumes the frozen `serving_configuration` object instead of re-running discovery against moving tags.
+Deployment offers `engine_channel = "recommended"` (default), `"stable"` or `"nightly"` among the assessed candidates. `engine_platform = "auto"` follows the selected GPU node CPU architecture and uses its assessed platform digest. Missing images/platforms fail rather than substituting an incompatible image. An unassessed version needs an explicit digest-pinned `engine_image` / `engine_version` and expert review. Recipe features such as `reasoning` and `tool_calling`, dtype, runtime allowance, margin, argv/env and expert topology belong here.
 
-Recipe features are explicit. For Flint reasoning and tools, set:
+`catalogs/engines.json` is a legacy/offline fallback. A new discovery does not require editing it. Deployment consumes the recorded evidence without looking up moving tags again. Source registration and image metadata are evidence, not a GPU inference test. An explicit variant `nightly_required` remains distinct from an old `min_vllm_version: nightly` hint. GitHub `/releases/latest` is not assumed to mean a stable tag.
+
+For Flint reasoning/tools, set this in **deployment**:
 
 ```hcl
 recipe_features = ["reasoning", "tool_calling"]
 ```
 
-The resolver preserves `--reasoning-parser glm47`, `--enable-auto-tool-choice`, `--tool-call-parser glm47`, and `--exclude-tools-when-tool-choice-none`. With no optional features selected, only base/variant/hardware arguments are applied. Check `recipe.available_features`, `recipe.install_requirements` and `recipe.issues` in the output before selecting a configuration.
+The recorded feature definitions supply the `glm47` reasoning/tool parsers and related flags. Unknown features and complex modes/companions need explicit review rather than silently omitted settings.
+
+## One JSON handoff
+
+```sh
+mkdir -p work
+terraform -chdir=terraform/stacks/discovery output -json deployment_inputs \
+  > work/deployment-inputs.tfvars.json
+```
+
+This produces one object: `{"discovery": {...}}`. It contains the model profile, workload assumptions, assessment choices, recipe provenance/requirements/features and digest-pinned engine/platform candidates. Repeated raw regional inventory and per-choice copies of the shared engine are omitted. The separate full `discovery` report remains available for investigation.
+
+For local Terraform, pass that file unchanged alongside target infrastructure and deployment choices:
+
+```sh
+terraform -chdir=terraform/stacks/deployment plan \
+  -var-file="$PWD/work/deployment-inputs.tfvars.json" \
+  -var-file="$PWD/work/target.json"
+```
+
+For RMS, paste the **same entire JSON document** into the deployment form's **Discovery JSON** field. It uses literal text transport (`discovery_json`) and decodes the object internally, so recipe placeholders cannot become Terraform expressions. Choose `selection_id` and fill the OKE/network/image target fields there. A sole assessment choice can be selected automatically. Model ID/SHA, workload and assessed settings do not need to be re-entered. No selection/export script is required.
 
 ## Three distinct results
 
@@ -58,14 +75,9 @@ Replace nulls with expert-selected settings. The rank-memory value must bound we
 
 An expert can also supply `engine_image` (digest-pinned), `engine_version` and `engine_platform` together to override the resolved image deliberately. This updates the frozen handoff and remains unvalidated; an arbitrary tag is not accepted. No catalog edit is necessary.
 
-Export either a candidate ID or sizing-option ID:
+Set `selection_id` to the candidate or sizing-option ID in deployment. The stack refuses undetermined configurations without explicit expert settings and rechecks immutable model/image identity, CPU platform, rank VRAM, GPU count, allocation geometry, storage and fresh physical capacity/entitlement. Expert mode relaxes unsupported software/layout inference; it does not bypass infrastructure checks.
 
-```sh
-bash scripts/select-deployment.sh work/discovery.json OPTION_ID target.json \
-  > work/deployment.tfvars.json
-```
-
-The script refuses an undetermined option without explicit expert settings. The deployment stack rechecks model/image identity, CPU platform, rank VRAM, GPU count, allocation geometry, storage and fresh physical capacity/entitlement. Expert mode relaxes unsupported software/layout inference; it does not bypass those infrastructure checks. Package both stacks with `make package`. In RMS, load the exported variables, preserving the full JSON object and argument arrays rather than substituting empty strings for collections.
+`scripts/select-deployment.sh` remains only for legacy pre-expanded inputs; it is not part of the new discovery-to-deployment flow. Package both stacks with `make package`.
 
 The frozen recipe argv/env reach both the released production-stack Helm chart and the distributed LeaderWorkerSet pods. The configuration and overrides enter the DevOps specification hash and provenance. Deployment validation remains automatically chained after the deploy stage; benchmarking is a separate explicit pipeline. No live GPU inference/benchmark is claimed by discovery or by expert handoff tests.
 

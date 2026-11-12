@@ -136,3 +136,11 @@ Combined RMS Plan succeeded for BF16 Flint across all 16 subscribed regions. The
 - [x] Verify home-region routing, absent local overrides and the hidden RMS form contract; run a live scoped CLI check, package and commit.
 
 Home-region verification: seven CLI tests, six discovery Terraform tests and the hidden-context schema check passed. A live scoped CLI run with no explicit initial region discovered home us-chicago-1 and assessed ap-melbourne-1, confirming home connection and scan scope are distinct. No GPU nodes were allocated. Both RMS packages are rebuilt from the committed source.
+
+## Assessment-only discovery and direct JSON handoff
+- [x] Remove image/version/platform/feature controls from discovery; assess published image platforms and optional feature definitions automatically.
+- [x] Emit one deployment_inputs JSON object with the model, assessment choices and frozen recipe/image evidence.
+- [x] Accept that object directly in deployment with a selection ID and target infrastructure; apply image/feature/argv/environment overrides only there.
+- [ ] Test direct handoff, platform/channel choices, explicit expert settings and backward-compatible deployment inputs; validate/package/document the revised flow.
+
+Direct handoff pre-cloud verification: ten resolver tests, seven discovery-root tests, twelve deployment-root tests and nine selected manifest/schema checks passed. Deployment tests cover the same JSON via object and RMS literal-text input, no repeated model/workload values, assessed nightly selection, unavailable channels and wrong CPU platforms. Documentation now presents deployment_inputs as the primary single-piece handoff; the old selection script is optional legacy support.

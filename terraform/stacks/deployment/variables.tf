@@ -2,15 +2,24 @@
 # Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
 variable "tenancy_ocid" { type = string }
 variable "compartment_id" { type = string }
-variable "region" { type = string }
+variable "region" {
+  default = null
+  type    = string
+}
 variable "cluster_id" { type = string }
-variable "availability_domain" { type = string }
+variable "availability_domain" {
+  default = null
+  type    = string
+}
 variable "subnet_id" { type = string }
 variable "cpu_subnet_id" { type = string }
 variable "devops_subnet_id" { type = string }
 variable "gpu_image_id" { type = string }
 variable "cpu_image_id" { type = string }
-variable "gpu_shape" { type = string }
+variable "gpu_shape" {
+  default = null
+  type    = string
+}
 variable "name" {
   type = string
   validation {
@@ -18,47 +27,79 @@ variable "name" {
     error_message = "Use a DNS-safe deployment name of 2–32 characters."
   }
 }
-variable "node_count" { type = number }
-variable "requires_rdma" { type = bool }
-variable "tensor_parallel_size" { type = number }
-variable "pipeline_parallel_size" { type = number }
-variable "replicas" { type = number }
-variable "model" { type = string }
+variable "node_count" {
+  default = null
+  type    = number
+}
+variable "requires_rdma" {
+  default = null
+  type    = bool
+}
+variable "tensor_parallel_size" {
+  default = null
+  type    = number
+}
+variable "pipeline_parallel_size" {
+  default = null
+  type    = number
+}
+variable "replicas" {
+  default = null
+  type    = number
+}
+variable "model" {
+  default = null
+  type    = string
+}
 variable "model_revision" {
-  type = string
+  default = null
+  type    = string
   validation {
-    condition     = can(regex("^[a-fA-F0-9]{40}$", var.model_revision))
+    condition     = var.model_revision == null ? true : can(regex("^[a-fA-F0-9]{40}$", var.model_revision))
     error_message = "Deploy an immutable model commit SHA."
   }
 }
 variable "engine_image" {
-  type = string
+  default = null
+  type    = string
   validation {
-    condition     = can(regex("@sha256:[a-f0-9]{64}$", var.engine_image))
+    condition     = var.engine_image == null ? true : trimspace(var.engine_image) == "" ? true : can(regex("@sha256:[a-f0-9]{64}$", var.engine_image))
     error_message = "engine_image must be pinned by SHA256 digest."
   }
 }
-variable "engine_version" { type = string }
+variable "engine_version" {
+  default = null
+  type    = string
+}
 variable "context_length" {
-  type = number
+  default = null
+  type    = number
   validation {
-    condition     = var.context_length >= 256 && floor(var.context_length) == var.context_length
+    condition     = var.context_length == null ? true : var.context_length >= 256 && floor(var.context_length) == var.context_length
     error_message = "Initial chat validation requires context_length >= 256."
   }
 }
 variable "concurrency" {
-  type = number
+  default = null
+  type    = number
   validation {
-    condition     = var.concurrency >= 1 && var.concurrency <= 256 && floor(var.concurrency) == var.concurrency
+    condition     = var.concurrency == null ? true : var.concurrency >= 1 && var.concurrency <= 256 && floor(var.concurrency) == var.concurrency
     error_message = "Initial validation supports 1–256 concurrent requests."
   }
 }
-variable "kv_dtype" { type = string }
+variable "kv_dtype" {
+  default = null
+  type    = string
+}
 variable "observation_id" {
+  default     = null
   description = "Change before an allocation attempt to obtain a fresh capacity snapshot."
   type        = string
 }
-variable "assessment_id" { type = string }
+variable "assessment_id" {
+  default = null
+  type    = string
+}
 variable "cpu_node_count" {
   type    = number
   default = 1
@@ -102,11 +143,11 @@ variable "pod_subnet_id" {
 }
 variable "runtime_gib" {
   type    = number
-  default = 2
+  default = null
 }
 variable "margin" {
   type    = number
-  default = 0.2
+  default = null
 }
 
 variable "serving_configuration" {
@@ -137,4 +178,52 @@ variable "engine_env" {
   description = "Optional explicit serving environment override, excluding credentials."
   type        = map(string)
   default     = null
+}
+
+variable "discovery" {
+  description = "The single discovery deployment_inputs JSON object, or its inner discovery object."
+  type        = any
+  default     = null
+  validation {
+    condition     = var.discovery == null || can(var.discovery.discovery.profile.model.resolved_revision) || can(var.discovery.profile.model.resolved_revision)
+    error_message = "Pass the deployment_inputs object or its discovery member, not the Terraform output metadata wrapper."
+  }
+}
+variable "selection_id" {
+  description = "Candidate or expert sizing-option ID from the discovery assessment."
+  type        = string
+  default     = null
+}
+variable "engine_channel" {
+  description = "Deployment choice among assessed engines."
+  type        = string
+  default     = "recommended"
+  validation {
+    condition     = contains(["recommended", "stable", "nightly"], var.engine_channel)
+    error_message = "Choose recommended, stable or nightly."
+  }
+}
+variable "engine_platform" {
+  description = "Auto follows the selected GPU node CPU architecture; an explicit image override must match."
+  type        = string
+  default     = "auto"
+  validation {
+    condition     = contains(["auto", "linux/amd64", "linux/arm64"], var.engine_platform)
+    error_message = "Choose auto, linux/amd64 or linux/arm64."
+  }
+}
+variable "recipe_features" {
+  description = "Optional features identified by discovery, selected at deployment."
+  type        = set(string)
+  default     = []
+  nullable    = false
+}
+variable "discovery_json" {
+  description = "RMS text transport: paste the entire deployment_inputs JSON. A string input preserves recipe placeholders literally."
+  type        = string
+  default     = null
+  validation {
+    condition     = var.discovery_json == null || can(jsondecode(var.discovery_json).discovery.profile.model.resolved_revision) || can(jsondecode(var.discovery_json).profile.model.resolved_revision)
+    error_message = "Paste valid deployment_inputs JSON or its discovery object."
+  }
 }

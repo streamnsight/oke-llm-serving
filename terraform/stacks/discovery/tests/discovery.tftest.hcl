@@ -84,3 +84,10 @@ run "connection_region_is_optional_for_local_discovery" {
     error_message="Local discovery must use CLI defaults when no connection endpoint is supplied."
   }
 }
+run "deployment_inputs_is_one_directly_consumable_json_object" {
+  command=plan
+  assert {
+    condition=output.deployment_inputs.discovery.schema_version=="2.0" && output.deployment_inputs.discovery.serving_configuration.status=="requires_expert_configuration" && can(output.deployment_inputs.discovery.assessment.candidates) && !can(output.deployment_inputs.discovery.regions)
+    error_message="Emit one assessment/model/recipe object for deployment without requiring a script or repeating raw regional inventory."
+  }
+}

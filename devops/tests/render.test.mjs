@@ -124,3 +124,10 @@ test('expert images preserve registry ports and explicit tags while pinning the 
  const untagged=render({...base,engine_image:'registry.example:5000/org/engine@sha256:'+'e'.repeat(64),engine_version:'0.33.0+custom'}).helm_values.servingEngineSpec.modelSpec[0];
  assert.equal(untagged.tag,'v0.33.0-custom@sha256:'+'e'.repeat(64));
 });
+
+test('discovery assesses requirements while deployment owns image and serving overrides',()=>{
+ const discovery=parse(readFileSync(`${root}/terraform/stacks/discovery/schema.yaml`,'utf8'));
+ const deployment=parse(readFileSync(`${root}/terraform/stacks/deployment/schema.yaml`,'utf8'));
+ for(const name of ['engine_channel','engine_version','engine_platform','recipe_features','kv_dtype','runtime_gib','margin'])assert.equal(discovery.variables[name],undefined,name+' must not be requested during discovery');
+ for(const name of ['discovery_json','selection_id','engine_channel','engine_image','engine_version','engine_platform','recipe_features','engine_args','engine_env'])assert.ok(deployment.variables[name],name+' belongs in deployment');
+});

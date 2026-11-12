@@ -5,19 +5,18 @@ description: Apply the selected discovery configuration to an existing regional 
 schemaVersion: 1.1.0
 version: "0.1.0"
 variableGroups:
-  - title: Selected allocation
-    variables: [name, region, compartment_id, cluster_id, availability_domain, gpu_shape, node_count, requires_rdma, gpu_image_id, subnet_id, cpu_image_id, cpu_subnet_id, devops_subnet_id, pod_subnet_id, cpu_node_count, boot_volume_gib]
-  - title: Selected model and engine
-    variables: [model, model_revision, engine_image, engine_version, tensor_parallel_size, pipeline_parallel_size, replicas, context_length, concurrency, kv_dtype, runtime_gib, margin]
-  - title: Recipe and expert settings
-    variables: [serving_configuration, expert_configuration, expert_rank_memory_gib, engine_args, engine_env]
+  - title: Discovery assessment
+    variables: [discovery_json, selection_id]
+  - title: Deployment target
+    variables: [name, compartment_id, cluster_id, gpu_image_id, subnet_id, cpu_image_id, cpu_subnet_id, devops_subnet_id, pod_subnet_id, cpu_node_count, boot_volume_gib]
+  - title: Deployment settings and overrides
+    variables: [engine_channel, engine_version, engine_image, engine_platform, recipe_features, expert_configuration, expert_rank_memory_gib, engine_args, engine_env, node_count, tensor_parallel_size, pipeline_parallel_size, replicas, requires_rdma, context_length, concurrency, kv_dtype, runtime_gib, margin]
   - title: Delivery and benchmark
-    variables: [install_gpu_operator, benchmark_requests, benchmark_input_tokens, benchmark_output_tokens]
-  - title: Discovery evidence
-    variables: [observation_id, assessment_id]
-  - title: Resource Manager context
+    variables: [install_gpu_operator, benchmark_requests, benchmark_input_tokens, benchmark_output_tokens, observation_id]
+  - title: Legacy and derived inputs
     visible: false
-    variables: [tenancy_ocid]
+    variables: [discovery, tenancy_ocid, region, availability_domain, gpu_shape, model, model_revision, serving_configuration, assessment_id]
+
 variables:
   tenancy_ocid:
     type: string
@@ -158,3 +157,43 @@ variables:
   engine_environment_item:
     type: string
     visible: false
+
+  discovery:
+    type: text
+    title: Discovery JSON
+    required: false
+    multiline: true
+    description: Paste the single deployment_inputs JSON from discovery, including its discovery wrapper. Model, assessment and recipe/image evidence are loaded together.
+  selection_id:
+    type: string
+    title: Assessment choice ID
+    required: false
+    description: Candidate or expert GPU sizing option from the discovery JSON. A sole choice is selected automatically.
+  engine_channel:
+    type: enum
+    enum: [recommended, stable, nightly]
+    default: recommended
+    title: Assessed engine choice
+  engine_platform:
+    type: enum
+    enum: [auto, linux/amd64, linux/arm64]
+    default: auto
+    title: Image platform
+    description: Auto follows the selected GPU node CPU architecture.
+  recipe_features:
+    type: list
+    valueType: recipe_feature_item
+    default: "[]"
+    required: false
+    title: Optional recipe features
+    description: Select feature keys reported by discovery, for example reasoning and tool_calling.
+  recipe_feature_item:
+    type: string
+    visible: false
+
+  discovery_json:
+    type: text
+    title: Discovery JSON
+    required: false
+    multiline: true
+    description: Paste the entire deployment_inputs JSON from discovery. Model, assessment and recipe/image evidence are loaded together; placeholders remain literal data.

@@ -141,7 +141,7 @@ locals {
   use_nightly     = var.engine_channel == "nightly" || (var.engine_channel == "auto" && local.version_override == null && (!local.stable_support || !local.minimum_met || local.nightly_required))
 }
 data "http" "nightly_commit" {
-  count              = local.use_nightly ? 1 : 0
+  count              = local.use_nightly || var.assess_alternatives ? 1 : 0
   url                = "https://api.github.com/repos/vllm-project/vllm/commits/main"
   request_timeout_ms = 60000
   lifecycle {
@@ -152,7 +152,7 @@ data "http" "nightly_commit" {
   }
 }
 data "http" "nightly_registry" {
-  count              = local.use_nightly ? 1 : 0
+  count              = local.use_nightly || var.assess_alternatives ? 1 : 0
   url                = "https://raw.githubusercontent.com/vllm-project/vllm/${jsondecode(data.http.nightly_commit[0].response_body).sha}/vllm/model_executor/models/registry.py"
   request_timeout_ms = 60000
   lifecycle {
@@ -201,14 +201,38 @@ locals {
     image_source_association = "upstream_tag_metadata_not_independently_verified", runtime_validation = "not_run", driver_validation = "required", multi_node_backend = "mp"
   }
 }
+data "http" "alternative_image" {
+  count              = var.assess_alternatives && !local.use_nightly ? 1 : 0
+  url                = "https://hub.docker.com/v2/repositories/vllm/vllm-openai/tags/nightly"
+  request_timeout_ms = 60000
+  lifecycle {
+    postcondition {
+      condition     = contains([200, 404], self.status_code)
+      error_message = "Nightly alternative image lookup failed."
+    }
+  }
+}
+locals {
+  available_images   = { for i in try(local.image_metadata.images, []) : "${i.os}/${i.architecture}" => "vllm/vllm-openai@${i.digest}" if i.os == "linux" && contains(["amd64", "arm64"], i.architecture) && can(regex("^sha256:[a-f0-9]{64}$", i.digest)) }
+  recommended_engine = merge(local.engine, { channel = local.use_nightly ? "nightly" : "stable", available_images = local.available_images })
+  alternative_images = { for i in try(jsondecode(data.http.alternative_image[0].response_body).images, []) : "${i.os}/${i.architecture}" => "vllm/vllm-openai@${i.digest}" if i.os == "linux" && contains(["amd64", "arm64"], i.architecture) && can(regex("^sha256:[a-f0-9]{64}$", i.digest)) }
+  alternative_arches = [for a in local.arches : a if try(strcontains(data.http.nightly_registry[0].response_body, "\"${a}\""), false)]
+  engine_candidates = concat([local.recommended_engine], [for include in [true] : merge(local.engine, {
+    id                 = "vllm-nightly", version = "nightly", channel = "nightly", image_tag = "nightly", available_images = local.alternative_images,
+    image              = lookup(local.alternative_images, var.engine_platform, null), architectures = local.alternative_arches,
+    image_metadata_url = data.http.alternative_image[0].url,
+    source_commit      = try(jsondecode(data.http.nightly_commit[0].response_body).sha, null),
+    source             = "https://github.com/vllm-project/vllm/blob/${try(jsondecode(data.http.nightly_commit[0].response_body).sha, "unresolved")}/vllm/model_executor/models/registry.py"
+  }) if var.assess_alternatives && !local.use_nightly && length(local.alternative_images) > 0 && length(local.alternative_arches) > 0])
+}
 output "resolution" {
   value = {
     schema_version = "1.0", model = var.profile.model, status = local.engine_valid && local.recipe_valid ? "resolved_requires_validation" : "requires_expert_configuration"
     recipe = { status = local.recipe_valid ? "resolved" : "requires_validation", source_url = local.recipe_url, source_commit = local.recipe_sha, sha256 = sha256(local.recipe_body), variant = local.variant_name, minimum_engine_version = local.minimum,
       hardware           = try(local.recipe.meta.hardware, {}), selected_hardware = local.hardware, compatible_strategies = try(local.recipe.compatible_strategies, []), strategy_overrides = try(local.recipe.strategy_overrides, {}),
-      available_features = keys(try(local.recipe.features, {})), selected_features = sort(tolist(var.recipe_features)), args = local.args, env = local.env, issues = local.recipe_issues,
+      available_features = keys(try(local.recipe.features, {})), selected_features = sort(tolist(var.recipe_features)), args = local.args, env = local.env, issues = local.recipe_issues, feature_options = try(local.recipe.features, {}),
     variant_metadata = local.variant, install_requirements = try(local.recipe.model.install, {}) }
-    engine                  = local.engine, engine_issues = local.engine_issues
+    engine                  = local.recommended_engine, engine_candidates = local.engine_candidates, engine_issues = local.engine_issues
     engine_selection_reason = local.use_nightly ? "Nightly requested or stable architecture/minimum coverage missing; digest frozen, runtime validation pending." : local.minimum == "nightly" ? "Recipe says nightly, but a stable tag declares the architecture; prefer stable, validate recipe flags at runtime." : "Latest or explicitly selected stable tag meets source architecture/minimum checks."
     warnings                = ["Source registration is evidence, not an image/GPU runtime test.", "Recipe hardware/strategy evidence does not establish compatibility for other GPUs.", "Image digest pins the selected platform; confirm the target OKE image/node CPU architecture."]
   }

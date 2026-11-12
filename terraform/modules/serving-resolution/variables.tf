@@ -32,3 +32,8 @@ variable "recipe_features" {
   default     = []
   nullable    = false
 }
+variable "assess_alternatives" {
+  description = "Include a supporting nightly image alternative as assessment evidence without requesting a deployment choice."
+  type        = bool
+  default     = false
+}

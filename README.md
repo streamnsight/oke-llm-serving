@@ -12,10 +12,11 @@ Deploy open-weight models onto GPUs in an existing OKE cluster through a model-f
 The first stack is implemented at [terraform/stacks/discovery](terraform/stacks/discovery). Supply a public Hugging Face model URL, context length and concurrency. It returns a model profile, GPU shapes, limit/headroom observations and AD-scoped host capacity across READY subscribed regions.
 
 ```sh
+mkdir -p work
 terraform -chdir=terraform/stacks/discovery init
 terraform -chdir=terraform/stacks/discovery plan -var-file=/path/to/request.tfvars.json -out=/path/to/discovery.tfplan
 terraform -chdir=terraform/stacks/discovery apply /path/to/discovery.tfplan
-terraform -chdir=terraform/stacks/discovery output -json discovery
+terraform -chdir=terraform/stacks/discovery output -json deployment_inputs > work/deployment-inputs.tfvars.json
 ```
 
 For RMS packages, run `make package` from the repository root. This writes separate discovery and deployment ZIPs to `work/packages/`; select the corresponding `terraform/stacks/...` working directory when uploading. Packages use committed HEAD. See [RMS packaging and JSON export](docs/rms-discovery.md).
@@ -28,7 +29,7 @@ Discovery creates reports, not GPU allocations. Counts represent available insta
 
 ## Deploy a selected configuration
 
-The deployment stack at `terraform/stacks/deployment` creates retained GPU/CPU pools, optional supported RDMA Compute Cluster placement, and OCI DevOps deploy, validation and benchmark pipelines. Select a discovery candidate and export its immutable model/image/topology settings using `scripts/select-deployment.sh`.
+The deployment stack at `terraform/stacks/deployment` creates retained GPU/CPU pools, optional supported RDMA Compute Cluster placement, and OCI DevOps deploy, validation and benchmark pipelines. Pass the single `deployment_inputs` JSON from discovery directly to deployment, then choose an assessment ID and target infrastructure there. Image/version/platform, features and expert overrides belong to deployment; no selection/export script is required.
 
 See the [complete deployment workflow](docs/deployment-workflow.md) for the target-file example, RMS handoff, Kubernetes RBAC bootstrap, official vLLM CPU benchmark container and validation boundaries. Cloud/GPU/DevOps execution remains pending a selected target. Durable Responses conversation storage remains a separate API-layer feature.
 
