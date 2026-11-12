@@ -500,6 +500,38 @@ func authenticationMode() (string, error) {
 	}
 }
 
+// Match the OCI provider's delegated caller settings without persisting tokens.
+func delegatedCallerToken() (string, error) {
+	setting := func(name string) string {
+		for _, prefix := range []string{"TF_VAR_", "OCI_", ""} {
+			if v := os.Getenv(prefix + name); v != "" {
+				return v
+			}
+		}
+		return ""
+	}
+	enabled := setting("use_obo_token")
+	if enabled == "" || enabled == "false" {
+		return "", nil
+	}
+	if enabled != "true" {
+		return "", errors.New("use_obo_token must be true or false")
+	}
+	token := setting("obo_token")
+	if path := setting("obo_token_path"); path != "" {
+		b, err := os.ReadFile(path)
+		if err != nil {
+			return "", errors.New("cannot read delegated caller token file")
+		}
+		token = string(b)
+	}
+	token = strings.TrimSpace(token)
+	if token == "" {
+		return "", errors.New("delegated caller authentication requires an OBO token")
+	}
+	return token, nil
+}
+
 func execute() error {
 	q, err := decode(os.Stdin)
 	if err != nil {
@@ -512,7 +544,15 @@ func execute() error {
 	var provider common.ConfigurationProvider
 	switch mode {
 	case "instanceprincipal":
-		provider, err = auth.InstancePrincipalConfigurationProviderForRegion(common.StringToRegion(q.Region))
+		token, tokenErr := delegatedCallerToken()
+		if tokenErr != nil {
+			return tokenErr
+		}
+		if token != "" {
+			provider, err = auth.InstancePrincipalDelegationTokenConfigurationProviderForRegion(&token, common.StringToRegion(q.Region))
+		} else {
+			provider, err = auth.InstancePrincipalConfigurationProviderForRegion(common.StringToRegion(q.Region))
+		}
 	case "resourceprincipal":
 		provider, err = auth.ResourcePrincipalConfigurationProvider()
 	default:

@@ -12,4 +12,6 @@ if command -v sha256sum >/dev/null; then actual=$(sha256sum "$binary" | cut -d '
 else actual=$(shasum -a 256 "$binary" | cut -d ' ' -f 1); fi
 [[ "$actual" == "$(cat "$binary.sha256")" ]] || { echo 'Discovery SDK binary checksum mismatch' >&2; exit 2; }
 [[ -x "$binary" ]] || chmod u+x "$binary"
+# Keep inherited RMS verbose SDK logging out of credential-bearing requests.
+export OCI_GO_SDK_DEBUG=null
 exec "$binary"

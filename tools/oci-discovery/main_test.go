@@ -10,6 +10,8 @@ import (
 	"github.com/oracle/oci-go-sdk/v65/core"
 	"github.com/oracle/oci-go-sdk/v65/identity"
 	"github.com/oracle/oci-go-sdk/v65/limits"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -157,5 +159,44 @@ func TestAuthenticationMode(t *testing.T) {
 				t.Fatalf("got %q, %v; want %q, invalid=%v", got, err, tc.want, tc.invalid)
 			}
 		})
+	}
+}
+
+func TestDelegatedCallerToken(t *testing.T) {
+	for _, prefix := range []string{"TF_VAR_", "OCI_", ""} {
+		for _, name := range []string{"use_obo_token", "obo_token", "obo_token_path"} {
+			t.Setenv(prefix+name, "")
+		}
+	}
+	if token, err := delegatedCallerToken(); token != "" || err != nil {
+		t.Fatalf("disabled: %q %v", token, err)
+	}
+	t.Setenv("use_obo_token", "true")
+	if _, err := delegatedCallerToken(); err == nil {
+		t.Fatal("missing token accepted")
+	}
+	t.Setenv("obo_token", "fixture-token")
+	if token, err := delegatedCallerToken(); token != "fixture-token" || err != nil {
+		t.Fatalf("bare token: %q %v", token, err)
+	}
+	t.Setenv("TF_VAR_obo_token", "higher-priority-token")
+	if token, err := delegatedCallerToken(); token != "higher-priority-token" || err != nil {
+		t.Fatalf("priority: %q %v", token, err)
+	}
+	path := filepath.Join(t.TempDir(), "token")
+	if err := os.WriteFile(path, []byte("file-token\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("OCI_obo_token_path", path)
+	if token, err := delegatedCallerToken(); token != "file-token" || err != nil {
+		t.Fatalf("file priority: %q %v", token, err)
+	}
+	t.Setenv("OCI_obo_token_path", path+"-missing")
+	if _, err := delegatedCallerToken(); err == nil || strings.Contains(err.Error(), path) {
+		t.Fatal("missing file did not fail safely")
+	}
+	t.Setenv("TF_VAR_use_obo_token", "false")
+	if token, err := delegatedCallerToken(); token != "" || err != nil {
+		t.Fatalf("explicit disabled: %q %v", token, err)
 	}
 }
