@@ -64,3 +64,35 @@ run "reject_unreviewed_engine_version" {
   variables { engine_version = "99.0.0" }
   expect_failures = [terraform_data.specification]
 }
+
+run "frozen_engine_accepts_an_expert_configuration_without_catalog_edit" {
+  command = plan
+  variables {
+    engine_version         = "0.33.0"
+    engine_image           = "vllm/vllm-openai@sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+    expert_configuration   = true
+    expert_rank_memory_gib = 10
+    serving_configuration  = { status = "requires_expert_configuration", model = { repository = "org/model", resolved_revision = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }, engine = { version = "0.33.0", image = "vllm/vllm-openai@sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", architectures = ["FlintForCausalLM"], framework = "vllm", id = "resolved", gpu_compute_capabilities = [86], platform = "linux/amd64", multi_node_backend = "mp" }, recipe = { args = ["--reasoning-parser", "glm47"], env = { TEST_SETTING = "value" } } }
+  }
+  override_module {
+    target  = module.model_profile
+    outputs = { profile = { model = { pipeline_tag = "text-generation", chat_template_available = true, resolved_revision = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }, architecture = { architectures = ["FlintForCausalLM"], attention = { layers = 49, heads = 32, kv_heads = 4, head_dim = 128, hidden_size = 2048, vocab_size = 150144 } }, memory = { status = "unsupported", weight_bytes = null, kv_bytes = null, runtime_allowance_bytes = 0, assumptions = { safety_margin_fraction = 0.2 } }, weights = { tensor_data_bytes = 1000000, elements_by_dtype = { BF16 = 500000 } }, serving_requirements = { version_hints = [] } } }
+  }
+  assert {
+    condition     = local.engine_args[0] == "--reasoning-parser" && local.engine_env.TEST_SETTING == "value" && local.engine.version == "0.33.0"
+    error_message = "Frozen dynamic engine and recipe args/env must pass through without a static engine catalog edit."
+  }
+}
+run "expert_mode_cannot_bypass_rank_memory_fit" {
+  command = plan
+  variables {
+    expert_configuration   = true
+    expert_rank_memory_gib = 1000
+  }
+  expect_failures = [terraform_data.specification]
+}
+run "reject_conflicting_recipe_topology_flags" {
+  command = plan
+  variables { engine_args = ["--tensor-parallel-size", "8"] }
+  expect_failures = [terraform_data.specification]
+}

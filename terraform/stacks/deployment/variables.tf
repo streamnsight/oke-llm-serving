@@ -108,3 +108,33 @@ variable "margin" {
   type    = number
   default = 0.2
 }
+
+variable "serving_configuration" {
+  description = "Frozen discovery recipe/image evidence. Deployment does not re-resolve mutable upstream tags."
+  type        = any
+  default     = null
+}
+variable "expert_configuration" {
+  description = "Explicitly deploy expert-supplied settings for an untested or undetermined configuration; runtime validation remains required."
+  type        = bool
+  default     = false
+}
+variable "expert_rank_memory_gib" {
+  description = "Expert per-rank total GPU memory bound, including weights, KV and runtime. Required when the built-in estimator is unsupported."
+  type        = number
+  default     = null
+  validation {
+    condition     = var.expert_rank_memory_gib == null ? true : var.expert_rank_memory_gib > 0
+    error_message = "An expert rank-memory bound must be positive."
+  }
+}
+variable "engine_args" {
+  description = "Optional explicit argv override for recipe arguments; identity/topology/memory are managed by dedicated variables."
+  type        = list(string)
+  default     = null
+}
+variable "engine_env" {
+  description = "Optional explicit serving environment override, excluding credentials."
+  type        = map(string)
+  default     = null
+}

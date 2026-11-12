@@ -34,7 +34,7 @@ See the [complete deployment workflow](docs/deployment-workflow.md) for the targ
 
 ## Documentation
 
-[Flint compatibility assessment](docs/flint-assessment.md) explains why upstream recipe coverage and local deployment admission currently differ.
+[Runtime recipe/image resolution and expert deployment](docs/runtime-serving-resolution.md) explains dynamic stable/nightly lookup, frozen arguments and GPU alternatives. [Flint assessment](docs/flint-assessment.md) records the upstream evidence and remaining estimation/runtime limits.
 
 - [Model profile inputs, arithmetic and evidence](docs/model-profile.md)
 - [Native OCI inventory and capacity modules](docs/oci-discovery.md)

@@ -73,3 +73,26 @@ run "unsupported_architecture_explains_zero_layouts" {
     error_message = "Positive hardware observations must not hide unsupported model/engine blockers."
   }
 }
+
+run "flint_sizing_options_do_not_invent_a_serving_layout" {
+  command = plan
+  variables {
+    profile = {
+      model={repository="RecursiveSI/flint",resolved_revision="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",pipeline_tag="text-generation",chat_template_available=true}
+      architecture={model_type="flint",architectures=["FlintForCausalLM"],quantization=null,attention={layers=49,heads=32,kv_heads=4,head_dim=128,hidden_size=2048,vocab_size=150144,layer_types=concat([for i in range(14):"full_attention"],[for i in range(35):"sliding_attention"])}}
+      weights={selected_checkpoint="model.safetensors.index.json",tensor_data_bytes=79570574912,tensor_elements=39785287456,elements_by_dtype={BF16=39785287456}}
+      memory={status="unsupported",weight_bytes=null,kv_bytes=null,reasons=["Dedicated layout estimator unsupported"],runtime_allowance_bytes=2147483648,assumptions={kv_dtype="bfloat16",context_length=4096,concurrency=4,safety_margin_fraction=0.2}}
+      serving_requirements={version_hints=[]}
+    }
+    engines=[{id="vllm-0.33.0",framework="vllm",version="0.33.0",image="fixture",architectures=["FlintForCausalLM"],gpu_compute_capabilities=[86],platform="linux/amd64",multi_node_backend="mp"}]
+    serving_resolution={status="resolved_requires_validation",recipe={hardware={gb200="verified"},selected_hardware="gb200"},engine={platform="linux/amd64"}}
+  }
+  assert {
+    condition=length(output.assessment.candidates)==0 && output.assessment.status=="expert_options_available" && output.assessment.sizing_options[0].estimated_minimum_gpus==5 && output.assessment.sizing_options[0].configuration_status=="undetermined_requires_expert" && output.assessment.sizing_options[0].recipe_hardware_status=="no_tested_recipe_for_this_hardware"
+    error_message="Flint on A10 must expose a memory-only lower bound, not fabricate TP/PP or claim runtime feasibility."
+  }
+  assert {
+    condition=output.assessment.recipe_hardware_targets[0].gpu_shape=="BM.GPU.GB200.4" && output.assessment.recipe_hardware_targets[0].image_platform=="linux/arm64"
+    error_message="Identify the actual recipe hardware/platform even when it is absent from the scanned inventory."
+  }
+}

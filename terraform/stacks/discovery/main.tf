@@ -53,24 +53,36 @@ module "model_profile" {
   margin         = var.margin
 }
 
+module "serving_resolution" {
+  source          = "../../modules/serving-resolution"
+  profile         = module.model_profile.profile
+  engine_channel  = var.engine_channel
+  engine_version  = var.engine_version
+  engine_platform = var.engine_platform
+  recipe_features = var.recipe_features
+}
+
 output "discovery" {
   value = {
-    schema_version     = "1.0"
-    observation_id     = var.observation_id
-    profile            = module.model_profile.profile
-    assessment         = module.planner.assessment
-    subscribed_regions = sort(tolist(local.subscribed_regions))
-    assessed_regions   = sort(tolist(local.selected_regions))
-    regions            = local.regional_results
-    next_step          = "Select region, AD, OKE cluster, shape and node quantity after per-rank VRAM/topology assessment; pass pinned model revision and serving settings to the deployment stack."
+    schema_version        = "1.0"
+    observation_id        = var.observation_id
+    profile               = module.model_profile.profile
+    serving_configuration = module.serving_resolution.resolution
+    assessment            = module.planner.assessment
+    subscribed_regions    = sort(tolist(local.subscribed_regions))
+    assessed_regions      = sort(tolist(local.selected_regions))
+    regions               = local.regional_results
+    next_step             = "Select region, AD, OKE cluster, shape and node quantity after per-rank VRAM/topology assessment; pass pinned model revision and serving settings to the deployment stack."
   }
 
 }
 
 module "planner" {
-  source  = "../../modules/deployment-planner"
-  profile = module.model_profile.profile
-  regions = local.regional_results
+  source             = "../../modules/deployment-planner"
+  profile            = module.model_profile.profile
+  regions            = local.regional_results
+  engines            = try(module.serving_resolution.resolution.engine.image != null && length(module.serving_resolution.resolution.engine_issues) == 0, false) ? [module.serving_resolution.resolution.engine] : []
+  serving_resolution = module.serving_resolution.resolution
 }
 
 output "assessment" {

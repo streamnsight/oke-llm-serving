@@ -19,6 +19,10 @@ override_module {
   target = module.planner
   outputs = {assessment={candidates=[],status="requires_validation"}}
 }
+override_module {
+  target = module.serving_resolution
+  outputs = {resolution={engine=null,engine_issues=["fixture"],status="requires_expert_configuration"}}
+}
 run "all_ready_subscriptions_include_new_regions" {
   command = plan
   assert {

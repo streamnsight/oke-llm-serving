@@ -148,6 +148,7 @@ output "profile" {
       attention = {
         layers      = local.layers, heads = local.heads, kv_heads = local.kv_heads, head_dim = local.head_dim
         hidden_size = try(local.text.hidden_size, null), vocab_size = try(local.text.vocab_size, null)
+        layer_types = try(local.text.layer_types, null)
       }
     }
     serving_requirements = {

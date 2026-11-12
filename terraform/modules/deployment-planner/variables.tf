@@ -33,3 +33,9 @@ variable "replicas" {
     error_message = "replicas must be a positive integer."
   }
 }
+
+variable "serving_resolution" {
+  description = "Frozen runtime recipe/image evidence. Null preserves legacy/offline planner behavior."
+  type        = any
+  default     = null
+}

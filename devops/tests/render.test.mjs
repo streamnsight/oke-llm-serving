@@ -65,7 +65,8 @@ test('released production-stack chart produces valid single-node pod structure',
 test('deployment RMS form includes every Terraform handoff variable',()=>{
   const schema=parse(readFileSync(`${root}/terraform/stacks/deployment/schema.yaml`,'utf8'));
   const variables=[...readFileSync(`${root}/terraform/stacks/deployment/variables.tf`,'utf8').matchAll(/variable "([^"]+)"/g)].map(m=>m[1]).sort();
-  assert.deepEqual(Object.keys(schema.variables).sort(),variables);
+  const helpers=new Set(Object.values(schema.variables).map(v=>v.valueType).filter(Boolean));
+  assert.deepEqual(Object.keys(schema.variables).filter(k=>!helpers.has(k)).sort(),variables);
 });
 
 test('RMS scope filters use optional list controls with typed items',()=>{
@@ -91,4 +92,26 @@ test('RMS groups reference defined variable names and bootstrap region is select
   assert.equal(schema.variables.region.type,'oci:identity:region:name');
   assert.equal(schema.variables.region.default,'${session.region}');
   assert.notEqual(schema.variableGroups.find(g=>g.variables.includes('region')).visible,false);
+});
+
+test('frozen recipe argv and environment reach both Helm and distributed pods',()=>{
+ const config={...base,serving_configuration:{recipe:{source_commit:'c'.repeat(40)}},engine_version:'0.33.0',engine_args:['--reasoning-parser','glm47','--enable-auto-tool-choice'],engine_env:{TEST_SETTING:'recipe-value'}};
+ const single=render(config).helm_values.servingEngineSpec.modelSpec[0];
+ assert.ok(single.args.includes('--reasoning-parser'));assert.ok(!single.args.includes('--default-chat-template-kwargs'));
+ assert.deepEqual(single.env,[{name:'TEST_SETTING',value:'recipe-value'}]);
+ if(process.env.HELM_CHART_FILE) {
+  const dir=mkdtempSync(`${tmpdir()}/oke-recipe-chart-`);
+  try {
+   writeFileSync(`${dir}/values.json`,JSON.stringify(render(config).helm_values));
+   const manifests=parseAllDocuments(execFileSync('helm',['template','fixture',process.env.HELM_CHART_FILE,'-f',`${dir}/values.json`],{encoding:'utf8'})).map(d=>d.toJSON()).filter(Boolean);
+   const engine=manifests.find(m=>m.kind==='Deployment'&&m.spec.template.spec.containers.some(c=>c.name==='vllm')).spec.template.spec.containers.find(c=>c.name==='vllm');
+   assert.ok(engine.args.includes('--reasoning-parser'));assert.ok(engine.env.some(e=>e.name==='TEST_SETTING'&&e.value==='recipe-value'));
+  }finally{rmSync(dir,{recursive:true,force:true});}
+ }
+
+ const multi=render({...config,pipeline_parallel_size:2}).multi_node_manifest.items[0].spec.leaderWorkerTemplate;
+ for(const pod of [multi.leaderTemplate,multi.workerTemplate]) {
+  assert.ok(pod.spec.containers[0].args.includes('--reasoning-parser'));
+  assert.ok(pod.spec.containers[0].env.some(e=>e.name==='TEST_SETTING'&&e.value==='recipe-value'));
+ }
 });

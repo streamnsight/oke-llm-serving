@@ -49,7 +49,7 @@ For a successful Plan, the CLI data is already read. Download its JSON plan with
 
 `assessment.blocking_reasons` and `evaluated_layout_count` distinguish unsupported models/engines from rejected layouts. `capacity.reported_sufficient` only compares physical instance counts with the report's requested quantity. Candidates additionally require estimator/engine coverage, compatible hardware and TP/PP partitioning, per-rank memory fit, enough hosts and no known blocked entitlement.
 
-Flint is supported upstream by vLLM v0.33.0, while this stack's engine/estimator coverage is still limited. See [the Flint gap assessment](flint-assessment.md) for recipe evidence and required changes. A recipe/catalog entry is not a promise this deployment implementation can serve it. Live recipe/flag resolution and multimodal/audio serving validation remain separate work.
+Recipe and image resolution now run during discovery; `engine_channel`, `engine_version`, `engine_platform` and `recipe_features` control selection. `serving_configuration` freezes the result for deployment. `assessment.sizing_options` contains undetermined GPU alternatives requiring explicit expert settings. See [runtime serving resolution](runtime-serving-resolution.md). Flint resolves to supporting stable/nightly images, while per-rank estimation and GPU runtime validation remain limited. See [the Flint gap assessment](flint-assessment.md) for recipe evidence and required changes. A recipe/catalog entry is not a promise this deployment implementation can serve it. Multimodal/audio serving validation and GGUF resident-memory profiling remain separate work.
 
 ## Deploy a selected configuration
 

@@ -30,5 +30,6 @@
       "multi_node_backend": "mp",
       "parallelism_source": "https://github.com/vllm-project/vllm/blob/v0.32.0/vllm/config/parallel.py"
     }
-  ]
+  ],
+  "purpose": "Legacy offline image references only. Discovery resolves vLLM source support and platform image digests dynamically; frozen serving_configuration is passed into deployment."
 }

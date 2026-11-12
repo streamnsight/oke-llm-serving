@@ -7,12 +7,15 @@ def affinity:
    podAntiAffinity:{requiredDuringSchedulingIgnoredDuringExecution:[{labelSelector:{matchLabels:{"oke-llm/model":$c.name,"oke-llm/specification":($c.specification_hash[:32])}},topologyKey:"kubernetes.io/hostname"}]}};
 def resources:
   {requests:({cpu:"4",memory:"16Gi","nvidia.com/gpu":$c.tensor_parallel_size} + if $c.requires_rdma then {"rdma/rdma_shared_device_a":1} else {} end),limits:({"nvidia.com/gpu":$c.tensor_parallel_size} + if $c.requires_rdma then {"rdma/rdma_shared_device_a":1} else {} end)};
+def serving_env: [($c.engine_env // {}) | to_entries[] | {name:.key,value:(.value|tostring)}];
 def vllm_args:
-  ["serve",$c.model,"--revision",$c.model_revision,"--served-model-name","model","--host","0.0.0.0","--port","8000","--tensor-parallel-size",($c.tensor_parallel_size|tostring),"--pipeline-parallel-size",($c.pipeline_parallel_size|tostring),"--max-model-len",($c.context_length|tostring),"--max-num-seqs",($c.concurrency|tostring),"--dtype",$c.kv_dtype,"--kv-cache-dtype","auto","--gpu-memory-utilization","0.9","--distributed-executor-backend","mp","--default-chat-template-kwargs","{\"enable_thinking\":false}"];
+  ["serve",$c.model,"--revision",$c.model_revision,"--served-model-name","model","--host","0.0.0.0","--port","8000","--tensor-parallel-size",($c.tensor_parallel_size|tostring),"--pipeline-parallel-size",($c.pipeline_parallel_size|tostring),"--max-model-len",($c.context_length|tostring),"--max-num-seqs",($c.concurrency|tostring),"--dtype",$c.kv_dtype,"--kv-cache-dtype","auto","--gpu-memory-utilization","0.9","--distributed-executor-backend","mp"] +
+  (if $c.serving_configuration == null then ["--default-chat-template-kwargs","{\"enable_thinking\":false}"] else [] end) + ($c.engine_args // []);
+
 def container($leader):
   {name:"vllm",image:$c.engine_image,command:["vllm"],args:(vllm_args + ["--nnodes","$(LWS_GROUP_SIZE)","--node-rank","$(LWS_WORKER_INDEX)","--master-addr","$(LWS_LEADER_ADDRESS)"] + if $leader then [] else ["--headless"] end),resources:resources,
    ports:[{name:"http",containerPort:8000},{name:"distributed",containerPort:29501}],
-   env:[{name:"VLLM_HOST_IP",valueFrom:{fieldRef:{fieldPath:"status.podIP"}}},{name:"NCCL_DEBUG",value:"INFO"}],
+   env:([{name:"VLLM_HOST_IP",valueFrom:{fieldRef:{fieldPath:"status.podIP"}}},{name:"NCCL_DEBUG",value:"INFO"}] + serving_env),
    securityContext:{capabilities:{add:["IPC_LOCK"]}},
    volumeMounts:[{name:"shm",mountPath:"/dev/shm"}],
    startupProbe:({tcpSocket:{port:8000},periodSeconds:10,failureThreshold:180}),
@@ -26,9 +29,9 @@ def pod($leader):
  helm_values:{
   servingEngineSpec:{enableEngine:($c.pipeline_parallel_size==1),strategy:{type:"Recreate"},startupProbe:{failureThreshold:180,periodSeconds:10},runtimeClassName:"",modelSpec:[{
     name:"model",modelURL:$c.model,modelRevision:$c.model_revision,
-    repository:$image[0],tag:("v"+$c.engine_version+"@"+$image[1]),
+    repository:$image[0],tag:((if $c.engine_version=="nightly" then "nightly" else "v"+$c.engine_version end)+"@"+$image[1]),
     replicaCount:$c.replicas,resources:resources,affinity:affinity,podLabels:{"oke-llm/model":$c.name,"oke-llm/specification":($c.specification_hash[:32])},runtimeClassName:"",
-    command:["vllm"],args:vllm_args,
+    command:["vllm"],args:vllm_args,env:serving_env,
     vllmConfig:{v1:"1",maxModelLen:$c.context_length,maxNumSeqs:$c.concurrency,tensorParallelSize:$c.tensor_parallel_size,dtype:"auto",extraArgs:["--served-model-name","model","--revision",$c.model_revision,"--default-chat-template-kwargs","{\"enable_thinking\":false}"]},
     extraVolumes:[],extraVolumeMounts:[]
   }]},

@@ -9,6 +9,8 @@ variableGroups:
     variables: [name, region, compartment_id, cluster_id, availability_domain, gpu_shape, node_count, requires_rdma, gpu_image_id, subnet_id, cpu_image_id, cpu_subnet_id, devops_subnet_id, pod_subnet_id, cpu_node_count, boot_volume_gib]
   - title: Selected model and engine
     variables: [model, model_revision, engine_image, engine_version, tensor_parallel_size, pipeline_parallel_size, replicas, context_length, concurrency, kv_dtype, runtime_gib, margin]
+  - title: Recipe and expert settings
+    variables: [serving_configuration, expert_configuration, expert_rank_memory_gib, engine_args, engine_env]
   - title: Delivery and benchmark
     variables: [install_gpu_operator, benchmark_requests, benchmark_input_tokens, benchmark_output_tokens]
   - title: Discovery evidence
@@ -123,3 +125,36 @@ variables:
   assessment_id:
     type: string
     title: Assessment id
+
+  serving_configuration:
+    type: text
+    title: Frozen discovery configuration JSON
+    required: false
+    multiline: true
+    description: Use the exact object exported by discovery; image and recipe are not looked up again during deployment.
+  expert_configuration:
+    type: boolean
+    default: false
+    title: Use expert supplied configuration
+    description: The configuration is untested. Mandatory deployment validation still runs.
+  expert_rank_memory_gib:
+    type: number
+    required: false
+    title: Expert GPU memory bound per rank (GiB)
+    description: Required when built-in per-rank estimation is unsupported. Include weights, KV and runtime overhead.
+  engine_args:
+    type: list
+    valueType: engine_argument_item
+    required: false
+    title: Explicit serving argument override
+  engine_argument_item:
+    type: string
+    visible: false
+  engine_env:
+    type: map
+    valueType: engine_environment_item
+    required: false
+    title: Explicit serving environment override
+  engine_environment_item:
+    type: string
+    visible: false

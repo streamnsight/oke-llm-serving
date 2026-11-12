@@ -5,6 +5,9 @@ Licensed under the Universal Permissive License v 1.0 as shown at http://oss.ora
 
 # Model discovery to OKE deployment
 
+Discovery now resolves runtime recipes/images and supports a frozen expert handoff; see [the current workflow](runtime-serving-resolution.md). The legacy catalog is not required to admit dynamically resolved versions.
+
+
 The source now contains both Terraform stacks. Model profiling uses HCL/HTTP; dynamic regional discovery uses Bash/OCI CLI/jq behind the external data source. Packaging and DevOps use Bash/curl/jq. No stack invokes another Terraform process. Infrastructure application does not automatically run a deployment pipeline.
 
 ## Discover and choose
@@ -86,4 +89,4 @@ Run `npm ci`, then `make refresh-model-catalog`. Review and commit `catalogs/mod
 
 `catalogs/model-policy.json` controls sources and `max_recipe_age_days`. The default `null` retains every recipe regardless of age. Setting a nonnegative number filters recipes by upstream `meta.date_added`; undated recipes remain included. `date_updated` is recorded separately. Neither date is a model release date: `release_date` remains null rather than substituting Hugging Face repository creation or recipe publication. A model remains listed if any of its recipe references survives filtering. Upstream recipe provenance is preserved per model/variant.
 
-The reference catalog includes multimodal, embedding and vLLM-Omni entries even where the current estimator/deployment recipe cannot serve them. Listing does not authorize a deployment or imply the vLLM-Omni runtime is implemented. Live recipe/flag resolution remains separate work.
+The reference catalog includes multimodal, embedding and vLLM-Omni entries even where the current estimator/deployment recipe cannot serve them. Listing does not authorize a deployment or imply the vLLM-Omni runtime is implemented. Runtime vLLM recipe/image resolution is now implemented; other engine/modality deployment strategies remain separate work.

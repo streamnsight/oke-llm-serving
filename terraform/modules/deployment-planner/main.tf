@@ -66,7 +66,7 @@ locals {
     entitlement = layout.row.limit_status == "zero" || layout.row.headroom_status == "zero" ? "blocked" : layout.row.mapping_complete && layout.row.headroom_status == "positive" ? "positive_unconverted" : "unknown"
   })]
   candidates = [for layout in local.evaluated : {
-    id                   = substr(sha256(jsonencode([local.profile.model, local.profile.memory.assumptions, layout.row.region, layout.row.ad, layout.row.shape.shape, layout.engine.image, layout.tp, layout.pp, var.replicas])), 0, 16)
+    id                   = substr(sha256(jsonencode([local.profile.model, local.profile.memory.assumptions, layout.row.region, layout.row.ad, layout.row.shape.shape, layout.engine.image, layout.tp, layout.pp, var.replicas, var.serving_resolution])), 0, 16)
     region               = layout.row.region, availability_domain = layout.row.ad, gpu_shape = layout.row.shape.shape
     gpus_per_node        = layout.row.shape.gpus, node_count = layout.pp * var.replicas, replicas = var.replicas
     tensor_parallel_size = layout.tp, pipeline_parallel_size = layout.pp
@@ -79,7 +79,16 @@ locals {
     requires_rdma        = layout.pp > 1 && try(layout.row.gpu.compute_cluster_supported && contains(local.compute_cluster_regions, layout.row.region) && layout.row.shape.rdma_ports > 0, false)
     status               = "estimated_feasible_requires_validation"
     runtime_validation   = "not_run"
-    remaining_checks     = ["Recheck quantity-specific quota/entitlement.", "Confirm OKE image driver/CUDA compatibility and per-rank memory at runtime.", "Validate requested APIs and workload performance; Ethernet PP has no RDMA performance claim."]
+    configuration_status = !local.resolution_present ? "legacy_estimated_configuration" : try(
+      var.serving_resolution.status == "resolved_requires_validation" &&
+      contains(local.tested_hardware, layout.row.gpu.recipe_hardware) &&
+      layout.row.gpu.recipe_hardware == var.serving_resolution.recipe.selected_hardware &&
+      "linux/${layout.row.gpu.cpu_architecture}" == layout.engine.platform &&
+      contains(var.serving_resolution.recipe.compatible_strategies, "single_node_tp") &&
+      layout.pp == 1 && layout.tp == coalesce(try(tonumber(var.serving_resolution.recipe.variant_metadata.tp), null), try(tonumber(var.serving_resolution.recipe.strategy_overrides.single_node_tp.tp), null), try(tonumber(var.serving_resolution.recipe.strategy_overrides.single_node_tp.tp[layout.row.gpu.recipe_hardware]), null)), false
+    ) ? "recipe_configuration_requires_validation" : "undetermined_requires_expert"
+    recipe_hardware_status = contains(local.tested_hardware, try(layout.row.gpu.recipe_hardware, "unknown")) ? "upstream_hardware_match_only" : "no_tested_recipe_for_this_hardware"
+    remaining_checks       = ["Recheck quantity-specific quota/entitlement.", "Confirm OKE image driver/CUDA compatibility and per-rank memory at runtime.", "Validate requested APIs and workload performance; Ethernet PP has no RDMA performance claim."]
   } if length(layout.reasons) == 0 && layout.memory_fit && layout.capacity_ok && layout.entitlement != "blocked"]
 }
 
@@ -87,7 +96,10 @@ output "assessment" {
   value = {
     schema_version                 = "1.0"
     candidates                     = local.candidates
-    status                         = length(local.candidates) > 0 ? "candidates_found" : "requires_validation"
+    status                         = length(local.candidates) > 0 ? "candidates_found" : length(local.sizing_options) > 0 ? "expert_options_available" : "requires_validation"
+    sizing_options                 = local.sizing_options
+    recipe_hardware_targets        = local.recipe_targets
+    serving_configuration_status   = try(var.serving_resolution.status, "legacy_catalog")
     engine_checks                  = [for check in local.engine_checks : { engine = check.engine.id, architecture_supported = check.architecture_ok, version_hints_satisfied = check.hints_ok }]
     shape_observations             = [for row in local.availability_observations : merge(row, { catalog_known = try(local.catalog[row.shape], null) != null })]
     capacity_and_headroom_shapes   = local.capacity_and_headroom_shapes
