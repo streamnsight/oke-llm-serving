@@ -163,3 +163,9 @@ New-path verification: final Qwen RMS Plan succeeded, returning 22 suggestions a
 - [x] Test zero, missing/unknown, insufficient quantity, unknown quota units and successful observations; verify against saved live scan, package and commit.
 
 Confirmed-capacity verification: 32 planner tests, seven discovery-root tests and 14 deployment-root tests passed. A native Terraform replay of the actual saved Qwen/API observations returned nine selectable suggestions, all available_at_scan with sufficient whole-host GPU entitlement; all thirteen zero-capacity suggestions were excluded. The replay handoff explicitly records that it is not a new capacity query.
+
+## Root-level RMS packages and CI artifacts
+- [ ] Flatten each stack's Terraform files/schema/provider lock to ZIP root, place modules in modules/, and relocate packaged local module/asset paths without changing repository development layout.
+- [ ] Verify both extracted packages with Terraform init/validate from the root and reject missing assets or leaked state/tests/private files.
+- [ ] Add a main-push GitHub Actions workflow that builds, validates and uploads the two stack ZIP artifacts.
+- [ ] Update packaging/RMS instructions, build final ZIPs, commit and integrate after local verification. GitHub-hosted execution awaits a remote push/merge.

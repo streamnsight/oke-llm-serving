@@ -8,7 +8,24 @@ Use two separate stacks: `terraform/stacks/discovery` for assessment and `terraf
 
 ## Package and inputs
 
-Run `make package`. Upload `work/packages/oke-llm-discovery.zip` and select working directory `terraform/stacks/discovery`. The deployment ZIP uses `terraform/stacks/deployment`.
+Run `make package`. Upload `work/packages/oke-llm-discovery.zip` or `oke-llm-deployment.zip` and use the ZIP root (`.`) as working directory. There is no enclosing stack/repository folder:
+
+```text
+main.tf
+variables.tf
+schema.yaml
+.terraform.lock.hcl
+modules/
+catalogs/
+scripts/
+devops/
+```
+
+Packaging relocates local module sources to `./modules/...` and updates module-relative catalog/DevOps paths in the staged copy. The repository development layout stays unchanged. For an existing RMS stack, replace its old `terraform/stacks/...` working-directory setting with `.` when uploading the new ZIP. If linking directly to the Git repository instead, continue using `terraform/stacks/discovery` or `terraform/stacks/deployment`.
+
+Run `make check-packages` to build, extract, initialize and validate both delivered archives. This check runs without OCI credentials or capacity queries. Only committed source is packaged; state, local inputs, caches, private work files and development tests are excluded.
+
+The [Package RMS stacks workflow](../.github/workflows/package-stacks.yaml) runs on pushes to `main` (including merges), or manually through Actions. It checks both packages before publishing `oke-llm-discovery.zip` and `oke-llm-deployment.zip` as separate downloadable run artifacts. Download the selected ZIP from **Actions → Package RMS stacks → successful run → Artifacts**, then upload that file directly to RMS. The upload uses [single-file artifact mode](https://github.com/actions/upload-artifact#upload-an-individual-file-unzipped), so there is no additional archive wrapper. Artifact expiry follows the repository's Actions retention setting. This is run-artifact publication, not a GitHub Release.
 
 Discovery takes a public Hugging Face URL or `owner/model`, revision, context length and concurrency. The form deliberately uses a text field: RMS does not provide a general dependent namespace/model selector for arbitrary static catalogs. The full alphabetical recipe catalog remains in `catalogs/models.json` as evidence/reference; it is not a 517-choice form control. `model_choice` is hidden legacy compatibility input, and an explicit `model` always takes priority.
 

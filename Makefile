@@ -5,11 +5,12 @@ DIST_DIR ?= work/packages
 REFRESH_CATALOG ?= false
 PACKAGE_FLAGS = $(if $(filter true,$(REFRESH_CATALOG)),--refresh-catalog,)
 
-.PHONY: help package package-discovery package-deployment refresh-model-catalog
+.PHONY: help package package-discovery package-deployment refresh-model-catalog check-packages
 help:
 	@echo 'make package             Build both RMS ZIPs from committed HEAD'
 	@echo 'make package-discovery   Build the discovery stack ZIP'
 	@echo 'make package-deployment  Build the deployment stack ZIP'
+	@echo 'make check-packages      Build, extract and Terraform-validate both RMS ZIPs'
 	@echo 'make refresh-model-catalog Update the alphabetical recipe model reference (requires npm ci)'
 	@echo 'Optional: DIST_DIR=/path REFRESH_CATALOG=true'
 
@@ -17,11 +18,15 @@ package: package-discovery package-deployment
 
 package-discovery:
 	@PACKAGE_STACK=discovery bash scripts/package-stack.sh "$(DIST_DIR)/oke-llm-discovery.zip" $(PACKAGE_FLAGS)
-	@echo 'RMS working directory: terraform/stacks/discovery'
+	@echo 'RMS working directory: root (.)'
 
 package-deployment:
 	@PACKAGE_STACK=deployment bash scripts/package-stack.sh "$(DIST_DIR)/oke-llm-deployment.zip" $(PACKAGE_FLAGS)
-	@echo 'RMS working directory: terraform/stacks/deployment'
+	@echo 'RMS working directory: root (.)'
 
 refresh-model-catalog:
 	@bash scripts/refresh-model-catalog.sh
+
+check-packages: package
+	@bash scripts/check-stack-package.sh "$(DIST_DIR)/oke-llm-discovery.zip"
+	@bash scripts/check-stack-package.sh "$(DIST_DIR)/oke-llm-deployment.zip"

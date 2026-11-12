@@ -12,7 +12,7 @@ The source now contains both Terraform stacks. Model profiling uses HCL/HTTP; dy
 
 ## Discover and choose
 
-Run `terraform/stacks/discovery` locally or set that working directory in OCI Resource Manager. Enter a public Hugging Face URL/ID. Supply context and concurrency. Image selection and serving overrides are deployment concerns; discovery uses stated automatic memory assumptions. The catalog pins upstream recipe provenance; model revisions are resolved and pinned during discovery for both listed and custom models.
+Run `terraform/stacks/discovery` locally, or upload the discovery ZIP to OCI Resource Manager with working directory `.`. Enter a public Hugging Face URL/ID. Supply context and concurrency. Image selection and serving overrides are deployment concerns; discovery uses stated automatic memory assumptions. The catalog pins upstream recipe provenance; model revisions are resolved and pinned during discovery for both listed and custom models.
 
 ```sh
 terraform -chdir=terraform/stacks/discovery output -json deployment_inputs > work/deployment-inputs.tfvars.json
@@ -33,7 +33,7 @@ terraform -chdir=terraform/stacks/deployment plan -var-file="$PWD/work/deploymen
 terraform -chdir=terraform/stacks/deployment apply "$PWD/work/deployment.tfplan"
 ```
 
-Add `selection_id` to target.json (candidate or sizing-option ID). Model identity, workload assumptions, assessed image and known topology are loaded from the JSON automatically. For an undetermined option, supply expert topology and per-rank memory in deployment. For RMS, create a second stack with working directory `terraform/stacks/deployment`, paste the entire deployment_inputs JSON into **Discovery JSON**, then fill target/selection/override fields. The deployment form describes the handoff fields; discovery cannot dynamically change the form of another stack. Re-run discovery when requirements change. Change `observation_id` before a new allocation attempt to refresh the deployment module’s native capacity report; discovery itself now reads fresh CLI reports during Plan.
+Add `selection_id` to target.json (candidate or sizing-option ID). Model identity, workload assumptions, assessed image and known topology are loaded from the JSON automatically. For an undetermined option, supply expert topology and per-rank memory in deployment. For RMS, upload the deployment ZIP to a second stack with working directory `.`, paste the entire deployment_inputs JSON into **Discovery JSON**, then fill target/selection/override fields. The deployment form describes the handoff fields; discovery cannot dynamically change the form of another stack. Re-run discovery when requirements change. Change `observation_id` before a new allocation attempt to refresh the deployment module’s native capacity report; discovery itself now reads fresh CLI reports during Plan.
 
 Allocation rechecks target-compartment entitlement in GPU units, selected quantity, image/shape compatibility, active cluster and hardware capacity. It creates a retained GPU pool and separate CPU pool. Supported RDMA selections also create a Compute Cluster and scoped node-pool launch policy; enhanced OKE is required. Multi-node Ethernet remains possible for other supported shapes, with performance requiring measurement. Capacity reports neither reserve hosts nor guarantee RDMA placement. A failed allocation may still require retrying later or selecting another AD/shape.
 
@@ -71,9 +71,11 @@ npm ci
 npm test
 # Optionally exercise the actual pinned chart:
 HELM_CHART_FILE=/path/to/vllm-stack-0.1.14.tgz npm test
-bash scripts/package-stack.sh /tmp/oke-llm-serving.zip
+make check-packages
+# Or package a single stack:
+PACKAGE_STACK=discovery bash scripts/package-stack.sh /tmp/oke-llm-discovery.zip
 # Optional maintainer-only refresh before packaging:
-bash scripts/package-stack.sh /tmp/oke-llm-serving.zip --refresh-catalog
+PACKAGE_STACK=discovery bash scripts/package-stack.sh /tmp/oke-llm-discovery.zip --refresh-catalog
 ```
 
 Node and the `yaml` development dependency are used only to test generated manifests/schema; neither stack nor deployed benchmark requires Node. Installations in `node_modules` are ignored and disposable. Packaging uses committed source and excludes tests, local dependencies, Terraform caches/state and private discovery outputs. A refresh enumerates all structured recipes and named checkpoint variants from commit-pinned vLLM, vLLM recipes and vLLM-Omni sources. The list covers every task and is sorted case-insensitively by full model ID. It is recipe coverage, not runtime certification; custom IDs remain supported.

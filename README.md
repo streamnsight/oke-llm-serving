@@ -19,9 +19,9 @@ terraform -chdir=terraform/stacks/discovery apply /path/to/discovery.tfplan
 terraform -chdir=terraform/stacks/discovery output -json deployment_inputs > work/deployment-inputs.tfvars.json
 ```
 
-For RMS packages, run `make package` from the repository root. This writes separate discovery and deployment ZIPs to `work/packages/`; select the corresponding `terraform/stacks/...` working directory when uploading. Packages use committed HEAD. See [RMS packaging and JSON export](docs/rms-discovery.md).
+For RMS packages, run `make package` from the repository root. This writes separate discovery and deployment ZIPs to `work/packages/`; use the ZIP root (`.`) as the working directory. Each ZIP has `main.tf`, `schema.yaml` and `modules/` at its root. Packages use committed HEAD. `make check-packages` also extracts and Terraform-validates both ZIPs. The **Package RMS stacks** GitHub workflow publishes the two ZIP files as downloadable Actions artifacts on pushes/merges to `main`. See [RMS packaging and JSON export](docs/rms-discovery.md).
 
-For RMS, use this repository as the configuration source and set the working directory to `terraform/stacks/discovery`. Its `schema.yaml` describes the user inputs. See [RMS setup, scope and limitations](docs/rms-discovery.md).
+If linking RMS directly to the Git repository instead of uploading a packaged ZIP, set the working directory to `terraform/stacks/discovery`. Its `schema.yaml` describes the user inputs. See [RMS setup, scope and limitations](docs/rms-discovery.md).
 
 Hugging Face profiling uses `hashicorp/http` and HCL. OCI regional discovery uses Bash, OCI CLI and jq through `hashicorp/external`, dynamically scanning subscribed regions without provider aliases. These tools must be installed on the execution host (OCI CLI was verified on the tested RMS host). There is no Go build, custom Python script or nested Terraform invocation. Deployment admission/allocation remains native `oracle/oci`.
 
