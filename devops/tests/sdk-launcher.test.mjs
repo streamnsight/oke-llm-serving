@@ -3,7 +3,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, copyFileSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, copyFileSync, writeFileSync, rmSync, chmodSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
@@ -19,6 +19,7 @@ test('SDK launcher verifies the platform executable before running it',()=>{
   writeFileSync(binary,executable,{mode:0o755});writeFileSync(`${binary}.sha256`,'incorrect');
   assert.equal(spawnSync('bash',[script]).status,2);
   writeFileSync(`${binary}.sha256`,createHash('sha256').update(executable).digest('hex'));
+  chmodSync(binary,0o644);
   assert.deepEqual(JSON.parse(execFileSync('bash',[script],{encoding:'utf8'})),{result:'verified'});
  } finally {rmSync(dir,{recursive:true,force:true});}
 });

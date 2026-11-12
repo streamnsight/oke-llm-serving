@@ -22,8 +22,10 @@ if [[ "$package_stack" != all ]]; then
 fi
 jq -n --arg selected "$package_stack" --arg commit "$(git -C "$repo" rev-parse HEAD)" --arg catalog "$(shasum -a 256 "$staging/catalogs/models.json" | cut -d ' ' -f 1)" '{source_commit:$commit,model_catalog_sha256:$catalog,working_directories:(if $selected=="all" then ["terraform/stacks/discovery","terraform/stacks/deployment"] else ["terraform/stacks/"+$selected] end)}' > "$staging/package-manifest.json"
 if [[ "$package_stack" != deployment ]]; then
-  GOPATH="${GOPATH:-$repo/work/go}" GOCACHE="${GOCACHE:-$repo/work/go-build-cache}" bash "$staging/scripts/build-discovery-sdk.sh" linux amd64
-  jq --arg binary "$(cat "$staging/bin/linux_amd64/oci-discovery.sha256")" '. + {discovery_binary_sha256:$binary,discovery_binary_platform:"linux_amd64"}' "$staging/package-manifest.json" > "$staging/manifest.tmp"
+  for sdk_arch in amd64 arm64; do
+    GOPATH="${GOPATH:-$repo/work/go}" GOCACHE="${GOCACHE:-$repo/work/go-build-cache}" bash "$staging/scripts/build-discovery-sdk.sh" linux "$sdk_arch"
+  done
+  jq --arg amd64 "$(cat "$staging/bin/linux_amd64/oci-discovery.sha256")" --arg arm64 "$(cat "$staging/bin/linux_arm64/oci-discovery.sha256")" '. + {discovery_binaries:{linux_amd64:$amd64,linux_arm64:$arm64}}' "$staging/package-manifest.json" > "$staging/manifest.tmp"
   mv "$staging/manifest.tmp" "$staging/package-manifest.json"
 fi
 # Tracked repository source only; private state/work files never enter the archive.
