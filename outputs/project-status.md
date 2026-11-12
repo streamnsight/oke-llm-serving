@@ -58,3 +58,5 @@ Dynamic SDK validation: local lookup successfully covered all 16 READY subscript
 
 
 RMS discovery validation: a real Plan completed successfully using the compiled OCI SDK helper, assessing all 16 READY subscribed regions in the test tenancy. RMS authentication required its InstancePrincipal mode plus delegated caller token; raw instance-principal calls alone were denied. The model form now takes a Hugging Face URL or ID directly. Flint remains outside this stack's estimator/engine coverage. The user has requested investigation of using the existing OCI CLI/Python SDK runtime instead of packaging Go binaries; runtime availability is being checked before that decision. The browser's Resource Manager pages remain blank, so revised form rendering is not yet verified.
+
+Runtime probe confirmed OCI CLI and Python OCI SDK 2.189.0 on Python 3.9.25 in the actual RMS job host. The temporary probe deliberately stopped before discovery and the stack configuration was restored to the working discovery package. Go packaging is unnecessary for this inspected environment; replacement with a CLI-backed helper remains to be implemented.

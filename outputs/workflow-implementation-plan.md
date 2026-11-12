@@ -102,6 +102,6 @@ Local SDK verification: seven Go tests, five root Terraform tests, and eleven co
 - [x] Honor RMS authentication mode and delegated caller tokens without persisting credentials or verbose SDK request logs.
 - [x] Complete a real RMS discovery Plan: all 16 READY subscribed regions were assessed. No GPU instances were allocated. Flint still has zero analytical candidates because engine/estimator coverage is separate from capacity.
 - [ ] Verify the revised form visually; the Resource Manager console remains blank even on its stack-list page in the inspected browser session.
-- [ ] Resolve the user's simpler-runtime preference: inspect whether the RMS execution host includes OCI CLI / Python OCI SDK before replacing the compiled Go helper. Do not treat the SDK implementation language as a Terraform requirement.
+- [x] Inspect the actual RMS execution host: OCI CLI, Python 3.9.25 and OCI Python SDK 2.189.0 are installed. A Go executable is not required for this environment. The simpler replacement is a Terraform external shell helper invoking OCI CLI with regional and delegated-auth settings; that replacement is not implemented yet.
 
 Nine Go test functions (including auth-mode and delegated-token cases), five discovery Terraform tests and twelve Node checks passed. Both stack ZIPs were rebuilt and the discovery archive passed integrity validation. The model URL/ID field and dynamic scan are on the feature branch; no main merge has been made while the user reviews the execution approach.
