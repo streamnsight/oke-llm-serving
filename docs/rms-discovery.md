@@ -24,7 +24,7 @@ The helper honors `TF_VAR_auth` / `OCI_AUTH` for APIKey, InstancePrincipal and R
 
 The actual RMS runtime probe found OCI CLI and Python OCI SDK 2.189.0 on Python 3.9.25. This is an observation of the tested host, not a guarantee of every future RMS image. Missing CLI/jq fails with a clear dependency message. The stack does not install packages at runtime. Packaging needs Bash, jq and zip; catalog refresh additionally uses Node only as a build-time YAML parser.
 
-Four regional scans run concurrently. API failures fail the snapshot rather than becoming capacity zero. The headroom budget remains 1000 queries per region, with shape-relevant quota names first; omitted/unsupported/disabled headroom remains unknown. Capacity uses the tenancy root and shape listings separately from target-compartment entitlement. Only known AD-matched zero limits suppress capacity calls when `only_shapes_with_limits` is enabled; unmapped quotas remain included.
+Four regional scans run concurrently in bounded batches. Separate CLI processes add startup/authentication overhead compared with a long-lived SDK client. API failures fail the snapshot rather than becoming capacity zero. The headroom budget remains 1000 queries per region, with shape-relevant quota names first; omitted/unsupported/disabled headroom remains unknown. Capacity uses the tenancy root and shape listings separately from target-compartment entitlement. Only known AD-matched zero limits suppress capacity calls when `only_shapes_with_limits` is enabled; unmapped quotas remain included.
 
 Capacity diagnostic reports are now requested when the data source is read, including during Plan/refresh. `observation_id` labels the result rather than controlling resource recreation. No instances are allocated or reserved. Counts represent instances, not GPUs, and candidate alternatives may share the same supply. A CLI/API snapshot does not establish runtime compatibility or RDMA placement.
 
@@ -49,7 +49,7 @@ For a successful Plan, the CLI data is already read. Download its JSON plan with
 
 `assessment.blocking_reasons` and `evaluated_layout_count` distinguish unsupported models/engines from rejected layouts. `capacity.reported_sufficient` only compares physical instance counts with the report's requested quantity. Candidates additionally require estimator/engine coverage, compatible hardware and TP/PP partitioning, per-rank memory fit, enough hosts and no known blocked entitlement.
 
-Flint is supported upstream by vLLM v0.33.0, while this stack's engine/estimator coverage is still limited. A recipe/catalog entry is not a promise this deployment implementation can serve it. Live recipe/flag resolution and multimodal/audio serving validation remain separate work.
+Flint is supported upstream by vLLM v0.33.0, while this stack's engine/estimator coverage is still limited. See [the Flint gap assessment](flint-assessment.md) for recipe evidence and required changes. A recipe/catalog entry is not a promise this deployment implementation can serve it. Live recipe/flag resolution and multimodal/audio serving validation remain separate work.
 
 ## Deploy a selected configuration
 
