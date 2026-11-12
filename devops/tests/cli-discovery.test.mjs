@@ -19,7 +19,7 @@ if(args.includes('--auth')&&flag('--auth')==='instance_obo_user') {
  if(!config.includes('delegation_token_file=')||config.includes('fixture-secret-token'))throw Error('unsafe config');
 }
 let data;
-if(command.includes('region-subscription list')) data=scenario==='batch-four'?[1,2,3,4].map(n=>({'region-name':'region-'+n,status:'READY'})):[{'region-name':'new-region-99',status:'READY'},{'region-name':'not-ready',status:'IN_PROGRESS'}];
+if(command.includes('region-subscription list')) data=scenario==='batch-four'?[1,2,3,4].map(n=>({'region-name':'region-'+n,status:'READY','is-home-region':n===1})):[{'region-name':'new-region-99',status:'READY','is-home-region':true},{'region-name':'not-ready',status:'IN_PROGRESS'}];
 else if(command.includes('availability-domain list')) data=[{name:'AD-1'}];
 else if(command.includes('compute shape list')) data=[{shape:'VM.GPU.A10.1',gpus:1,'gpu-description':'A10','memory-in-gbs':240,ocpus:15,'quota-names':['gpu-a10-count']}];
 else if(command.includes('limits definition list'))data=[{name:'gpu-a10-count','is-resource-availability-supported':true}];
@@ -78,4 +78,11 @@ test('RMS delegated auth uses private token-file config and never exposes token'
 test('a complete four-region batch publishes every region with no trailing jobs',()=>{
  const r=run('batch-four');assert.equal(r.status,0,r.stderr);assert.equal(r.result.regions.length,4);
  assert.deepEqual(r.result.regions.map(r=>r.inventory.region),['region-1','region-2','region-3','region-4']);
+});
+
+test('home region is discovered even when the local caller omits a connection region',()=>{
+ const r=run('',{region:''});assert.equal(r.status,0,r.stderr);assert.equal(r.result.home_region,'new-region-99');
+ const subscriptions=r.calls.filter(c=>c.includes('region-subscription'));
+ assert.equal(subscriptions[0].includes('--region'),false,'first request uses CLI defaults');
+ assert.equal(subscriptions[1][subscriptions[1].indexOf('--region')+1],'new-region-99','home region handles subscription discovery');
 });

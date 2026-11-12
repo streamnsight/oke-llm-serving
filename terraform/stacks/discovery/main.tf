@@ -20,7 +20,7 @@ data "external" "oci_discovery" {
   query = {
     tenancy_ocid                = var.tenancy_ocid
     compartment_id              = coalesce(var.compartment_id, var.tenancy_ocid)
-    region                      = var.region
+    region                      = var.region == null ? "" : var.region
     regions                     = jsonencode(sort(tolist(var.regions)))
     shape_names                 = jsonencode(sort(tolist(var.shape_names)))
     query_resource_availability = tostring(var.query_resource_availability)
@@ -69,6 +69,7 @@ output "discovery" {
     profile               = module.model_profile.profile
     serving_configuration = module.serving_resolution.resolution
     assessment            = module.planner.assessment
+    home_region           = try(local.oci_discovery.home_region, null)
     subscribed_regions    = sort(tolist(local.subscribed_regions))
     assessed_regions      = sort(tolist(local.selected_regions))
     regions               = local.regional_results

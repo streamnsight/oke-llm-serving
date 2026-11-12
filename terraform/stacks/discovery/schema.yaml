@@ -11,7 +11,8 @@ variableGroups:
     variables: [engine_channel, engine_version, engine_platform, recipe_features]
   - title: Capacity observation
     variables: [observation_id, compartment_id, regions, shape_names, query_resource_availability, only_shapes_with_limits]
-  - title: OCI connection
+  - title: OCI context
+    visible: false
     variables: [tenancy_ocid, region]
 variables:
   tenancy_ocid:
@@ -21,10 +22,11 @@ variables:
     visible: false
   region:
     type: oci:identity:region:name
-    title: Bootstrap region
-    description: Region used to discover tenancy subscriptions; it does not restrict the regional scan.
+    title: Internal RMS connection region
+    description: Injected by RMS for initial contact only. Discovery uses OCI metadata to select the tenancy home region.
     required: true
     default: ${session.region}
+    visible: false
   model_choice:
     type: string
     default: custom

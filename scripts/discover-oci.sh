@@ -14,7 +14,7 @@ jq -e '
   if type!="object" or any(.[];type!="string") then error("Expected Terraform external string-map query") else . end |
   .regions=((.regions|fromjson)//[]|unique) | .shape_names=((.shape_names|fromjson)//[]|unique) |
   .gpu_catalog|=fromjson | .query_resource_availability|=fromjson | .only_shapes_with_limits|=fromjson |
-  if (.tenancy_ocid|length)>0 and (.region|length)>0 and
+  if (.tenancy_ocid|length)>0 and
     (.regions|type)=="array" and all(.regions[];type=="string") and
     (.shape_names|type)=="array" and all(.shape_names[];type=="string") and
     (.query_resource_availability|type)=="boolean" and (.only_shapes_with_limits|type)=="boolean" and
@@ -22,7 +22,7 @@ jq -e '
   .compartment_id=(if (.compartment_id//"")!="" then .compartment_id else .tenancy_ocid end)
 ' "$scratch/input.json" > "$scratch/query.json"
 query="$scratch/query.json"
-tenancy=$(jq -r .tenancy_ocid "$query"); compartment=$(jq -r .compartment_id "$query"); bootstrap=$(jq -r .region "$query")
+tenancy=$(jq -r .tenancy_ocid "$query"); compartment=$(jq -r .compartment_id "$query"); connection_region=$(jq -r '.region // ""' "$query")
 # Native-provider auth settings are mapped explicitly; local CLI defaults/profile remain usable.
 setting() { local key value; for key in "TF_VAR_$1" "OCI_$1" "$1"; do value=${!key:-}; if [[ -n "$value" ]]; then printf '%s' "$value"; return; fi; done; }
 auth_args=()
@@ -39,7 +39,8 @@ case "$mode" in
         fi
         [[ -r "$token_path" && -s "$token_path" ]] || { echo 'Cannot read RMS delegated caller token.' >&2; exit 2; }
         # The CLI takes a token-file reference, not the token in argv or Terraform state.
-        printf '[DEFAULT]\nregion=%s\ndelegation_token_file=%s\n' "$bootstrap" "$token_path" > "$scratch/cli-config"
+        printf '[DEFAULT]\ndelegation_token_file=%s\n' "$token_path" > "$scratch/cli-config"
+        if [[ -n "$connection_region" ]]; then printf 'region=%s\n' "$connection_region" >> "$scratch/cli-config"; fi
         auth_args=(--auth instance_obo_user --config-file "$scratch/cli-config" --profile DEFAULT)
         ;;
       false|'') auth_args=(--auth instance_principal);;
@@ -54,13 +55,21 @@ export OCI_CLI_SUPPRESS_FILE_PERMISSIONS_WARNING=True
 cli() {
   local region=$1 output=$2; shift 2
   # --all on list calls delegates service pagination to the CLI.
-  oci ${auth_args[@]+"${auth_args[@]}"} --region "$region" --output json --connection-timeout 10 --read-timeout 60 "$@" > "$output.raw"
+  local region_args=()
+  if [[ -n "$region" ]]; then region_args=(--region "$region"); fi
+  oci ${auth_args[@]+"${auth_args[@]}"} ${region_args[@]+"${region_args[@]}"} --output json --connection-timeout 10 --read-timeout 60 "$@" > "$output.raw"
   jq -e 'if has("data") then .data else error("OCI CLI response has no data") end |
     walk(if type=="object" then with_entries(.key|=gsub("-";"_")) else . end)' "$output.raw" > "$output"
   rm "$output.raw"
 }
 jq_lib() { jq -L "$repo/scripts/lib" "$@"; }
-cli "$bootstrap" "$scratch/subscriptions.json" iam region-subscription list --tenancy-id "$tenancy"
+# The first endpoint comes from hidden RMS context or the local CLI profile.
+# It is only needed to learn the tenancy's actual home region, never a UI choice.
+cli "$connection_region" "$scratch/subscriptions.json" iam region-subscription list --tenancy-id "$tenancy"
+home_region=$(jq -er '[.[]|select(.is_home_region==true and .status=="READY")|.region_name] | if length==1 then .[0] else error("Expected exactly one READY tenancy home region") end' "$scratch/subscriptions.json")
+if [[ "$connection_region" != "$home_region" ]]; then
+  cli "$home_region" "$scratch/subscriptions.json" iam region-subscription list --tenancy-id "$tenancy"
+fi
 jq '[.[]|select(.status=="READY")|.region_name]|unique' "$scratch/subscriptions.json" > "$scratch/ready.json"
 jq -en --slurpfile q "$query" --slurpfile ready "$scratch/ready.json" '
   (if ($q[0].regions|length)>0 then $q[0].regions else $ready[0] end) as $selected |
@@ -133,6 +142,6 @@ while IFS= read -r region; do
 done < <(jq -r '.[]' "$scratch/selected.json")
 failed=0; for pid in ${pids[@]+"${pids[@]}"}; do wait "$pid" || failed=1; done
 ((failed==0)) || { echo 'Regional discovery failed; no snapshot published.' >&2; exit 1; }
-jq -s --slurpfile ready "$scratch/ready.json" --slurpfile selected "$scratch/selected.json" '
-  {schema_version:"1.0",subscribed_regions:$ready[0],assessed_regions:$selected[0],regions:sort_by(.inventory.region)} | {result:tojson}
+jq -s --arg home "$home_region" --slurpfile ready "$scratch/ready.json" --slurpfile selected "$scratch/selected.json" '
+  {schema_version:"1.0",home_region:$home,subscribed_regions:$ready[0],assessed_regions:$selected[0],regions:sort_by(.inventory.region)} | {result:tojson}
 ' "$scratch"/region-*/result.json

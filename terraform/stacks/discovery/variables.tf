@@ -5,7 +5,8 @@ variable "tenancy_ocid" {
   type        = string
 }
 variable "region" {
-  description = "RMS/bootstrap region for subscription lookup; not the deployment selection."
+  description = "Internal initial OCI endpoint, normally injected by RMS. Null uses CLI defaults; the tenancy home region is discovered automatically."
+  default     = null
   type        = string
 }
 variable "model" {

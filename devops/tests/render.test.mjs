@@ -80,7 +80,7 @@ test('RMS scope filters use optional list controls with typed items',()=>{
   }
 });
 
-test('RMS groups reference defined variable names and bootstrap region is selectable',()=>{
+test('RMS groups reference defined variable names and connection context is hidden',()=>{
   for(const stack of ['discovery','deployment']) {
     const schema=parse(readFileSync(`${root}/terraform/stacks/${stack}/schema.yaml`,'utf8'));
     for(const group of schema.variableGroups) for(const name of group.variables) {
@@ -91,7 +91,8 @@ test('RMS groups reference defined variable names and bootstrap region is select
   const schema=parse(readFileSync(`${root}/terraform/stacks/discovery/schema.yaml`,'utf8'));
   assert.equal(schema.variables.region.type,'oci:identity:region:name');
   assert.equal(schema.variables.region.default,'${session.region}');
-  assert.notEqual(schema.variableGroups.find(g=>g.variables.includes('region')).visible,false);
+  assert.equal(schema.variables.region.visible,false);
+  assert.equal(schema.variableGroups.find(g=>g.variables.includes('region')).visible,false);
 });
 
 test('frozen recipe argv and environment reach both Helm and distributed pods',()=>{

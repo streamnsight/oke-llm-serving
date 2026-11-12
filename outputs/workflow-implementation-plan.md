@@ -129,3 +129,10 @@ Local runtime-resolution evidence: native HTTP/HCL lookup for RecursiveSI/flint 
 
 
 Combined RMS Plan succeeded for BF16 Flint across all 16 subscribed regions. The downloaded plan freezes vLLM 0.33.0 linux/amd64 at digest sha256:91ee972ab751fb7180bc71c175865e36b091686600dca783d52b2511399810b3, records the recipe's nightly hint, identifies GB200/ARM64 as the upstream target and exposes 56 undetermined aggregate-sizing options. Status is expert_options_available; no automatic per-rank Flint layouts are claimed. Evidence is retained privately at work/runtime-resolution-rms-plan.json. No GPU nodes, DevOps deployment or benchmark were run. An additional render regression verifies digest-pinned expert images with registry ports, explicit tags and custom version labels. Source is committed and packaged; local-main integration follows validation.
+
+## Default discovery to tenancy home region
+- [x] Hide the internal initial-connection region; make local region input optional.
+- [x] Discover the home region from OCI subscription metadata, use it for the subscription lookup and expose it in discovery output. Retain all-READY regional scanning.
+- [x] Verify home-region routing, absent local overrides and the hidden RMS form contract; run a live scoped CLI check, package and commit.
+
+Home-region verification: seven CLI tests, six discovery Terraform tests and the hidden-context schema check passed. A live scoped CLI run with no explicit initial region discovered home us-chicago-1 and assessed ap-melbourne-1, confirming home connection and scan scope are distinct. No GPU nodes were allocated. Both RMS packages are rebuilt from the committed source.

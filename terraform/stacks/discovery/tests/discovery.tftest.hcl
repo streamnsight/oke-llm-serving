@@ -75,3 +75,12 @@ run "null_scopes_use_empty_defaults" {
     error_message = "Null filters must become empty arrays rather than malformed external inputs."
   }
 }
+
+run "connection_region_is_optional_for_local_discovery" {
+  command=plan
+  variables { region=null }
+  assert {
+    condition=data.external.oci_discovery.query.region==""
+    error_message="Local discovery must use CLI defaults when no connection endpoint is supplied."
+  }
+}
