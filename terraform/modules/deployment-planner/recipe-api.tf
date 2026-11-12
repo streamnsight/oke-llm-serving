@@ -1,11 +1,11 @@
 # Copyright (c) 2020-2022 Oracle and/or its affiliates. All rights reserved.
 # Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
 locals {
-  recipe_parent = try([for m in jsondecode(file("${path.module}/../../../catalogs/models.json")).models : m.recipes[0].recipe_model_id if m.id == local.profile.model.repository][0], try(local.profile.model.repository, ""))
+  recipe_id = try(local.profile.model.repository, "")
 }
 data "http" "recipe_metadata" {
   count              = var.recipe_api_enabled ? 1 : 0
-  url                = "https://recipes.vllm.ai/${local.recipe_parent}.json"
+  url                = "https://recipes.vllm.ai/${local.recipe_id}.json"
   request_timeout_ms = 60000
   lifecycle {
     postcondition {
@@ -17,7 +17,7 @@ data "http" "recipe_metadata" {
 locals {
   api                  = try(jsondecode(data.http.recipe_metadata[0].response_body), {})
   api_variants         = [for name, v in try(local.api.variants, {}) : name if try(v.model_id, local.api.model.model_id, "") == try(local.profile.model.repository, "unknown")]
-  api_variant          = contains(local.api_variants, "default") ? "default" : try(one(local.api_variants), null)
+  api_variant          = try(local.api.recommended_command.variant, contains(local.api_variants, "default") ? "default" : one(local.api_variants), null)
   api_variant_metadata = try(local.api.variants[local.api_variant], {})
   # A10 is absent from the API taxonomy. Adapt only the portable BF16 baseline,
   # never a quantized profile whose kernels may require a different architecture.
@@ -26,7 +26,7 @@ locals {
 }
 data "http" "recipe_rendering" {
   for_each           = local.api_hardware
-  url                = "https://recipes.vllm.ai/${local.recipe_parent}.json?hardware=${each.value}&variant=${local.api_variant}&strategy=single_node_tp"
+  url                = "https://recipes.vllm.ai/${local.recipe_id}.json?hardware=${each.value}&variant=${local.api_variant}&strategy=single_node_tp"
   request_timeout_ms = 60000
   lifecycle {
     postcondition {
@@ -104,7 +104,7 @@ locals {
 # complete API plans for review without silently enabling a second process.
 data "http" "cache_option" {
   for_each           = { for pair in setproduct(keys(local.valid_renderings), ["simple", "lmcache"]) : "${pair[0]}/${pair[1]}" => pair if try(local.api.kv_offload_support.offloading_cpu != "unsupported", false) }
-  url                = "https://recipes.vllm.ai/${local.recipe_parent}.json?hardware=${local.api_hardware[each.value[0]]}&variant=${local.api_variant}&strategy=single_node_tp&kv_offload=${each.value[1]}"
+  url                = "https://recipes.vllm.ai/${local.recipe_id}.json?hardware=${local.api_hardware[each.value[0]]}&variant=${local.api_variant}&strategy=single_node_tp&kv_offload=${each.value[1]}"
   request_timeout_ms = 60000
   lifecycle {
     postcondition {

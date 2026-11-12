@@ -7,11 +7,11 @@ import { readFileSync, mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { parseAllDocuments, parse } from 'yaml';
-const root = resolve(import.meta.dirname, '../..');
-const engines = JSON.parse(readFileSync(`${root}/catalogs/engines.json`));
-const components = JSON.parse(readFileSync(`${root}/catalogs/components.json`));
-const base = { specification_hash:'b'.repeat(64),name:'fixture',namespace:'fixture',model:'org/model',model_revision:'a'.repeat(40),engine_image:engines.engines[0].image,engine_version:engines.engines[0].version,kv_dtype:'bfloat16',tensor_parallel_size:1,pipeline_parallel_size:1,replicas:1,context_length:4096,concurrency:4,requires_rdma:false,components,job_name:'fixture-test' };
-const render = config => JSON.parse(execFileSync('jq', ['-f', `${root}/devops/render.jq`], { input:JSON.stringify(config), encoding:'utf8' }));
+const root = resolve(import.meta.dirname, '..');
+const engineImage = `vllm/vllm-openai@sha256:${"e".repeat(64)}`;
+const components = JSON.parse(readFileSync(`${root}/terraform/modules/devops-serving/data/components.json`));
+const base = { specification_hash:'b'.repeat(64),name:'fixture',namespace:'fixture',model:'org/model',model_revision:'a'.repeat(40),engine_image:engineImage,engine_version:'0.33.0',kv_dtype:'bfloat16',tensor_parallel_size:1,pipeline_parallel_size:1,replicas:1,context_length:4096,concurrency:4,requires_rdma:false,components,job_name:'fixture-test' };
+const render = config => JSON.parse(execFileSync('jq', ['-f', `${root}/terraform/modules/devops-serving/scripts/render.jq`], { input:JSON.stringify(config), encoding:'utf8' }));
 function checkPod(pod) {
   const spec = pod.spec;
   assert.equal(new Set((spec.volumes??[]).map(v=>v.name)).size, (spec.volumes??[]).length, 'duplicate volume names');
@@ -39,16 +39,11 @@ test('distributed groups have correct ranks, anti-affinity, RDMA requests and pi
   assert.match(benchmark.image,/^vllm\/vllm-openai-cpu@sha256:/);
   assert.deepEqual(benchmark.command,['bash','/benchmark/benchmark.sh']);
 });
-test('RMS uses a direct model input while the recipe catalog remains alphabetic',()=>{
+test('RMS takes a direct model ID without a static catalog selector',()=>{
   const schema=parse(readFileSync(`${root}/terraform/stacks/discovery/schema.yaml`,'utf8'));
-  const catalog=JSON.parse(readFileSync(`${root}/catalogs/models.json`));
   assert.equal(schema.variables.model.type,'string');
   assert.equal(schema.variables.model.required,true);
-  assert.equal(schema.variables.model.visible,undefined);
-  assert.equal(schema.variables.model_choice.visible,false);
-  assert.equal(schema.variables.model_choice.enum,undefined);
-  assert.deepEqual(catalog.models.map(m=>m.id),catalog.models.map(m=>m.id).sort((a,b)=>a.toLowerCase()<b.toLowerCase()?-1:a.toLowerCase()>b.toLowerCase()?1:a<b?-1:a>b?1:0));
-  assert.equal(new Set(catalog.models.map(m=>m.id)).size,catalog.models.length);
+  assert.equal(schema.variables.model_choice,undefined);
 });
 test('released production-stack chart produces valid single-node pod structure',{skip:!process.env.HELM_CHART_FILE},()=>{
   const directory=mkdtempSync(`${tmpdir()}/oke-helm-test-`);

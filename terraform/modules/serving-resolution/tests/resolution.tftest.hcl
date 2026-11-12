@@ -1,6 +1,10 @@
 # Copyright (c) 2020-2022 Oracle and/or its affiliates. All rights reserved.
 # Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
 mock_provider "http" {}
+override_data {
+ target=data.http.recipe_metadata
+ values={status_code=404,response_body="{}"}
+}
 variables {
   profile         = { model = { repository = "RecursiveSI/flint", resolved_revision = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }, architecture = { architectures = ["FlintForCausalLM"] } }
   recipe_features = ["reasoning"]
@@ -122,28 +126,17 @@ run "feature_modes_are_not_silently_ignored" {
     error_message = "Complex feature mode semantics must require expert interpretation rather than dropping flags silently."
   }
 }
-run "legacy_recipe_reference_survives_source_migration" {
-  command = plan
-  variables {
-    profile         = { model = { repository = "black-forest-labs/flux-3-image-klein", resolved_revision = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }, architecture = { architectures = ["FlintForCausalLM"] } }
-    recipe_features = []
-  }
-  override_data {
-    target = data.http.recipe
-    values = { status_code = 404, response_body = "404: Not Found" }
-  }
-  override_data {
-    target = data.http.legacy_commit
-    values = { status_code = 200, response_body = "{\"sha\":\"ffffffffffffffffffffffffffffffffffffffff\"}" }
-  }
-  override_data {
-    target = data.http.legacy_recipe
-    values = { status_code = 200, response_body = "meta: {default_hardware: h100}\nmodel: {model_id: black-forest-labs/flux-3-image-klein}\nvariants: {default: {precision: bf16}}\n" }
-  }
-  assert {
-    condition     = output.resolution.recipe.status == "resolved" && output.resolution.recipe.source_commit == "ffffffffffffffffffffffffffffffffffffffff" && strcontains(output.resolution.recipe.source_url, "vllm-project/recipes/")
-    error_message = "Try the live core path first, then resolve a known legacy source at its own immutable commit."
-  }
+run "live_metadata_supplies_the_recipe_owner_and_path" {
+ command=plan
+ variables {recipe_features=[]}
+ override_data {
+  target=data.http.recipe_metadata
+  values={status_code=200,response_body="{\"source\":{\"repo\":\"vllm-project/recipes\",\"sha\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"path\":\"models/RecursiveSI/flint.yaml\"}}"}
+ }
+ assert {
+  condition=output.resolution.recipe.status=="resolved" && strcontains(output.resolution.recipe.source_url,"vllm-project/recipes/") && strcontains(output.resolution.recipe.source_url,"models/RecursiveSI/flint.yaml")
+  error_message="Resolve the live recipe owner/path, without a static alias catalog or legacy source fallback."
+ }
 }
 run "discovery_assesses_nightly_without_requiring_a_user_choice" {
   command = plan

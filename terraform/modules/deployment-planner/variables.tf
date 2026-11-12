@@ -9,9 +9,10 @@ variable "regions" {
   type        = any
 }
 variable "engines" {
-  description = "Release-specific engine-image catalog."
+  description = "Engine evidence resolved live during discovery, or explicit caller-provided test/assessment evidence."
   type        = any
-  default     = null
+  default     = []
+  nullable    = false
 }
 variable "gpu_catalog" {
   type    = any
@@ -35,7 +36,7 @@ variable "replicas" {
 }
 
 variable "serving_resolution" {
-  description = "Frozen runtime recipe/image evidence. Null preserves legacy/offline planner behavior."
+  description = "Frozen runtime recipe/image evidence. Analytical callers may omit recipe evidence; discovery supplies live resolved evidence."
   type        = any
   default     = null
 }

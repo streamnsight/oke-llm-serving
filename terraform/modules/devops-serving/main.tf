@@ -49,8 +49,8 @@ resource "oci_devops_deploy_pipeline" "task" {
   description  = each.key == "benchmark" ? "Manual benchmark; requires a matching successful validation artifact. May saturate the serving pool." : "${each.key} selected LLM configuration."
 }
 locals {
-  components         = jsondecode(file("${path.module}/../../../catalogs/components.json"))
-  specification_hash = sha256(jsonencode({ config = var.config, components = local.components, runner = filesha256("${path.module}/../../../devops/run.sh"), renderer = filesha256("${path.module}/../../../devops/render.jq"), client = filesha256("${path.module}/../../../devops/benchmark.sh") }))
+  components         = jsondecode(file("${path.module}/data/components.json"))
+  specification_hash = sha256(jsonencode({ config = var.config, components = local.components, runner = filesha256("${path.module}/scripts/run.sh"), renderer = filesha256("${path.module}/scripts/render.jq"), client = filesha256("${path.module}/scripts/benchmark.sh") }))
   config = merge(var.config, {
     specification_hash = local.specification_hash
     artifact_bucket    = oci_objectstorage_bucket.evidence.name
@@ -63,9 +63,9 @@ locals {
       "set -euo pipefail",
       "export MODE='${mode}'",
       "export CONFIG_B64='${base64encode(jsonencode(local.config))}'",
-      "export RENDER_B64='${filebase64("${path.module}/../../../devops/render.jq")}'",
-      "export BENCHMARK_B64='${filebase64("${path.module}/../../../devops/benchmark.sh")}'",
-      "printf '%s' '${filebase64("${path.module}/../../../devops/run.sh")}' | base64 --decode > run-serving.sh",
+      "export RENDER_B64='${filebase64("${path.module}/scripts/render.jq")}'",
+      "export BENCHMARK_B64='${filebase64("${path.module}/scripts/benchmark.sh")}'",
+      "printf '%s' '${filebase64("${path.module}/scripts/run.sh")}' | base64 --decode > run-serving.sh",
       "bash run-serving.sh",
     ]) }]
   }) }

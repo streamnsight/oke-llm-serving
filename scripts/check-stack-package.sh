@@ -9,10 +9,12 @@ staging=$(mktemp -d)
 trap 'rm -rf "$staging"' EXIT
 unzip -tq "$archive"
 unzip -q "$archive" -d "$staging"
-for required in main.tf variables.tf schema.yaml .terraform.lock.hcl modules catalogs scripts/discover-oci.sh scripts/lib devops/run.sh devops/render.jq devops/benchmark.sh; do
+for required in main.tf variables.tf schema.yaml .terraform.lock.hcl modules modules/oci-discovery/scripts/discover-oci.sh modules/oci-discovery/scripts/lib/oci-discovery.jq modules/accelerator-inventory/data/gpus.json modules/devops-serving/data/components.json modules/devops-serving/scripts/run.sh modules/devops-serving/scripts/render.jq modules/devops-serving/scripts/benchmark.sh; do
   [[ -e "$staging/$required" ]] || { echo "Missing package asset: $required" >&2; exit 1; }
 done
-[[ ! -e "$staging/terraform" ]] || { echo 'Package contains a nested terraform directory' >&2; exit 1; }
+for obsolete in terraform catalogs scripts devops; do
+  [[ ! -e "$staging/$obsolete" ]] || { echo "Package contains obsolete root directory: $obsolete" >&2; exit 1; }
+done
 if find "$staging" \( -name .terraform -o -name node_modules -o -name .git -o -name work -o -name tests -o -name '*.tfstate*' -o -name '*.tfplan' -o -name '*.tfvars' -o -name '*.tfvars.json' \) -print | grep -q .; then
   echo 'Package contains development/private artifacts' >&2; exit 1
 fi

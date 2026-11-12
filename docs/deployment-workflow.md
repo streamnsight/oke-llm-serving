@@ -5,18 +5,18 @@ Licensed under the Universal Permissive License v 1.0 as shown at http://oss.ora
 
 # Model discovery to OKE deployment
 
-Discovery now resolves runtime recipes/images and supports a frozen expert handoff; see [the current workflow](runtime-serving-resolution.md). The legacy catalog is not required to admit dynamically resolved versions.
+Discovery now resolves runtime recipes/images and supports a frozen expert handoff; see [the current workflow](runtime-serving-resolution.md). There is no static model/engine catalog or migration interface.
 
 
 The source now contains both Terraform stacks. Model profiling uses HCL/HTTP; dynamic regional discovery uses Bash/OCI CLI/jq behind the external data source. Packaging and DevOps use Bash/curl/jq. No stack invokes another Terraform process. Infrastructure application does not automatically run a deployment pipeline.
 
 ## Discover and choose
 
-Run `terraform/stacks/discovery` locally, or upload the discovery ZIP to OCI Resource Manager with working directory `.`. Enter a public Hugging Face URL/ID. Supply context and concurrency. Image selection and serving overrides are deployment concerns; discovery uses stated automatic memory assumptions. The catalog pins upstream recipe provenance; model revisions are resolved and pinned during discovery for both listed and custom models.
+Run `terraform/stacks/discovery` locally, or upload the discovery ZIP to OCI Resource Manager with working directory `.`. Enter a public Hugging Face URL/ID. Supply context and concurrency. Image selection and serving overrides are deployment concerns; discovery uses stated automatic memory assumptions. Recipe source identity is obtained live and model revisions are pinned during discovery.
 
 ```sh
 terraform -chdir=terraform/stacks/discovery output -json deployment_inputs > work/deployment-inputs.tfvars.json
-jq '.discovery.assessment | {status, candidates, sizing_options}' work/deployment-inputs.tfvars.json
+jq '.discovery.assessment | {status, recommended_selection_id, suggestions}' work/deployment-inputs.tfvars.json
 ```
 
 The planner checks dynamically assessed engine evidence, conventional attention architecture, explicit model-card version hints, GPU compute capability, per-rank VRAM, TP head divisibility/KV replication, PP stages and reported AD instance capacity. Runtime overhead applies per GPU. Weight and KV estimates are conservative assumptions rather than measured performance. TP stays within a host; PP spans hosts; replicas require separate hosts. Multiple candidates share the same physical supply and cannot be added together.
@@ -74,20 +74,10 @@ HELM_CHART_FILE=/path/to/vllm-stack-0.1.14.tgz npm test
 make check-packages
 # Or package a single stack:
 PACKAGE_STACK=discovery bash scripts/package-stack.sh /tmp/oke-llm-discovery.zip
-# Optional maintainer-only refresh before packaging:
-PACKAGE_STACK=discovery bash scripts/package-stack.sh /tmp/oke-llm-discovery.zip --refresh-catalog
 ```
 
-Node and the `yaml` development dependency are used only to test generated manifests/schema; neither stack nor deployed benchmark requires Node. Installations in `node_modules` are ignored and disposable. Packaging uses committed source and excludes tests, local dependencies, Terraform caches/state and private discovery outputs. A refresh enumerates all structured recipes and named checkpoint variants from commit-pinned vLLM, vLLM recipes and vLLM-Omni sources. The list covers every task and is sorted case-insensitively by full model ID. It is recipe coverage, not runtime certification; custom IDs remain supported.
+Node and the `yaml` development dependency are used only to test generated manifests/schema; neither stack nor deployed benchmark requires Node. Installations in `node_modules` are ignored and disposable. Packaging uses committed source and excludes tests, local dependencies, Terraform caches/state and private discovery outputs.
 
 Native Terraform mocks and local rendering exercise the contracts. Actual RMS form/job execution, GPU allocation, image startup, RDMA networking and DevOps/container benchmarking still require a selected OCI target and live end-to-end validation. Do not treat mock passes as evidence those runtime steps have succeeded.
 
 Sources: [vLLM benchmark CLI](https://docs.vllm.ai/en/latest/cli/bench/serve/), [pinned CPU image build](https://github.com/vllm-project/vllm/blob/v0.32.0/docker/Dockerfile.cpu), [production-stack](https://github.com/vllm-project/production-stack), [LeaderWorkerSet](https://lws.sigs.k8s.io/docs/).
-
-## Recipe list maintenance
-
-Run `npm ci`, then `make refresh-model-catalog`. Review and commit `catalogs/models.json` before `make package`. The refresh uses Node only as a build-time YAML parser; RMS discovery requires OCI CLI, Bash, jq and standard Terraform providers. A failed/truncated source fetch leaves the prior catalog in place.
-
-`catalogs/model-policy.json` controls sources and `max_recipe_age_days`. The default `null` retains every recipe regardless of age. Setting a nonnegative number filters recipes by upstream `meta.date_added`; undated recipes remain included. `date_updated` is recorded separately. Neither date is a model release date: `release_date` remains null rather than substituting Hugging Face repository creation or recipe publication. A model remains listed if any of its recipe references survives filtering. Upstream recipe provenance is preserved per model/variant.
-
-The reference catalog includes multimodal, embedding and vLLM-Omni entries even where the current estimator/deployment recipe cannot serve them. Listing does not authorize a deployment or imply the vLLM-Omni runtime is implemented. Runtime vLLM recipe/image resolution is now implemented; other engine/modality deployment strategies remain separate work.

@@ -16,9 +16,10 @@ variables.tf
 schema.yaml
 .terraform.lock.hcl
 modules/
-catalogs/
-scripts/
-devops/
+  oci-discovery/scripts/
+  accelerator-inventory/data/gpus.json
+  devops-serving/scripts/
+  devops-serving/data/components.json
 ```
 
 Packaging relocates local module sources to `./modules/...` and updates module-relative catalog/DevOps paths in the staged copy. The repository development layout stays unchanged. For an existing RMS stack, replace its old `terraform/stacks/...` working-directory setting with `.` when uploading the new ZIP. If linking directly to the Git repository instead, continue using `terraform/stacks/discovery` or `terraform/stacks/deployment`.
@@ -27,7 +28,7 @@ Run `make check-packages` to build, extract, initialize and validate both delive
 
 The [Package RMS stacks workflow](../.github/workflows/package-stacks.yaml) runs on pushes to `main` (including merges), or manually through Actions. It checks both packages before publishing `oke-llm-discovery.zip` and `oke-llm-deployment.zip` as separate downloadable run artifacts. Download the selected ZIP from **Actions → Package RMS stacks → successful run → Artifacts**, then upload that file directly to RMS. The upload uses [single-file artifact mode](https://github.com/actions/upload-artifact#upload-an-individual-file-unzipped), so there is no additional archive wrapper. Artifact expiry follows the repository's Actions retention setting. This is run-artifact publication, not a GitHub Release.
 
-Discovery takes a public Hugging Face URL or `owner/model`, revision, context length and concurrency. The form deliberately uses a text field: RMS does not provide a general dependent namespace/model selector for arbitrary static catalogs. The full alphabetical recipe catalog remains in `catalogs/models.json` as evidence/reference; it is not a 517-choice form control. `model_choice` is hidden legacy compatibility input, and an explicit `model` always takes priority.
+Discovery takes a public Hugging Face URL or `owner/model`, revision, context length and concurrency. The form deliberately uses a text field: RMS does not provide a general dependent namespace/model selector for arbitrary static catalogs. Model and variant metadata are resolved live; no model dropdown, static model index or catalog refresh is used.
 
 Discovery automatically identifies the tenancy home region from `is_home_region` subscription metadata and uses that endpoint for the subscription lookup. There is no visible bootstrap-region field. The CLI infers the first endpoint from its authenticated principal or local profile, then discovers the actual home region. The hidden legacy `region` hint defaults empty. Literal old `${session.region}` values are ignored instead of becoming endpoint hostnames. `regions` and `shape_names` are optional list controls with hidden typed items and the serialized default `"[]"`. Empty or null scope inputs mean all READY subscriptions/all visible GPU shapes. Blank/whitespace-only entries (including RMS `shape_names=[""]`) are removed rather than filtering out every shape. Region-scope items use a region selector; shape-scope items accept exact names such as `BM.GPU.H100.8`.
 
@@ -35,7 +36,7 @@ RMS Terraform receives collection overrides as expressions. An empty string (`""
 
 ## Dynamic CLI lookup
 
-Hugging Face profiling remains HTTP-provider/HCL based. Regional discovery uses `hashicorp/external` to run `scripts/discover-oci.sh` with Bash, OCI CLI and jq. It dynamically enumerates READY subscriptions, queries regional inventory/limits/headroom and requests AD capacity reports. No regional provider aliases, Go binaries, custom Python scripts or nested Terraform process are used. Native regional modules remain available for deployment allocation/admission and examples.
+Hugging Face profiling remains HTTP-provider/HCL based. Regional discovery uses `hashicorp/external` to run `terraform/modules/oci-discovery/scripts/discover-oci.sh` with Bash, OCI CLI and jq. It dynamically enumerates READY subscriptions, queries regional inventory/limits/headroom and requests AD capacity reports. No regional provider aliases, Go binaries, custom Python scripts or nested Terraform process are used. Native regional modules remain available for deployment allocation/admission and examples.
 
 The helper honors `TF_VAR_auth` / `OCI_AUTH` for APIKey, InstancePrincipal and ResourcePrincipal. Local runs preserve CLI config/profile/environment defaults. RMS supplies InstancePrincipal plus delegated caller settings: `use_obo_token`, `obo_token_path` and `obo_token`, with `TF_VAR_`, `OCI_` or bare names. These map to CLI `instance_obo_user` auth. The helper creates a private temporary CLI config referring to the token file; if only token content is supplied, it creates a private temporary token file as well. Temporary files are deleted on exit. No token enters Terraform outputs or argv. No broader IAM permissions or local API keys are required.
 
@@ -46,8 +47,6 @@ Four regional scans run concurrently in bounded batches. Separate CLI processes 
 Capacity diagnostic reports are now requested when the data source is read, including during Plan/refresh. `observation_id` labels the result rather than controlling resource recreation. No instances are allocated or reserved. Counts represent instances, not GPUs, and candidate alternatives may share the same supply. A CLI/API snapshot does not establish runtime compatibility or RDMA placement.
 
 ### Existing native discovery state
-
-A stack that previously applied the alias-based discovery may retain report/bookkeeping state referring to old provider aliases. Back up that state before migration. Use a new discovery stack/state, or deliberately remove only the legacy diagnostic-report/module entries after inspection; do not apply a plan blindly or discard deployment allocation state. This project does not automatically rewrite existing state. A failed job that never created resources does not require that cleanup.
 
 ## Obtain JSON
 
@@ -70,7 +69,7 @@ Discovery assesses recipes, stable/nightly candidates, published image platforms
 
 ## Deploy a selected configuration
 
-Fill `terraform/stacks/deployment/target.example.json` with an existing cluster and compatible regional images/subnets. Pass the one deployment_inputs JSON unchanged, choose `selection_id` and target infrastructure in deployment. The selection shell script remains a legacy helper and is not needed for this flow. The second stack uses native OCI Terraform to create retained GPU/CPU infrastructure and DevOps resources. Apply the emitted Kubernetes RBAC manifest, then run the deploy pipeline; validation follows automatically and benchmarking runs separately. See [the complete workflow](deployment-workflow.md).
+Fill `terraform/stacks/deployment/target.example.json` with an existing cluster and compatible regional images/subnets. Pass the one deployment_inputs JSON unchanged, choose `selection_id` and target infrastructure in deployment. The second stack uses native OCI Terraform to create retained GPU/CPU infrastructure and DevOps resources. Apply the emitted Kubernetes RBAC manifest, then run the deploy pipeline; validation follows automatically and benchmarking runs separately. See [the complete workflow](deployment-workflow.md).
 
 References: [Oracle RMS schema/control specification](https://docs.oracle.com/en-us/iaas/Content/ResourceManager/Concepts/terraformconfigresourcemanager_topic-schema.htm), [OCI regional APIs](https://docs.oracle.com/en-us/iaas/Content/API/Concepts/usingapi.htm), [external data-source protocol](https://registry.terraform.io/providers/hashicorp/external/latest/docs/data-sources/external), [RMS job outputs](https://docs.oracle.com/en-us/iaas/Content/ResourceManager/Tasks/list-job-outputs.htm).
 

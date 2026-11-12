@@ -5,7 +5,7 @@
 set -euo pipefail
 set +x
 umask 077
-repo=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+module_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 for tool in oci jq; do command -v "$tool" >/dev/null || { echo "Discovery requires $tool on the execution host." >&2; exit 2; }; done
 scratch=$(mktemp -d)
 trap 'rm -rf "$scratch"' EXIT
@@ -66,7 +66,7 @@ cli() {
     walk(if type=="object" then with_entries(.key|=gsub("-";"_")) else . end)' "$output.raw" > "$output"
   rm "$output.raw"
 }
-jq_lib() { jq -L "$repo/scripts/lib" "$@"; }
+jq_lib() { jq -L "$module_dir/scripts/lib" "$@"; }
 # The first endpoint comes from hidden RMS context or the local CLI profile.
 # It is only needed to learn the tenancy's actual home region, never a UI choice.
 cli "$connection_region" "$scratch/subscriptions.json" iam region-subscription list --tenancy-id "$tenancy"

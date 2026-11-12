@@ -6,9 +6,9 @@ terraform {
 }
 
 locals {
-  engines                 = jsondecode(var.engines == null ? jsonencode(jsondecode(file("${path.module}/../../../catalogs/engines.json")).engines) : jsonencode(var.engines))
-  catalog                 = jsondecode(var.gpu_catalog == null ? jsonencode(jsondecode(file("${path.module}/../../../catalogs/gpus.json")).shapes) : jsonencode(var.gpu_catalog))
-  compute_cluster_regions = jsondecode(file("${path.module}/../../../catalogs/gpus.json")).compute_cluster_regions
+  engines                 = var.engines
+  catalog                 = jsondecode(var.gpu_catalog == null ? jsonencode(jsondecode(file("${path.module}/../accelerator-inventory/data/gpus.json")).shapes) : jsonencode(var.gpu_catalog))
+  compute_cluster_regions = jsondecode(file("${path.module}/../accelerator-inventory/data/gpus.json")).compute_cluster_regions
   profile                 = var.profile
   a                       = try(local.profile.architecture.attention, { layers = 0, heads = 0, kv_heads = 0, hidden_size = 0, vocab_size = 0 })
   memory_supported        = try(local.profile.memory.status == "estimated" && local.a.layers > 0 && local.a.heads > 0 && local.a.kv_heads > 0 && local.a.hidden_size > 0 && local.a.vocab_size > 0, false)
@@ -87,7 +87,7 @@ locals {
     requires_rdma        = layout.pp > 1 && try(layout.row.gpu.compute_cluster_supported && contains(local.compute_cluster_regions, layout.row.region) && layout.row.shape.rdma_ports > 0, false)
     status               = "estimated_feasible_requires_validation"
     runtime_validation   = "not_run"
-    configuration_status = !local.resolution_present ? "legacy_estimated_configuration" : try(
+    configuration_status = !local.resolution_present ? "analytical_estimate_requires_validation" : try(
       var.serving_resolution.status == "resolved_requires_validation" &&
       contains(local.tested_hardware, layout.row.gpu.recipe_hardware) &&
       layout.row.gpu.recipe_hardware == var.serving_resolution.recipe.selected_hardware &&
@@ -113,7 +113,7 @@ output "assessment" {
     sizing_options                 = local.sizing_options
     sizing_diagnostics             = local.sizing_diagnostics
     recipe_hardware_targets        = local.recipe_targets
-    serving_configuration_status   = try(var.serving_resolution.status, "legacy_catalog")
+    serving_configuration_status   = try(var.serving_resolution.status, "explicit_engine_evidence")
     engine_checks                  = [for check in local.engine_checks : { engine = check.engine.id, architecture_supported = check.architecture_ok, version_hints_satisfied = check.hints_ok }]
     shape_observations             = [for row in local.availability_observations : merge(row, { catalog_known = try(local.catalog[row.shape], null) != null })]
     capacity_and_headroom_shapes   = local.capacity_and_headroom_shapes

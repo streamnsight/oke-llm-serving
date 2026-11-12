@@ -1,6 +1,7 @@
 # Copyright (c) 2020-2022 Oracle and/or its affiliates. All rights reserved.
 # Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
 variables {
+  engines=[{id="test-engine",framework="vllm",version="0.33.0",image="fixture",platform="linux/amd64",architectures=["LlamaForCausalLM"],gpu_compute_capabilities=[86],multi_node_backend="mp"}]
   max_nodes_per_replica = 2
   profile = {
     model                = { repository = "org/model", chat_template_available = true, pipeline_tag = "text-generation", resolved_revision = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }

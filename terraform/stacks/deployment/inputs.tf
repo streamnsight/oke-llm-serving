@@ -10,7 +10,7 @@ locals {
   choice_matches      = [for c in local.choices : c if local.selection_key == null ? length(local.choices) == 1 : c.id == local.selection_key]
   selected            = try(one(local.choice_matches), null)
   suggested           = try(local.selected.configuration_status == "suggested_requires_validation", false)
-  resolution          = var.serving_configuration != null ? var.serving_configuration : try(local.selected.serving_configuration, local.discovery_input.serving_configuration, null)
+  resolution          = jsondecode(var.serving_configuration != null ? jsonencode(var.serving_configuration) : jsonencode(try(local.selected.serving_configuration, local.discovery_input.serving_configuration, null)))
   assessed_engines    = try(local.resolution.engine_candidates, [local.resolution.engine], [])
   matching_engines    = [for e in local.assessed_engines : e if try(local.version_override != null && local.image_override == null ? e.version == local.version_override : var.engine_channel == "recommended" ? e.id == local.resolution.engine.id : try(e.channel, e.version == "nightly" ? "nightly" : "stable") == var.engine_channel, false)]
   assessed_engine     = length(local.matching_engines) == 1 ? local.matching_engines[0] : try(local.resolution.engine, null)
@@ -32,7 +32,7 @@ locals {
   observation_id      = coalesce(var.observation_id, "allocation-${try(local.discovery_input.observation_id, "manual")}-${coalesce(local.selection_key, "manual")}")
   assessment_id       = coalesce(var.assessment_id, try(local.selected.id, null), "manual")
   engine_platform     = var.engine_platform == "auto" ? try("linux/${local.gpu.cpu_architecture}", try(local.assessed_engine.platform, "linux/amd64")) : var.engine_platform
-  resolved_engine = merge(jsondecode(local.assessed_engine == null ? "{}" : jsonencode(local.assessed_engine)), {
+  resolved_engine = merge({ id = "unresolved", framework = "vllm", architectures = [], gpu_compute_capabilities = [], multi_node_backend = null }, jsondecode(local.assessed_engine == null ? "{}" : jsonencode(local.assessed_engine)), {
     image                    = try(local.image_override != null ? local.image_override : try(local.assessed_engine.available_images[local.engine_platform], local.assessed_engine.platform == local.engine_platform ? local.assessed_engine.image : null), null),
     version                  = try(coalesce(local.version_override, try(local.assessed_engine.version, null)), "unresolved"), platform = local.engine_platform,
     image_source_association = local.image_override != null ? "deployment_override_not_verified" : try(local.assessed_engine.image_source_association, "assessed")

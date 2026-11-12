@@ -20,16 +20,11 @@ variables:
     visible: false
   region:
     type: string
-    title: Legacy initial connection hint
+    title: Initial connection hint
     description: Normally empty. The CLI infers an initial endpoint from its principal or profile, then discovers the tenancy home region.
     required: false
     default: ""
     visible: false
-  model_choice:
-    type: string
-    default: custom
-    visible: false
-    description: Legacy input retained for existing stacks. Supply model directly for new requests.
   model:
     type: string
     title: Hugging Face model URL or ID

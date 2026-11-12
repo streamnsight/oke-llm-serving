@@ -23,7 +23,7 @@ For RMS packages, run `make package` from the repository root. This writes separ
 
 If linking RMS directly to the Git repository instead of uploading a packaged ZIP, set the working directory to `terraform/stacks/discovery`. Its `schema.yaml` describes the user inputs. See [RMS setup, scope and limitations](docs/rms-discovery.md).
 
-Hugging Face profiling uses `hashicorp/http` and HCL. OCI regional discovery uses Bash, OCI CLI and jq through `hashicorp/external`, dynamically scanning subscribed regions without provider aliases. These tools must be installed on the execution host (OCI CLI was verified on the tested RMS host). There is no Go build, custom Python script or nested Terraform invocation. Deployment admission/allocation remains native `oracle/oci`.
+Hugging Face profiling and recipe/variant lookup use live HTTP data and HCL; no static model/engine catalog or catalog build tool is required. OCI regional discovery uses Bash, OCI CLI and jq through `hashicorp/external`, dynamically scanning subscribed regions without provider aliases. These tools must be installed on the execution host (OCI CLI was verified on the tested RMS host). There is no Go build, custom Python script or nested Terraform invocation. Deployment admission/allocation remains native `oracle/oci`.
 
 Discovery creates reports, not GPU allocations. Counts represent available instances at the observation time and do not reserve them. Hub-published model counts are declared metadata, not independent tensor inspection. Discovery now includes conservative per-rank GPU layouts and engine compatibility assessment. Execution evidence and remaining cloud validation are recorded in [project status](outputs/project-status.md).
 
@@ -34,6 +34,8 @@ The deployment stack at `terraform/stacks/deployment` creates retained GPU/CPU p
 Discovery now uses the vLLM Recipes JSON API to provide ranked, untested hardware-specific suggestions with frozen images and parser flags. Choose an ID from `assessment.suggestions`; `assessment.recommended_selection_id` identifies the resource-oriented default. See [recipe-derived suggestions and limitations](docs/recipe-derived-suggestions.md).
 
 See the [complete deployment workflow](docs/deployment-workflow.md) for the target-file example, RMS handoff, Kubernetes RBAC bootstrap, official vLLM CPU benchmark container and validation boundaries. Cloud/GPU/DevOps execution remains pending a selected target. Durable Responses conversation storage remains a separate API-layer feature.
+
+Runtime scripts and data live with their Terraform modules; root `scripts/` contains packaging tools and root `tests/` contains development checks. See [repository layout and asset ownership](docs/repository-layout.md).
 
 ## Documentation
 

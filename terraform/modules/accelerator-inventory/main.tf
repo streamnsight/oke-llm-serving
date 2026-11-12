@@ -36,7 +36,7 @@ data "oci_limits_limit_values" "compute" {
 }
 
 locals {
-  gpu_catalog = jsondecode(file("${path.module}/../../../catalogs/gpus.json"))
+  gpu_catalog = jsondecode(file("${path.module}/data/gpus.json"))
   definitions = { for definition in data.oci_limits_limit_definitions.compute.limit_definitions : definition.name => definition }
   shapes_by_ad = {
     for ad, listing in data.oci_core_shapes.domain : ad => [

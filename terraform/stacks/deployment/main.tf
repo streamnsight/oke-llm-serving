@@ -16,12 +16,11 @@ module "model_profile" {
   margin         = local.margin
 }
 locals {
-  engines              = jsondecode(file("${path.module}/../../../catalogs/engines.json")).engines
-  engine               = jsondecode(local.resolution != null ? jsonencode(local.resolved_engine) : jsonencode(try([for engine in local.engines : engine if engine.image == local.image_override && engine.version == local.version_override][0], local.engines[0])))
+  engine               = local.resolved_engine
   engine_args          = var.engine_args != null ? var.engine_args : try(tolist(local.serving_configuration.recipe.args), [])
   engine_env           = var.engine_env != null ? var.engine_env : try(tomap(local.serving_configuration.recipe.env), {})
   managed_flags        = ["--model", "--revision", "--served-model-name", "--host", "--port", "--tensor-parallel-size", "-tp", "--pipeline-parallel-size", "-pp", "--max-model-len", "--max-num-seqs", "--dtype", "--kv-cache-dtype", "--gpu-memory-utilization", "--distributed-executor-backend", "--nnodes", "--node-rank", "--master-addr", "--headless"]
-  gpu                  = try(jsondecode(file("${path.module}/../../../catalogs/gpus.json")).shapes[local.gpu_shape], null)
+  gpu                  = try(jsondecode(file("${path.module}/../../modules/accelerator-inventory/data/gpus.json")).shapes[local.gpu_shape], null)
   profile              = module.model_profile.profile
   a                    = local.profile.architecture.attention
   selected_rank_budget = try(local.suggested ? local.selected.estimated_rank_bytes : null, null)
@@ -35,7 +34,6 @@ module "engine_check" {
   source  = "../../modules/deployment-planner"
   profile = local.profile
   regions = []
-  engines = [local.engine]
 }
 resource "terraform_data" "specification" {
   input = { model_sha = local.model_revision, image = local.engine_image, tp = local.tp, pp = local.pp, node_count = local.node_count, serving_configuration = local.serving_configuration, expert_configuration = var.expert_configuration, expert_rank_memory_gib = var.expert_rank_memory_gib, engine_args = local.engine_args, engine_env = local.engine_env }
@@ -66,6 +64,10 @@ resource "terraform_data" "specification" {
       error_message = "The requested engine version/channel was not assessed. Supply an explicit digest-pinned image and version override."
     }
     precondition {
+      condition     = local.version_override == null || try(local.version_override == local.assessed_engine.version, false) || (var.expert_configuration && local.image_override != null)
+      error_message = "Engine version must match frozen image evidence; an unassessed version needs an explicit expert image override."
+    }
+    precondition {
       condition     = !anytrue([for f in var.recipe_features : try(length(local.feature_options[f].modes) > 0, false) || try(local.feature_options[f].companion != null, false) || try(local.feature_options[f].hardware[local.gpu.recipe_hardware] == "unsupported", false)]) || (var.expert_configuration && var.engine_args != null)
       error_message = "Selected features need mode, companion or hardware-specific review. Supply explicit expert argv/env rather than silently dropping their settings."
     }
@@ -75,7 +77,7 @@ resource "terraform_data" "specification" {
     }
     precondition {
       condition     = try(local.profile.model.chat_template_available && (local.profile.model.pipeline_tag == "text-generation" || (local.suggested && try(local.resolution.recipe.serving_mode == "text", false))), false) && local.engine.image == local.engine_image && local.engine.version == local.engine_version && (var.expert_configuration || local.suggested || alltrue([for check in module.engine_check.assessment.engine_checks : check.architecture_supported && check.version_hints_satisfied]))
-      error_message = "Selected image/version must match the frozen discovery configuration or legacy catalog. Unsupported engine evidence requires explicit expert configuration."
+      error_message = "Selected image/version must match the frozen discovery configuration. Unsupported engine evidence requires explicit expert configuration."
     }
     precondition {
       condition = try(
@@ -88,7 +90,7 @@ resource "terraform_data" "specification" {
     precondition {
       condition = try(contains([1, 2, 4, 8], local.tp) && local.tp <= local.gpu.gpus && local.pp >= 1 && floor(local.pp) == local.pp && local.replicas >= 1 && floor(local.replicas) == local.replicas && local.node_count == local.pp * local.replicas &&
         (var.expert_configuration || (local.pp <= local.a.layers && local.a.heads % local.tp == 0 && (local.a.kv_heads % local.tp == 0 || local.tp % local.a.kv_heads == 0))) &&
-      (local.pp == 1 || local.engine.multi_node_backend == "mp") && (!local.requires_rdma || (local.gpu.compute_cluster_supported && contains(jsondecode(file("${path.module}/../../../catalogs/gpus.json")).compute_cluster_regions, local.region))), false)
+      (local.pp == 1 || local.engine.multi_node_backend == "mp") && (!local.requires_rdma || (local.gpu.compute_cluster_supported && contains(jsondecode(file("${path.module}/../../modules/accelerator-inventory/data/gpus.json")).compute_cluster_regions, local.region))), false)
       error_message = "TP must fit the GPU host, PP/replicas must match node count, and RDMA must be supported. Expert mode does not bypass allocation geometry."
     }
     precondition {

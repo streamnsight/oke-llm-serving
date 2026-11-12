@@ -169,3 +169,15 @@ Confirmed-capacity verification: 32 planner tests, seven discovery-root tests an
 - [ ] Verify both extracted packages with Terraform init/validate from the root and reject missing assets or leaked state/tests/private files.
 - [ ] Add a main-push GitHub Actions workflow that builds, validates and uploads the two stack ZIP artifacts.
 - [ ] Update packaging/RMS instructions, build final ZIPs, commit and integrate after local verification. GitHub-hosted execution awaits a remote push/merge.
+
+## Module-owned assets and workspace cleanup
+- [ ] Trace runtime/build catalog and DevOps references; retain active variant aliases, fallback engines, GPU metadata and deployment components.
+- [ ] Move runtime scripts/data into owning modules; encapsulate cross-region OCI CLI discovery in a module and move developer tests to tests/.
+- [ ] Simplify ZIP packaging to module-local assets and exclude build tooling from deployment archives; update tools/docs/tests.
+- [ ] Validate modules, scripts, JSON handoff and extracted packages; clean obsolete caches/research copies while preserving state, inputs and current handoff evidence.
+
+## Live-only model/engine lookup (scope update)
+- [x] Remove static model/engine catalogs, dropdown compatibility input, catalog policy/generator and selection helper.
+- [x] Resolve recipe source owner/path/SHA from the live per-model API and select alias variants from its recommended variant metadata.
+- [x] Keep GPU specifications and deployment infrastructure pins module-owned; no serving engine fallback catalog remains.
+- [ ] Revalidate native/runtime/package flows and finish temporary workspace cleanup before integration.

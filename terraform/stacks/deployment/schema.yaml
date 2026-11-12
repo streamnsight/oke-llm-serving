@@ -13,7 +13,7 @@ variableGroups:
     variables: [engine_channel, engine_version, engine_image, engine_platform, recipe_features, expert_configuration, expert_rank_memory_gib, engine_args, engine_env, node_count, tensor_parallel_size, pipeline_parallel_size, replicas, requires_rdma, context_length, concurrency, kv_dtype, runtime_gib, margin]
   - title: Delivery and benchmark
     variables: [install_gpu_operator, benchmark_requests, benchmark_input_tokens, benchmark_output_tokens, observation_id]
-  - title: Legacy and derived inputs
+  - title: Advanced and derived inputs
     visible: false
     variables: [discovery, tenancy_ocid, region, availability_domain, gpu_shape, model, model_revision, serving_configuration, assessment_id]
 

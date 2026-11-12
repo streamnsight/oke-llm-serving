@@ -14,10 +14,9 @@ terraform {
   }
 }
 
-# The CLI helper maps RMS delegated auth; local runs use the OCI CLI config/profile.
-data "external" "oci_discovery" {
-  program = ["bash", "${path.module}/../../../scripts/discover-oci.sh"]
-  query = {
+# The discovery module owns its runtime CLI helper and authentication mapping.
+locals {
+  discovery_query = {
     tenancy_ocid                = var.tenancy_ocid
     compartment_id              = coalesce(var.compartment_id, var.tenancy_ocid)
     region                      = var.region == null ? "" : var.region
@@ -26,17 +25,17 @@ data "external" "oci_discovery" {
     query_resource_availability = tostring(var.query_resource_availability)
     only_shapes_with_limits     = tostring(var.only_shapes_with_limits)
     observation_id              = var.observation_id
-    gpu_catalog                 = file("${path.module}/../../../catalogs/gpus.json")
   }
+}
+module "oci_discovery" {
+  source = "../../modules/oci-discovery"
+  query  = local.discovery_query
 }
 
 locals {
-  model_catalog      = jsondecode(file("${path.module}/../../../catalogs/models.json"))
-  catalog_choice     = try([for model in local.model_catalog.models : model if model.id == var.model_choice][0], null)
-  explicit_model     = try(length(trimspace(var.model)) > 0, false)
-  effective_model    = local.explicit_model ? trimspace(var.model) : try(local.catalog_choice.id, "")
-  effective_revision = local.explicit_model ? var.revision : coalesce(try(local.catalog_choice.sha, null), var.revision)
-  oci_discovery      = jsondecode(data.external.oci_discovery.result.result)
+  effective_model    = trimspace(var.model)
+  effective_revision = var.revision
+  oci_discovery      = module.oci_discovery.result
   subscribed_regions = toset(local.oci_discovery.subscribed_regions)
   selected_regions   = toset(local.oci_discovery.assessed_regions)
   regional_results   = local.oci_discovery.regions

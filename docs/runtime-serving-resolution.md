@@ -4,7 +4,7 @@ Licensed under the Universal Permissive License v 1.0 as shown at http://oss.ora
 -->
 # Runtime recipe/image discovery and expert configurations
 
-Discovery now looks up the selected model's structured vLLM recipe during the Terraform run. `catalogs/models.json` supplies model/variant aliases and legacy recipe references; it is not a runtime compatibility allowlist. The resolver first tries the model's current canonical path in vllm-project/vllm, then a known legacy owning repository when needed. It resolves each source's main branch to a commit and reads YAML at that immutable SHA. There is no Python/Bash model inspector or executable recipe prose.
+Discovery reads the selected model's live vLLM Recipes JSON endpoint, including checkpoint aliases. The response identifies the upstream recipe repository, path and source SHA. The resolver reads that YAML at the supplied immutable source; if the JSON endpoint is absent it tries the model's canonical vLLM recipe path. There is no static model or engine catalog, catalog build step, or executable model-card prose.
 
 `terraform/modules/serving-resolution` uses only HTTP-provider data and HCL (`yamldecode`, JSON and expressions). It extracts the matching checkpoint variant, base and variant arguments/environment, default-hardware overrides, selected optional features, upstream hardware labels and strategy evidence. It does not install packages or execute launch commands from the guide. Missing recipes, ambiguous variants, unresolved templates, custom-image requirements and conflicting managed flags are returned as issues requiring expert configuration. HTTP access/rate-limit failures fail the lookup rather than pretending a recipe is absent.
 
@@ -14,7 +14,7 @@ Discovery asks for a public model/revision and context/concurrency requirements,
 
 Deployment offers `engine_channel = "recommended"` (default), `"stable"` or `"nightly"` among the assessed candidates. `engine_platform = "auto"` follows the selected GPU node CPU architecture and uses its assessed platform digest. Missing images/platforms fail rather than substituting an incompatible image. An unassessed version needs an explicit digest-pinned `engine_image` / `engine_version` and expert review. Recipe features such as `reasoning` and `tool_calling`, dtype, runtime allowance, margin, argv/env and expert topology belong here.
 
-`catalogs/engines.json` is a legacy/offline fallback. A new discovery does not require editing it. Deployment consumes the recorded evidence without looking up moving tags again. Source registration and image metadata are evidence, not a GPU inference test. An explicit variant `nightly_required` remains distinct from an old `min_vllm_version: nightly` hint. GitHub `/releases/latest` is not assumed to mean a stable tag.
+Deployment consumes the recorded evidence without looking up moving tags again. Source registration and image metadata are evidence, not a GPU inference test. An explicit variant `nightly_required` remains distinct from an old `min_vllm_version: nightly` hint. GitHub `/releases/latest` is not assumed to mean a stable tag.
 
 For Flint reasoning/tools, set this in **deployment**:
 
@@ -77,7 +77,7 @@ An expert can also supply `engine_image` (digest-pinned), `engine_version` and `
 
 Set `selection_id` to the candidate or sizing-option ID in deployment. The stack refuses undetermined configurations without explicit expert settings and rechecks immutable model/image identity, CPU platform, rank VRAM, GPU count, allocation geometry, storage and fresh physical capacity/entitlement. Expert mode relaxes unsupported software/layout inference; it does not bypass infrastructure checks.
 
-`scripts/select-deployment.sh` remains only for legacy pre-expanded inputs; it is not part of the new discovery-to-deployment flow. Package both stacks with `make package`.
+Package both stacks with `make package`; the discovery JSON is passed directly to deployment.
 
 The frozen recipe argv/env reach both the released production-stack Helm chart and the distributed LeaderWorkerSet pods. The configuration and overrides enter the DevOps specification hash and provenance. Deployment validation remains automatically chained after the deploy stage; benchmarking is a separate explicit pipeline. No live GPU inference/benchmark is claimed by discovery or by expert handoff tests.
 

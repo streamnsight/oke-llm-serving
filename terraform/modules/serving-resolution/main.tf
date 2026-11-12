@@ -8,14 +8,23 @@ locals {
   version_override = try(length(trimspace(var.engine_version)) > 0, false) ? trimspace(var.engine_version) : null
   model            = var.profile.model.repository
   arches           = try(var.profile.architecture.architectures, [])
-  catalog          = jsondecode(file("${path.module}/../../../catalogs/models.json"))
-  references       = flatten([for m in local.catalog.models : [for r in m.recipes : r if r.engine == "vllm"] if m.id == local.model])
-  owner            = try([for r in local.references : r if r.repository == "vllm-project/vllm"][0], try(local.references[0], null))
-  repository       = "vllm-project/vllm"
-  path             = try(local.owner.repository == "vllm-project/vllm" ? local.owner.path : "recipes/models/${local.owner.recipe_model_id}.yaml", "recipes/models/${local.model}.yaml")
+  metadata         = try(jsondecode(data.http.recipe_metadata.response_body), {})
+  repository       = try(local.metadata.source.repo, "vllm-project/vllm")
+  source_ref       = try(local.metadata.source.sha, "main")
+  path             = try(local.metadata.source.path, "recipes/models/${local.model}.yaml")
+}
+data "http" "recipe_metadata" {
+  url                = "https://recipes.vllm.ai/${local.model}.json"
+  request_timeout_ms = 60000
+  lifecycle {
+    postcondition {
+      condition     = self.status_code == 404 || try(self.status_code == 200 && can(regex("^vllm-project/[A-Za-z0-9_.-]+$", jsondecode(self.response_body).source.repo)) && can(regex("^[a-f0-9]{40}$", jsondecode(self.response_body).source.sha)) && can(regex("^(recipes/)?models/", jsondecode(self.response_body).source.path)), false)
+      error_message = "Recipe metadata lookup failed or did not supply a valid upstream source identity."
+    }
+  }
 }
 data "http" "recipe_commit" {
-  url                = "https://api.github.com/repos/${local.repository}/commits/main"
+  url                = "https://api.github.com/repos/${local.repository}/commits/${local.source_ref}"
   request_headers    = { Accept = "application/vnd.github+json" }
   request_timeout_ms = 60000
   lifecycle {
@@ -36,35 +45,10 @@ data "http" "recipe" {
   }
 }
 locals {
-  legacy_fallback = data.http.recipe.status_code == 404 && try(local.owner.repository != "vllm-project/vllm", false)
-}
-data "http" "legacy_commit" {
-  count              = local.legacy_fallback ? 1 : 0
-  url                = "https://api.github.com/repos/${local.owner.repository}/commits/main"
-  request_timeout_ms = 60000
-  lifecycle {
-    postcondition {
-      condition     = self.status_code == 200 && can(regex("^[a-f0-9]{40}$", jsondecode(self.response_body).sha))
-      error_message = "Legacy recipe source lookup failed."
-    }
-  }
-}
-data "http" "legacy_recipe" {
-  count              = local.legacy_fallback ? 1 : 0
-  url                = "https://raw.githubusercontent.com/${local.owner.repository}/${jsondecode(data.http.legacy_commit[0].response_body).sha}/${local.owner.path}"
-  request_timeout_ms = 60000
-  lifecycle {
-    postcondition {
-      condition     = contains([200, 404], self.status_code)
-      error_message = "Legacy recipe lookup failed; only 404 means absent."
-    }
-  }
-}
-locals {
-  recipe_status = local.legacy_fallback ? data.http.legacy_recipe[0].status_code : data.http.recipe.status_code
-  recipe_body   = local.legacy_fallback ? data.http.legacy_recipe[0].response_body : data.http.recipe.response_body
-  recipe_url    = local.legacy_fallback ? data.http.legacy_recipe[0].url : data.http.recipe.url
-  recipe_sha    = local.legacy_fallback ? jsondecode(data.http.legacy_commit[0].response_body).sha : jsondecode(data.http.recipe_commit.response_body).sha
+  recipe_status = data.http.recipe.status_code
+  recipe_body   = data.http.recipe.response_body
+  recipe_url    = data.http.recipe.url
+  recipe_sha    = jsondecode(data.http.recipe_commit.response_body).sha
 }
 locals {
   recipe            = try(yamldecode(local.recipe_body), {})
@@ -195,7 +179,7 @@ locals {
     id                       = "vllm-${local.image_tag}-${replace(var.engine_platform, "/", "-")}", framework = "vllm", version = local.use_nightly ? "nightly" : trimprefix(local.stable_tag, "v")
     image                    = local.image_pinned ? "vllm/vllm-openai@${local.image_digest}" : null
     platform                 = var.engine_platform, architectures = local.supported_arches
-    gpu_compute_capabilities = distinct([for gpu in values(jsondecode(file("${path.module}/../../../catalogs/gpus.json")).shapes) : gpu.compute_capability if try(gpu.compute_capability >= (try(var.profile.memory.assumptions.kv_dtype, "bfloat16") == "bfloat16" ? 80 : 75), false)])
+    gpu_compute_capabilities = distinct([for gpu in values(jsondecode(file("${path.module}/../accelerator-inventory/data/gpus.json")).shapes) : gpu.compute_capability if try(gpu.compute_capability >= (try(var.profile.memory.assumptions.kv_dtype, "bfloat16") == "bfloat16" ? 80 : 75), false)])
     source                   = "https://github.com/vllm-project/vllm/blob/${coalesce(local.source_sha, "unresolved")}/vllm/model_executor/models/registry.py"
     source_commit            = local.source_sha, image_tag = local.image_tag, image_metadata_url = data.http.image.url
     image_source_association = "upstream_tag_metadata_not_independently_verified", runtime_validation = "not_run", driver_validation = "required", multi_node_backend = "mp"

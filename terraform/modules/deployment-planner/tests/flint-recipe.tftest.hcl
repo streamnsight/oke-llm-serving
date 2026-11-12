@@ -36,7 +36,7 @@ run "NVFP4_keeps_its_checkpoint_and_exposes_config_staging_requirements" {
  }
  override_data {
  target=data.http.recipe_metadata[0]
- values={status_code=200,response_body="{\"model\": {\"model_id\": \"RecursiveSI/flint\", \"context_length\": 262144}, \"variants\": {\"default\": {\"precision\": \"bf16\", \"vram_minimum_gb\": 96}, \"nvfp4\": {\"model_id\": \"RecursiveSI/flint-nvfp4-gguf\", \"precision\": \"nvfp4\", \"vram_minimum_gb\": 29}}, \"meta\": {\"tasks\": [\"text\"]}}"}
+ values={status_code=200,response_body="{\"model\": {\"model_id\": \"RecursiveSI/flint-nvfp4-gguf\", \"context_length\": 262144}, \"variants\": {\"default\": {\"precision\": \"bf16\", \"vram_minimum_gb\": 96}, \"nvfp4\": {\"model_id\": \"RecursiveSI/flint-nvfp4-gguf\", \"precision\": \"nvfp4\", \"vram_minimum_gb\": 29}}, \"meta\": {\"tasks\": [\"text\"]}, \"recommended_command\": {\"variant\": \"nvfp4\"}}"}
  }
  override_data {
  target=data.http.recipe_rendering["b200"]

@@ -12,12 +12,8 @@ variable "region" {
 variable "model" {
   description = "Public Hugging Face repository URL or owner/model."
   type        = string
-  default     = null
-}
-variable "model_choice" {
-  description = "Legacy catalog selection for existing stacks. An explicit model URL/ID takes priority."
-  type        = string
-  default     = "custom"
+
+  nullable = false
 }
 variable "revision" {
   type    = string

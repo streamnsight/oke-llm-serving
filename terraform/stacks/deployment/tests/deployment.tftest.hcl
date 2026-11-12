@@ -20,6 +20,11 @@ variables {
   tensor_parallel_size   = 1
   pipeline_parallel_size = 1
   replicas               = 1
+  serving_configuration = {
+    status="resolved_requires_validation",model={repository="org/model",resolved_revision="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}
+    engine={id="fixture",framework="vllm",version="0.32.0",image="vllm/vllm-openai@sha256:6ee133356d49ed24cee03dd0cda3d3980279a11c107ce3e752c89e76540f41c9",platform="linux/amd64",architectures=["LlamaForCausalLM"],gpu_compute_capabilities=[86],multi_node_backend="mp"}
+    recipe={args=[],env={},hardware={a10="verified"},selected_hardware="a10",compatible_strategies=["single_node_tp"],variant_metadata={tp=1},feature_options={}}
+  }
   model                  = "org/model"
   model_revision         = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
   engine_image           = "vllm/vllm-openai@sha256:6ee133356d49ed24cee03dd0cda3d3980279a11c107ce3e752c89e76540f41c9"
@@ -116,6 +121,7 @@ run "one_discovery_json_drives_deployment_choices_and_feature_overrides" {
     expert_configuration   = true
     expert_rank_memory_gib = 10
     recipe_features        = ["reasoning"]
+    serving_configuration = null
     discovery = { discovery = {
       observation_id = "assessment-1"
       profile        = { model = { repository = "org/model", resolved_revision = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }, memory = { assumptions = { context_length = 2048, concurrency = 3, kv_dtype = "bfloat16", runtime_allowance_gib = 2, safety_margin_fraction = 0.2 } } }
@@ -156,6 +162,7 @@ run "nightly_is_a_deployment_choice_from_the_assessment" {
     tensor_parallel_size   = null
     pipeline_parallel_size = null
     replicas               = null
+    serving_configuration = null
     discovery              = jsondecode(file("tests/fixtures/handoff.json"))
 
     engine_channel = "nightly"
@@ -183,6 +190,7 @@ run "missing_assessed_channel_is_rejected" {
     tensor_parallel_size   = null
     pipeline_parallel_size = null
     replicas               = null
+    serving_configuration = null
     discovery              = jsondecode(file("tests/fixtures/handoff.json"))
 
     engine_version = "99.0.0"
@@ -208,6 +216,7 @@ run "image_platform_must_match_the_target_cpu" {
     tensor_parallel_size   = null
     pipeline_parallel_size = null
     replicas               = null
+    serving_configuration = null
     discovery              = jsondecode(file("tests/fixtures/handoff.json"))
 
     engine_platform = "linux/arm64"
@@ -218,6 +227,7 @@ run "image_platform_must_match_the_target_cpu" {
 run "RMS_accepts_the_same_handoff_as_one_JSON_text_field" {
   command=plan
   variables {
+    serving_configuration = null
     discovery_json=file("tests/fixtures/handoff.json")
     model=null
     model_revision=null
@@ -262,6 +272,7 @@ run "suggestion_supplies_its_own_image_topology_and_parser_flags" {
     tensor_parallel_size=null
     pipeline_parallel_size=null
     replicas=null
+    serving_configuration = null
     discovery=jsondecode(file("tests/fixtures/suggestion.json"))
  }
  override_module {
@@ -292,6 +303,7 @@ run "changed_suggestion_workload_requires_reassessment" {
     tensor_parallel_size=null
     pipeline_parallel_size=null
     replicas=null
+    serving_configuration = null
     discovery=jsondecode(file("tests/fixtures/suggestion.json"))
  context_length=65536
  }

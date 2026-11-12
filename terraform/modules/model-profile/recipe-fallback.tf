@@ -2,16 +2,13 @@
 # Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
 # Some GGUF variants intentionally omit config/tokenizer; follow only the recipe's
 # explicit structured references, pinning their Hub revisions independently.
-locals {
-  fallback_recipe = try([for m in jsondecode(file("${path.module}/../../../catalogs/models.json")).models : m.recipes[0].recipe_model_id if m.id == local.repository][0], null)
-}
 data "http" "fallback_recipe" {
-  count              = data.http.config.status_code == 404 && local.fallback_recipe != null ? 1 : 0
-  url                = "https://recipes.vllm.ai/${local.fallback_recipe}.json"
+  count              = data.http.config.status_code == 404 ? 1 : 0
+  url                = "https://recipes.vllm.ai/${local.repository}.json"
   request_timeout_ms = 60000
   lifecycle {
     postcondition {
-      condition     = self.status_code == 200
+      condition     = contains([200, 404], self.status_code)
       error_message = "Model has no config.json and its declared recipe could not be retrieved."
     }
   }
