@@ -6,20 +6,21 @@ schemaVersion: 1.1.0
 version: "0.1.0"
 variableGroups:
   - title: Selected allocation
-    variables: ["${name}", "${region}", "${compartment_id}", "${cluster_id}", "${availability_domain}", "${gpu_shape}", "${node_count}", "${requires_rdma}", "${gpu_image_id}", "${subnet_id}", "${cpu_image_id}", "${cpu_subnet_id}", "${devops_subnet_id}", "${pod_subnet_id}", "${cpu_node_count}", "${boot_volume_gib}"]
+    variables: [name, region, compartment_id, cluster_id, availability_domain, gpu_shape, node_count, requires_rdma, gpu_image_id, subnet_id, cpu_image_id, cpu_subnet_id, devops_subnet_id, pod_subnet_id, cpu_node_count, boot_volume_gib]
   - title: Selected model and engine
-    variables: ["${model}", "${model_revision}", "${engine_image}", "${engine_version}", "${tensor_parallel_size}", "${pipeline_parallel_size}", "${replicas}", "${context_length}", "${concurrency}", "${kv_dtype}", "${runtime_gib}", "${margin}"]
+    variables: [model, model_revision, engine_image, engine_version, tensor_parallel_size, pipeline_parallel_size, replicas, context_length, concurrency, kv_dtype, runtime_gib, margin]
   - title: Delivery and benchmark
-    variables: ["${install_gpu_operator}", "${benchmark_requests}", "${benchmark_input_tokens}", "${benchmark_output_tokens}"]
+    variables: [install_gpu_operator, benchmark_requests, benchmark_input_tokens, benchmark_output_tokens]
   - title: Discovery evidence
-    variables: ["${observation_id}", "${assessment_id}"]
+    variables: [observation_id, assessment_id]
   - title: Resource Manager context
     visible: false
-    variables: ["${tenancy_ocid}"]
+    variables: [tenancy_ocid]
 variables:
   tenancy_ocid:
     type: string
     required: true
+    visible: false
   name:
     type: string
     title: Name

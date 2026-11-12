@@ -64,10 +64,27 @@ test('deployment RMS form includes every Terraform handoff variable',()=>{
   assert.deepEqual(Object.keys(schema.variables).sort(),variables);
 });
 
-test('RMS scope filters are explicitly optional empty arrays',()=>{
+test('RMS scope filters use optional list controls with typed items',()=>{
   const schema=parse(readFileSync(`${root}/terraform/stacks/discovery/schema.yaml`,'utf8'));
   for(const name of ['regions','shape_names']) {
     assert.equal(schema.variables[name].required,false);
-    assert.deepEqual(schema.variables[name].default,[]);
+    assert.equal(schema.variables[name].type,'list');
+    assert.equal(schema.variables[name].default,'[]');
+    const item=schema.variables[schema.variables[name].valueType];
+    assert.ok(item);assert.equal(item.visible,false);
   }
+});
+
+test('RMS groups reference defined variable names and bootstrap region is selectable',()=>{
+  for(const stack of ['discovery','deployment']) {
+    const schema=parse(readFileSync(`${root}/terraform/stacks/${stack}/schema.yaml`,'utf8'));
+    for(const group of schema.variableGroups) for(const name of group.variables) {
+      assert.match(name,/^[A-Za-z_][A-Za-z0-9_]*$/);
+      assert.ok(Object.hasOwn(schema.variables,name),`Undefined RMS field ${stack}:${name}`);
+    }
+  }
+  const schema=parse(readFileSync(`${root}/terraform/stacks/discovery/schema.yaml`,'utf8'));
+  assert.equal(schema.variables.region.type,'oci:identity:region:name');
+  assert.equal(schema.variables.region.default,'${session.region}');
+  assert.notEqual(schema.variableGroups.find(g=>g.variables.includes('region')).visible,false);
 });

@@ -73,3 +73,13 @@ Packaging verification: both Make targets produced isolated, integrity-checked Z
 The reported RMS job error has not been inspected. These changes harden the optional-input contract; a literal `var.shapes` error cannot originate from this root, which declares `shape_names`. Actual RMS verification requires the failing job details.
 
 Verification: ten Node tests and four discovery Terraform tests passed, including omitted/null filter values. The rebuilt ZIP was inspected for explicit optional schema defaults and non-null Terraform defaults. Exact failing RMS job details remain needed to establish its cause; no live RMS job was run for this change.
+
+## RMS form controls and regional scan investigation
+- [x] Check Oracle's schema specification against group references, region context and complex list controls.
+- [x] Correct group entries to plain field names in both schemas; define a visible session-default bootstrap region and typed list controls in discovery.
+- [x] Test field references/control definitions and rebuild both packages.
+- [ ] Confirm the corrected form/job in RMS; the existing form and failed job log were inspected.
+
+The previous optional-default fix did not address these schema/control defects. Native Compute endpoints remain regional. Standard Terraform cannot dynamically instantiate OCI provider aliases from subscribed-region data. Automated pre-job generation or a dynamic CLI/custom-provider query mechanism are distinct options; no regional architecture replacement is assumed without resolving that tradeoff.
+
+Confirmed diagnosis: the saved RMS `regions` and `shape_names` values are empty strings, producing `Missing expression` before defaults can apply. Bootstrap `region` is populated. The existing form shows an unavailable empty dropdown for its generic array controls. Eleven local command/catalog/schema/manifest tests passed, including field-reference completeness, visible bootstrap region and typed list definitions. No corrected RMS form/Plan validation has yet run. Auto-review rejected changing the external stack without explicit user authorization; no cloud variables were changed.

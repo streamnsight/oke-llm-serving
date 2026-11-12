@@ -6,13 +6,23 @@ schemaVersion: 1.1.0
 version: "0.1.0"
 variableGroups:
   - title: Model and serving assumptions
-    variables: ["${model_choice}", "${model}", "${revision}", "${context_length}", "${concurrency}", "${kv_dtype}", "${runtime_gib}", "${margin}"]
+    variables: [model_choice, model, revision, context_length, concurrency, kv_dtype, runtime_gib, margin]
   - title: Capacity observation
-    variables: ["${observation_id}", "${compartment_id}", "${regions}", "${shape_names}", "${query_resource_availability}", "${only_shapes_with_limits}"]
-  - title: Resource Manager context
-    visible: false
-    variables: ["${tenancy_ocid}", "${region}"]
+    variables: [observation_id, compartment_id, regions, shape_names, query_resource_availability, only_shapes_with_limits]
+  - title: OCI connection
+    variables: [tenancy_ocid, region]
 variables:
+  tenancy_ocid:
+    type: string
+    title: Tenancy OCID
+    required: true
+    visible: false
+  region:
+    type: oci:identity:region:name
+    title: Bootstrap region
+    description: Region used to discover tenancy subscriptions; it does not restrict the regional scan.
+    required: true
+    default: ${session.region}
   model_choice:
     type: enum
     title: Model
@@ -581,19 +591,17 @@ variables:
     required: false
     description: Quota/headroom scope only; capacity uses tenancy root. Leaving unset checks root entitlement.
   regions:
-    type: array
+    type: list
+    valueType: region_scope_item
     required: false
-    default: []
-    items:
-      type: string
+    default: "[]"
     title: Optional region subset
     description: Empty means all READY subscribed regions.
   shape_names:
-    type: array
+    type: list
+    valueType: shape_scope_item
     required: false
-    default: []
-    items:
-      type: string
+    default: "[]"
     title: Optional GPU shape subset
     description: Empty means all visible GPU shapes.
   query_resource_availability:
@@ -604,3 +612,12 @@ variables:
     title: Only check shapes with configured limits
     default: false
     description: Skip confirmed zero-limit shapes. Leave disabled to find capacity for limit-increase requests. Unknown quota mappings remain included.
+  region_scope_item:
+    type: oci:identity:region:name
+    title: Region to include
+    visible: false
+  shape_scope_item:
+    type: string
+    title: GPU shape name
+    description: Exact OCI shape name, for example BM.GPU.H100.8. Leave the list empty to search all GPU shapes.
+    visible: false
