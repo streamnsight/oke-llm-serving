@@ -168,7 +168,7 @@ variables:
     type: string
     title: Assessment choice ID
     required: false
-    description: Candidate or expert GPU sizing option from the discovery JSON. A sole choice is selected automatically.
+    description: Suggested configuration, candidate or expert GPU sizing option ID from discovery. Review warnings and recommended_selection_id; a sole choice is selected automatically.
   engine_channel:
     type: enum
     enum: [recommended, stable, nightly]

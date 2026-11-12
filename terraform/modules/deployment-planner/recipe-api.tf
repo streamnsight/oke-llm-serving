@@ -58,19 +58,20 @@ locals {
   suggestion_rows = [for row in local.sizing_rows : merge(row, {
     rendering  = local.valid_renderings[row.hardware]
     image      = local.recipe_images[local.valid_renderings[row.hardware].docker_image][row.platform]
-    tp_options = [for tp in [1, 2, 4, 8] : tp if try(row.gpu.gpus == row.shape.gpus && tp <= row.shape.gpus && local.a.heads % tp == 0 && (local.a.kv_heads % tp == 0 || tp % local.a.kv_heads == 0) && local.api_budget / tp + local.profile.memory.runtime_allowance_bytes <= row.gpu.memory_bytes_per_gpu * 0.9, false)]
+    tp_options = [for tp in [1, 2, 4, 8] : tp if try(local.api_budget > 0 && try(local.profile.memory.assumptions.context_length <= local.api.model.context_length, true) && row.gpu.gpus == row.shape.gpus && tp <= row.shape.gpus && local.a.heads % tp == 0 && (local.a.kv_heads % tp == 0 || tp % local.a.kv_heads == 0) && local.api_budget / tp + local.profile.memory.runtime_allowance_bytes <= row.gpu.memory_bytes_per_gpu * 0.9, false)]
   }) if can(local.valid_renderings[row.hardware]) && can(local.recipe_images[local.valid_renderings[row.hardware].docker_image][row.platform])]
   suggestions = [for row in local.suggestion_rows : {
-    id                   = substr(sha256(jsonencode([local.profile.model, local.profile.memory.assumptions, row.region, row.ad, row.shape.shape, row.rendering, row.image, "recipe-suggestion"])), 0, 16)
-    region               = row.region, availability_domain = row.ad, gpu_shape = row.shape.shape, gpus_per_node = row.shape.gpus
-    tensor_parallel_size = row.tp_options[0], pipeline_parallel_size = 1, node_count = var.replicas, replicas = var.replicas, requires_rdma = false
-    configuration_status = "suggested_requires_validation", configuration_origin = row.hardware == local.api_hardware[row.hardware] && tostring(row.tp_options[0]) == try(row.rendering.argv[index(row.rendering.argv, "--tensor-parallel-size") + 1], "") ? "upstream_rendering" : "adapted_recipe"
-    runtime_validation   = "not_run", upstream_validation = "not_established_for_this_configuration"
-    estimated_rank_bytes = ceil(local.api_budget / row.tp_options[0] + local.profile.memory.runtime_allowance_bytes)
-    memory_status        = "heuristic_recipe_budget_not_per_rank_proof", aggregate_payload_bytes = local.api_budget
-    capacity_status      = row.capacity_status, limit_status = row.limit_status, headroom_status = row.headroom_status
-    available_instances  = try(row.capacity.available_instances, null)
-    availability         = try(row.capacity.available_instances >= var.replicas && row.limit_status != "zero" && row.headroom_status != "zero", false) ? "observed_capacity_requires_allocation_check" : "capacity_or_entitlement_unconfirmed"
+    id                      = substr(sha256(jsonencode([local.profile.model, local.profile.memory.assumptions, row.region, row.ad, row.shape.shape, row.rendering, row.image, "recipe-suggestion"])), 0, 16)
+    region                  = row.region, availability_domain = row.ad, gpu_shape = row.shape.shape, gpus_per_node = row.shape.gpus
+    tensor_parallel_size    = row.tp_options[0], pipeline_parallel_size = 1, node_count = var.replicas, replicas = var.replicas, requires_rdma = false
+    configuration_status    = "suggested_requires_validation", configuration_origin = row.hardware == local.api_hardware[row.hardware] && tostring(row.tp_options[0]) == try(row.rendering.argv[index(row.rendering.argv, "--tensor-parallel-size") + 1], "") ? "upstream_rendering" : "adapted_recipe"
+    runtime_validation      = "not_run", upstream_validation = "not_established_for_this_configuration"
+    deployment_requirements = try(local.profile.model.config_sources.config_repository != null, false) ? ["Stage the independently pinned external config/tokenizer before deployment; the weights revision must not be reused as the config repository revision."] : []
+    estimated_rank_bytes    = ceil(local.api_budget / row.tp_options[0] + local.profile.memory.runtime_allowance_bytes)
+    memory_status           = "heuristic_recipe_budget_not_per_rank_proof", aggregate_payload_bytes = local.api_budget
+    capacity_status         = row.capacity_status, limit_status = row.limit_status, headroom_status = row.headroom_status
+    available_instances     = try(row.capacity.available_instances, null)
+    availability            = try(row.capacity.available_instances >= var.replicas && row.limit_status != "zero" && row.headroom_status != "zero", false) ? "observed_capacity_requires_allocation_check" : "capacity_or_entitlement_unconfirmed"
     serving_configuration = {
       status = "suggested_requires_validation", model = local.profile.model
       engine = merge(var.serving_resolution.engine, { id = "recipe-${row.hardware}", image = row.image, platform = row.platform, available_images = local.recipe_images[row.rendering.docker_image], image_tag = row.rendering.docker_image, version = "recipe-${split(":", row.rendering.docker_image)[1]}", channel = "recipe", image_source_association = "recipe_image_digest_runtime_not_verified" })
@@ -91,4 +92,25 @@ locals {
 locals {
   suggestion_rank_index = { for s in local.suggestions : format("%01d-%01d-%03d-%03d-%s", s.availability == "observed_capacity_requires_allocation_check" ? 0 : 1, s.headroom_status == "positive" ? 0 : 1, s.gpus_per_node, s.tensor_parallel_size, s.id) => s }
   ranked_suggestions    = [for key in sort(keys(local.suggestion_rank_index)) : local.suggestion_rank_index[key]]
+}
+
+# Companion services need Kubernetes resource/memory configuration. Retain their
+# complete API plans for review without silently enabling a second process.
+data "http" "cache_option" {
+  for_each           = { for pair in setproduct(keys(local.valid_renderings), ["simple", "lmcache"]) : "${pair[0]}/${pair[1]}" => pair if try(local.api.kv_offload_support.offloading_cpu != "unsupported", false) }
+  url                = "https://recipes.vllm.ai/${local.recipe_parent}.json?hardware=${local.api_hardware[each.value[0]]}&variant=${local.api_variant}&strategy=single_node_tp&kv_offload=${each.value[1]}"
+  request_timeout_ms = 60000
+  lifecycle {
+    postcondition {
+      condition     = contains([200, 404], self.status_code)
+      error_message = "Recipe KV-cache option lookup failed."
+    }
+  }
+}
+locals {
+  cache_options = { for key, response in data.http.cache_option : key => {
+    configuration_status = "requires_cache_integration", source_url = response.url, sha256 = sha256(response.response_body)
+    plan                 = jsondecode(response.response_body)
+    remaining_checks     = ["Configure Kubernetes companion processes, readiness and shared transport.", "Size host cache memory against the selected OCI shape; recipe defaults are not allocation recommendations."]
+  } if response.status_code == 200 }
 }

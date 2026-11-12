@@ -107,6 +107,10 @@ resource "terraform_data" "specification" {
       error_message = "No matching tested recipe configuration for this GPU/TP/PP. Supply an explicit expert configuration; hardware similarity alone is not validation."
     }
     precondition {
+      condition     = !local.suggested || try(local.profile.model.config_sources.config_repository == null, true) || (var.expert_configuration && var.engine_args != null)
+      error_message = "This checkpoint uses a separate config repository. Stage its pinned config/tokenizer and provide expert argv; reusing the weights revision for that repository is invalid."
+    }
+    precondition {
       condition = !local.suggested || var.expert_configuration || try(
         local.tp == local.selected.tensor_parallel_size && local.pp == local.selected.pipeline_parallel_size &&
         local.context_length == local.discovery_input.profile.memory.assumptions.context_length &&

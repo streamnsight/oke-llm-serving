@@ -56,3 +56,35 @@ run "API_substitution_does_not_become_a_recipe_match" {
   error_message="Adjusted API selections must be retained as diagnostics, not offered as matching configurations."
  }
 }
+
+run "known_unsupported_precision_is_not_adapted_to_A10" {
+ command=plan
+ override_data {
+  target=data.http.recipe_metadata[0]
+  values={status_code=200,response_body="{\"model\":{\"model_id\":\"Qwen/Qwen3.8-27B\"},\"variants\":{\"default\":{\"precision\":\"nvfp4\",\"vram_minimum_gb\":32,\"supported_hardware\":[\"b200\"]}},\"meta\":{\"tasks\":[\"text\"]}}"}
+ }
+ assert {
+  condition=length(output.assessment.suggestions)==0
+  error_message="NVFP4 hardware-specific requirements must not be bypassed by an A10/H100 baseline adaptation."
+ }
+}
+
+run "cache_companion_plans_are_preserved_without_enabling_them" {
+ command=plan
+ override_data {
+ target=data.http.recipe_metadata[0]
+ values={status_code=200,response_body="{\"model\": {\"model_id\": \"Qwen/Qwen3.8-27B\"}, \"variants\": {\"default\": {\"precision\": \"bf16\", \"vram_minimum_gb\": 67}}, \"meta\": {\"tasks\": [\"text\"]}, \"kv_offload_support\": {\"offloading_cpu\": \"verified\"}}"}
+ }
+ override_data {
+ target=data.http.cache_option["a10/lmcache"]
+ values={status_code=200,response_body="{\"hf_id\": \"Qwen/Qwen3.8-27B\", \"hardware\": \"h100\", \"strategy\": \"single_node_tp\", \"variant\": \"default\", \"node_count\": 1, \"deploy_type\": \"single_node\", \"env\": {\"VLLM_USE_RUST_FRONTEND\": \"1\"}, \"docker_image\": \"vllm/vllm-openai:qwen38\", \"command\": \"vllm serve Qwen/Qwen3.8-27B \\\\\\n  --tensor-parallel-size 1 \\\\\\n  --enable-auto-tool-choice \\\\\\n  --tool-call-parser qwen3_coder \\\\\\n  --reasoning-parser qwen3 \\\\\\n  --kv-transfer-config '{\\\"kv_connector\\\":\\\"LMCacheMPConnector\\\",\\\"kv_role\\\":\\\"kv_both\\\",\\\"kv_connector_extra_config\\\":{\\\"lmcache.mp.port\\\":5555,\\\"lmcache.mp.mq_timeout\\\":300}}'\", \"argv\": [\"vllm\", \"serve\", \"Qwen/Qwen3.8-27B\", \"--tensor-parallel-size\", \"1\", \"--enable-auto-tool-choice\", \"--tool-call-parser\", \"qwen3_coder\", \"--reasoning-parser\", \"qwen3\", \"--kv-transfer-config\", \"{\\\"kv_connector\\\":\\\"LMCacheMPConnector\\\",\\\"kv_role\\\":\\\"kv_both\\\",\\\"kv_connector_extra_config\\\":{\\\"lmcache.mp.port\\\":5555,\\\"lmcache.mp.mq_timeout\\\":300}}\"], \"kv_offload_install\": [{\"command\": \"uv pip install \\\"lmcache==0.5.1\\\"\"}], \"docker_command\": \"docker run --gpus all \\\\\\n  --privileged --ipc=host -p 8000:8000 \\\\\\n  -v ~/.cache/huggingface:/root/.cache/huggingface \\\\\\n  -e VLLM_USE_RUST_FRONTEND=1 \\\\\\n  vllm/vllm-openai:qwen38 Qwen/Qwen3.8-27B \\\\\\n  --tensor-parallel-size 1 \\\\\\n  --enable-auto-tool-choice \\\\\\n  --tool-call-parser qwen3_coder \\\\\\n  --reasoning-parser qwen3 \\\\\\n  --kv-transfer-config '{\\\"kv_connector\\\":\\\"LMCacheMPConnector\\\",\\\"kv_role\\\":\\\"kv_both\\\",\\\"kv_connector_extra_config\\\":{\\\"lmcache.mp.port\\\":5555,\\\"lmcache.mp.mq_timeout\\\":300}}'\", \"docker_argv\": [\"docker\", \"run\", \"--gpus\", \"all\", \"--privileged\", \"--ipc=host\", \"-p\", \"8000:8000\", \"-v\", \"~/.cache/huggingface:/root/.cache/huggingface\", \"-e\", \"VLLM_USE_RUST_FRONTEND=1\", \"vllm/vllm-openai:qwen38\", \"Qwen/Qwen3.8-27B\", \"--tensor-parallel-size\", \"1\", \"--enable-auto-tool-choice\", \"--tool-call-parser\", \"qwen3_coder\", \"--reasoning-parser\", \"qwen3\", \"--kv-transfer-config\", \"{\\\"kv_connector\\\":\\\"LMCacheMPConnector\\\",\\\"kv_role\\\":\\\"kv_both\\\",\\\"kv_connector_extra_config\\\":{\\\"lmcache.mp.port\\\":5555,\\\"lmcache.mp.mq_timeout\\\":300}}\"], \"companions\": [{\"feature\": \"kv_offload:lmcache\", \"label\": \"LMCache Server\", \"description\": \"Run on the same node in a separate terminal, before vllm serve \\u2014 owns the shared CPU-DRAM KV pool. Requires: uv pip install \\\"lmcache==0.5.1\\\"\", \"command\": \"# --port must match \\\"lmcache.mp.port\\\" in --kv-transfer-config.\\n# Size --l1-size-gb to ~75% of the host DRAM you can dedicate \\u2014 pinned\\n# memory is unswappable; the pool grows lazily from --l1-init-size-gb.\\n# --max-gpu-workers 1 avoids concurrent-GPU-transfer stalls under heavy\\n# async-load pressure; CPU-side workers stay at 8.\\nlmcache server \\\\\\n  --port 5555 \\\\\\n  --http-port 8080 \\\\\\n  --l1-size-gb 512 \\\\\\n  --l1-init-size-gb 20 \\\\\\n  --max-gpu-workers 1 \\\\\\n  --max-cpu-workers 8 \\\\\\n  --chunk-size 1024 \\\\\\n  --l1-align-bytes 16384 \\\\\\n  --eviction-trigger-watermark 0.85 \\\\\\n  --eviction-ratio 0.10 \\\\\\n  --eviction-policy LRU \\\\\\n  --supported-transfer-mode lmcache_driven\"}], \"selection\": {\"hardware\": \"h100\", \"variant\": \"default\", \"strategy\": \"single_node_tp\", \"nodes\": 1, \"features\": [\"tool_calling\", \"reasoning\"], \"modes\": {\"spec_decoding\": \"mtp\"}, \"advanced\": [], \"frontend\": \"rust\", \"kv_offload\": \"lmcache\", \"pd\": null, \"preset\": null, \"point\": null, \"adjusted\": []}, \"page_url\": \"https://recipes.vllm.ai/Qwen/Qwen3.8-27B?hardware=h100&features=tool_calling%2Creasoning&kv_offload=lmcache\", \"markdown_url\": \"https://recipes.vllm.ai/Qwen/Qwen3.8-27B.md?hardware=h100&features=tool_calling%2Creasoning&kv_offload=lmcache\"}"}
+ }
+ override_data {
+ target=data.http.cache_option["a10/simple"]
+ values={status_code=200,response_body="{\"selection\": {\"hardware\": \"h100\", \"variant\": \"default\", \"kv_offload\": \"simple\"}, \"argv\": [\"vllm\", \"serve\", \"Qwen/Qwen3.8-27B\"]}"}
+ }
+ assert {
+  condition=output.assessment.recipe_options.cache_options["a10/lmcache"].plan.companions[0].label=="LMCache Server" && length(output.assessment.recipe_options.cache_options["a10/lmcache"].plan.kv_offload_install)==1 && !contains(output.assessment.suggestions[0].serving_configuration.recipe.args,"--kv-transfer-config")
+  error_message="Companion/dependency commands must remain reviewable evidence without implicitly enabling an undeployed cache service."
+ }
+}

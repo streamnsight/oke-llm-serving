@@ -106,7 +106,7 @@ output "assessment" {
     status                         = length(local.suggestions) > 0 ? "suggestions_available" : length(local.candidates) > 0 ? "candidates_found" : length(local.sizing_options) > 0 ? "expert_options_available" : "requires_validation"
     recommended_selection_id       = try(local.ranked_suggestions[0].id, null)
     suggestions                    = local.ranked_suggestions
-    recipe_options                 = { features = try(local.api.features, {}), kv_offload_support = try(local.api.kv_offload_support, {}), source = try(local.api.source, {}) }
+    recipe_options                 = { features = try(local.api.features, {}), kv_offload_support = try(local.api.kv_offload_support, {}), cache_options = local.cache_options, source = try(local.api.source, {}) }
     recipe_alternatives            = try(local.api.variants, {})
     recipe_api_diagnostics         = { for k, r in local.renderings : k => r.selection if !contains(keys(local.valid_renderings), k) }
     sizing_options                 = local.sizing_options

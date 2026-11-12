@@ -31,6 +31,8 @@ Discovery creates reports, not GPU allocations. Counts represent available insta
 
 The deployment stack at `terraform/stacks/deployment` creates retained GPU/CPU pools, optional supported RDMA Compute Cluster placement, and OCI DevOps deploy, validation and benchmark pipelines. Pass the single `deployment_inputs` JSON from discovery directly to deployment, then choose an assessment ID and target infrastructure there. Image/version/platform, features and expert overrides belong to deployment; no selection/export script is required.
 
+Discovery now uses the vLLM Recipes JSON API to provide ranked, untested hardware-specific suggestions with frozen images and parser flags. Choose an ID from `assessment.suggestions`; `assessment.recommended_selection_id` identifies the resource-oriented default. See [recipe-derived suggestions and limitations](docs/recipe-derived-suggestions.md).
+
 See the [complete deployment workflow](docs/deployment-workflow.md) for the target-file example, RMS handoff, Kubernetes RBAC bootstrap, official vLLM CPU benchmark container and validation boundaries. Cloud/GPU/DevOps execution remains pending a selected target. Durable Responses conversation storage remains a separate API-layer feature.
 
 ## Documentation

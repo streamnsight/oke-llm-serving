@@ -107,3 +107,17 @@ module "planner" {
 output "assessment" {
   value = module.planner.assessment
 }
+
+output "recommendations" {
+  description = "Readable GPU/region choices. Pass deployment_inputs unchanged and select one ID in deployment."
+  value = {
+    recommended_selection_id = try(module.planner.assessment.recommended_selection_id, null)
+    ranking                  = "Observed capacity/headroom, then fewer allocated host GPUs and smaller TP; no cost/throughput prediction."
+    choices = [for s in try(module.planner.assessment.suggestions, []) : {
+      id           = s.id, region = s.region, availability_domain = s.availability_domain, gpu_shape = s.gpu_shape,
+      node_count   = s.node_count, tensor_parallel_size = s.tensor_parallel_size, pipeline_parallel_size = s.pipeline_parallel_size,
+      availability = s.availability, configuration_origin = s.configuration_origin, runtime_validation = s.runtime_validation,
+      image        = s.serving_configuration.engine.image, warnings = s.warnings, deployment_requirements = try(s.deployment_requirements, [])
+    }]
+  }
+}

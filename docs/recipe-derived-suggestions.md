@@ -6,13 +6,13 @@ Licensed under the Universal Permissive License v 1.0 as shown at http://oss.ora
 
 ## Intended behavior
 
-Discovery should provide a starting configuration even when the target GPU has not been tested upstream. Missing estimator coverage should not discard known checkpoint, image, flags, dependencies or topology evidence. Deployment consumes the existing single JSON handoff, selects a suggestion and applies optional overrides. This document is a design and implementation plan; the current implementation still returns undetermined hardware options in these cases.
+Discovery should provide a starting configuration even when the target GPU has not been tested upstream. Missing estimator coverage should not discard known checkpoint, image, flags, dependencies or topology evidence. Deployment consumes the existing single JSON handoff, selects a suggestion and applies optional overrides. The implementation now emits single-node recipe-derived suggestions alongside the existing candidates and raw sizing options. Multi-node inference and companion-service deployment remain explicit boundaries.
 
 Each suggestion records origin (upstream rendering/adapted/heuristic), upstream validation scope, local validation status, memory-estimate basis, assumptions, changes from upstream and unresolved requirements. Unknown memory and untested hardware remain visible. A partial configuration is useful but cannot be labelled executable until required deployment fields are resolved. Known incompatibility is a rejection; absence of tests is a warning.
 
 ## Confirmed sources and implementation gaps
 
-The [vLLM Recipes API](https://recipes.vllm.ai/api) supplies structured argv, environment, image and resolved selection for hardware/variant/strategy queries. Our YAML subset extraction misses the builder's default reasoning/tool features. Recipe images/dependencies currently become expert blockers rather than actionable requirements. Missing memory estimators stop suggested topology. The blanket text-generation tag check also rejects text serving of a multimodal architecture.
+The [vLLM Recipes API](https://recipes.vllm.ai/api) supplies structured argv, environment, image and resolved selection for hardware/variant/strategy queries. The former YAML-only path missed builder defaults and treated missing estimator coverage as a configuration blocker. The JSON path preserves default parsers, recipe images/dependencies and text-serving mode separately from model modality.
 
 Live observations:
 
@@ -42,22 +42,32 @@ Validation is scoped to exact model revision, image, GPU/topology, workload, fea
 
 - [x] Inspect live API, H100 renderings and A10 substitution behavior.
 - [ ] Deduplicate bounded API requests by recipe/variant/hardware/strategy, independent of regional AD count; preserve API failures and schema changes.
-- [ ] Retain argv/env, default features, recipe image/dependencies, related variants and source identities; test adjusted selections.
+- [x] Retain argv/env, default features, recipe image/dependencies, related variants and source identities; test adjusted selections.
 
 ### Phase 2: suggestion generation
 
-- [ ] Separate estimator support, serving mode, configuration origin and validation status.
+- [x] Separate estimator support, serving mode, configuration origin and validation status.
 - [ ] Generate exact/adapted/heuristic suggestions with explicit unresolved fields and no false per-rank guarantee.
 - [ ] Extend hybrid/recurrent memory estimates incrementally, independently of recipe configuration extraction.
 - [ ] Cover Qwen H100/A10, Flint BF16/NVFP4, GGUF config fallback, kernel constraints and OCI host topology.
 
 ### Phase 3: deployment handoff
 
-- [ ] Include suggested configurations and explicit variant alternatives in the single JSON output.
-- [ ] Select untested suggestions without requiring users to reconstruct inferred settings; retain deployment-only overrides and changes from upstream.
+- [x] Include suggested configurations and explicit variant alternatives in the single JSON output.
+- [x] Select untested suggestions without requiring users to reconstruct inferred settings; retain deployment-only overrides and changes from upstream.
 
 ### Phase 4: verification
 
 - [ ] Test extraction, adjustment detection, identity, image/dependency selection, memory caveats and generated Kubernetes launches.
 - [ ] Run Qwen/Flint RMS discovery and verify useful suggested configurations alongside raw hardware observations.
 - [ ] Run actual GPU validation/benchmark when allocation is authorized; retain not-run status until then.
+
+## Current use and boundaries
+
+Read `discovery.assessment.suggestions` and `recommended_selection_id` in the single handoff. Each suggestion owns a frozen `serving_configuration`; set its `id` as deployment `selection_id`, supply the existing cluster/subnets/images, and pass the JSON unchanged. Deployment derives TP/PP/node count, image and parser settings from that choice. `selected_configuration` exposes what will be deployed and its warnings. The recommendation ranks capacity/headroom first, then fewer GPUs allocated per host, then smaller TP. It makes no cost or throughput forecast and retains every suggestion.
+
+Single-node TP1/2/4/8 suggestions use the greater of a recipe's decimal-GB memory guideline and an available aggregate payload estimate, divide approximately across TP ranks, and add the configured per-GPU runtime allowance. This is a heuristic, with unknown sharding, hybrid/vision state and workload KV overhead clearly labelled. Known context limits and precision hardware restrictions are respected. Unsupported/unknown options stay in raw sizing evidence. Adaptations currently cover BF16 A10/A100/L40S from the portable H100 baseline; quantized builds do not inherit that assumption. API and Docker image responses are HTTP-provider data, not external scripts.
+
+Optional CPU-offload/LMCache renderings are kept under `assessment.recipe_options.cache_options`, including dependencies and companion commands. They are not enabled by default: Kubernetes cache services, transport and host-memory sizing still require integration. Recipe dependency install commands are never executed automatically; the image and actual inference must be validated in the pipeline. Related variants are metadata alternatives; selecting another checkpoint requires a new discovery run rather than silently switching model identity.
+
+The profile can follow explicit GGUF config/tokenizer references and pins their revisions independently. Automatic staging of these separate repositories is not implemented. Deployment identifies this requirement and requires staged paths with expert argv, instead of using the weights SHA against another repository. Suggested multi-node/PP adaptation and full multimodal validation are not implemented; existing multi-node candidates and expert settings remain available.
