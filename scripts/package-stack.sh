@@ -13,7 +13,7 @@ output=$1
 staging=$(mktemp -d)
 trap 'rm -rf "$staging"' EXIT
 git -C "$repo" archive HEAD | tar -x -C "$staging"
-if [[ ${2:-} == --refresh-catalog ]]; then bash "$staging/scripts/refresh-model-catalog.sh"; fi
+if [[ ${2:-} == --refresh-catalog ]]; then bash "$repo/scripts/refresh-model-catalog.sh" "$staging"; fi
 bash "$staging/scripts/generate-model-schema.sh" "$staging/catalogs/models.json" "$staging/terraform/stacks/discovery/schema.yaml"
 if [[ "$package_stack" != all ]]; then
   for stack in discovery deployment; do

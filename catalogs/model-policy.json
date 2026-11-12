@@ -1,10 +1,11 @@
 {
   "schema_version": "1.0",
-  "publishers": ["Qwen", "mistralai", "HuggingFaceTB", "HuggingFaceH4", "tiiuae", "google", "meta-llama"],
-  "model_types": ["llama", "mistral", "mixtral", "qwen2", "qwen2_moe", "qwen3", "qwen3_moe"],
-  "per_family_tier": 2,
-  "maximum_models": 30,
-  "candidate_limit": 75,
-  "excluded_name_pattern": "(?i)(gguf|awq|gptq|mlx|fp8|fp4|bnb|lora|(^|[-_/])base($|[-_/]))",
-  "scope": "Public canonical text chat checkpoints with native engine architecture and memory-estimator coverage. Model-size tiers are retained independently."
+  "sources": [
+    {"repository": "vllm-project/vllm", "revision": "main", "prefix": "recipes/models/", "engine": "vllm"},
+    {"repository": "vllm-project/recipes", "revision": "main", "prefix": "models/", "engine": "vllm"},
+    {"repository": "vllm-project/vllm-omni", "revision": "main", "prefix": "recipes/models/", "engine": "vllm-omni"}
+  ],
+  "sort": "model_id_case_insensitive",
+  "max_recipe_age_days": null,
+  "scope": "All model IDs and named checkpoint variants in structured recipes, across all tasks. Recipe coverage does not imply deployment support. Age policy uses recipe date_added, never a claimed model release date."
 }

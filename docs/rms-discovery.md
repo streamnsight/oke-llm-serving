@@ -11,6 +11,8 @@ The user-facing workflow has two stacks. Both stacks are implemented: `terraform
 
 Run `make package` at the repository root. Upload `work/packages/oke-llm-discovery.zip` and set its RMS working directory to **terraform/stacks/discovery**. The ZIP preserves the relative module/catalog paths. For deployment, upload `work/packages/oke-llm-deployment.zip` and select **terraform/stacks/deployment**. `make package-discovery` and `make package-deployment` build just one package. Packages use committed HEAD; commit intended source changes before building. `DIST_DIR=/path` overrides the destination and `REFRESH_CATALOG=true` requests a packaging-time catalog refresh. Use a current RMS Terraform version compatible with the configuration (`>= 1.5`); local tests use Terraform 1.9.8. `schema.yaml` supplies the RMS input form; its Console rendering has not yet been tested.
 
+Model choices include every upstream recipe model/variant, alphabetically by full ID, across all tasks. Model revisions are pinned at discovery; recipe source commits are catalog provenance. Some listed tasks require serving support beyond the current deployment recipe.
+
 User inputs:
 
 - Public Hugging Face model URL, model revision, context tokens and concurrency.

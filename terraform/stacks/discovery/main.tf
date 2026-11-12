@@ -27,7 +27,7 @@ locals {
   model_catalog      = jsondecode(file("${path.module}/../../../catalogs/models.json"))
   catalog_choice     = try([for model in local.model_catalog.models : model if model.id == var.model_choice][0], null)
   effective_model    = var.model_choice == "custom" ? (var.model == null ? "" : var.model) : try(local.catalog_choice.id, "")
-  effective_revision = var.model_choice == "custom" ? var.revision : try(local.catalog_choice.sha, "main")
+  effective_revision = var.model_choice == "custom" ? var.revision : coalesce(try(local.catalog_choice.sha, null), var.revision)
   subscribed_regions = toset([for sub in data.oci_identity_region_subscriptions.subscribed.region_subscriptions : sub.region_name if sub.state == "READY"])
   requested_regions  = length(var.regions) == 0 ? local.subscribed_regions : var.regions
   selected_regions   = setintersection(local.requested_regions, local.subscribed_regions)

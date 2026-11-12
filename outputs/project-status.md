@@ -40,7 +40,7 @@ An initial live capacity investigation covered all 16 READY subscriptions and 26
 - [x] Implement OCI DevOps deploy, automatically chained validation, and separately triggered benchmark pipelines, private evidence and bootstrap RBAC.
 - [x] Render pinned production-stack/vLLM recipes and LeaderWorkerSet/native MP across nodes.
 - [x] Replace the custom benchmark client with official `vllm bench serve` in a pinned CPU image.
-- [x] Add curated public-model catalog refresh and committed-source RMS packaging hooks.
+- [x] Add all-task recipe-model catalog refresh and committed-source RMS packaging hooks.
 - [ ] Validate actual RMS forms/jobs and the full GPU/DevOps/container/RDMA workflow against a selected target.
 - [ ] Add a durable Responses/conversation-storage API layer, GPU telemetry sampling and benchmark SLO gates.
 
@@ -51,3 +51,5 @@ The custom Node benchmark runtime was removed. Node's remaining YAML dependency 
 The first native metadata estimator supports public conventional-attention models only. Gated/private models, quantized/custom/multimodal estimates and model-specific serving recipes need additional implementation. Capacity is never a reservation or proof of RDMA placement. Root headroom does not prove a child compartment's entitlement.
 
 See [deployment workflow](../docs/deployment-workflow.md), [RMS workflow](../docs/rms-discovery.md), [model-profile limitations](../docs/model-profile.md) and [deployment plan](oci-oke-model-deployment-plan.md).
+
+Recipe list update: the RMS dropdown is generated from commit-pinned vLLM, vLLM recipes and vLLM-Omni YAML sources, including named variants. It is sorted alphabetically by full model ID, without popularity/publisher/task/estimator filters. Recipe dates are retained; optional age filtering uses recipe addition dates, not model release dates. Runtime support remains assessed separately.

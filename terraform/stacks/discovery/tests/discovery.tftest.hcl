@@ -47,3 +47,19 @@ override_module {
   target  = module.planner
   outputs = { assessment = { candidates = [], status = "requires_validation" } }
 }
+run "recipe_choice_resolves_model_revision_at_discovery" {
+  command = plan
+  variables { model_choice = "RecursiveSI/flint" }
+  override_data {
+    target = data.oci_identity_region_subscriptions.subscribed
+    values = { region_subscriptions = [{ region_name = "us-chicago-1", state = "READY" }] }
+  }
+  override_module {
+    target  = module.us_chicago_1[0]
+    outputs = { result = { region = "us-chicago-1", availability_domains = [] }, inventory = { region = "us-chicago-1", limits = [] } }
+  }
+  assert {
+    condition     = local.effective_model == "RecursiveSI/flint" && local.effective_revision == "main"
+    error_message = "A recipe commit must never be used as the Hugging Face model revision."
+  }
+}

@@ -14,7 +14,7 @@ variable "model" {
   default     = null
 }
 variable "model_choice" {
-  description = "Catalog ID or custom. Catalog choices use their frozen commit SHA."
+  description = "Recipe catalog ID or custom. Unpinned model revisions are resolved during discovery."
   type        = string
   default     = "custom"
 }
