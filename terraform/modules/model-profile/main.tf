@@ -82,27 +82,29 @@ locals {
 }
 
 locals {
-  config                = jsondecode(data.http.config.response_body)
-  text                  = try(local.config.text_config, local.config)
-  model_type            = try(local.text.model_type, local.config.model_type, "unknown")
-  experts               = try(local.text.num_local_experts, local.text.num_experts, null)
-  moe                   = contains(["mixtral", "qwen2_moe", "qwen3_moe"], local.model_type) || try(local.experts > 1, false)
-  conventional          = contains(["llama", "mistral", "mixtral", "qwen2", "qwen2_moe", "qwen3", "qwen3_moe"], local.model_type)
-  dtype_bytes           = { F64 = 8, F32 = 4, F16 = 2, BF16 = 2 }
-  parameters            = try(local.info.safetensors.parameters, {})
-  counts_valid          = try(length(local.parameters) > 0 && alltrue([for dtype, count in local.parameters : contains(keys(local.dtype_bytes), dtype) && count >= 0 && floor(count) == count]) && sum(values(local.parameters)) == local.info.safetensors.total, false)
-  weight_bytes          = local.counts_valid ? sum([for dtype, count in local.parameters : count * lookup(local.dtype_bytes, dtype, 0)]) : null
-  resident_weight_bytes = local.counts_valid ? max(local.weight_bytes, sum(values(local.parameters)) * (var.kv_dtype == "float32" ? 4 : 2)) : null
-  layers                = try(local.text.num_hidden_layers, 0)
-  heads                 = try(local.text.num_attention_heads, 0)
-  kv_heads              = try(local.text.num_key_value_heads, local.heads)
-  head_dim              = try(local.text.head_dim, local.text.hidden_size / local.heads, 0)
-  dimensions_valid      = try(alltrue([for n in [local.layers, local.heads, local.kv_heads, local.head_dim] : n > 0 && floor(n) == n]) && local.kv_heads <= local.heads && local.heads % local.kv_heads == 0, false)
-  max_context           = try(local.text.max_position_embeddings, null)
-  quantization          = try(local.config.quantization_config, local.text.quantization_config, null)
-  root_checkpoints      = [for file in try(local.info.siblings, []) : file.rfilename if endswith(file.rfilename, ".safetensors") && !strcontains(file.rfilename, "/")]
-  has_index             = contains([for file in try(local.info.siblings, []) : file.rfilename], "model.safetensors.index.json")
-  canonical             = local.has_index || (length(local.root_checkpoints) == 1 && contains(local.root_checkpoints, "model.safetensors"))
+  config                    = jsondecode(data.http.config.response_body)
+  text                      = try(local.config.text_config, local.config)
+  model_type                = try(local.text.model_type, local.config.model_type, "unknown")
+  experts                   = try(local.text.num_local_experts, local.text.num_experts, null)
+  moe                       = contains(["mixtral", "qwen2_moe", "qwen3_moe"], local.model_type) || try(local.experts > 1, false)
+  conventional              = contains(["llama", "mistral", "mixtral", "qwen2", "qwen2_moe", "qwen3", "qwen3_moe"], local.model_type)
+  dtype_bytes               = { F64 = 8, F32 = 4, F16 = 2, BF16 = 2 }
+  parameters                = try(local.info.safetensors.parameters, {})
+  counts_valid              = try(length(local.parameters) > 0 && alltrue([for dtype, count in local.parameters : contains(keys(local.dtype_bytes), dtype) && count >= 0 && floor(count) == count]) && sum(values(local.parameters)) == local.info.safetensors.total, false)
+  weight_bytes              = local.counts_valid ? sum([for dtype, count in local.parameters : count * lookup(local.dtype_bytes, dtype, 0)]) : null
+  resident_weight_bytes     = local.counts_valid ? max(local.weight_bytes, sum(values(local.parameters)) * (var.kv_dtype == "float32" ? 4 : 2)) : null
+  layers                    = try(local.text.num_hidden_layers, 0)
+  heads                     = try(local.text.num_attention_heads, 0)
+  kv_heads                  = try(local.text.num_key_value_heads, local.heads)
+  head_dim                  = try(local.text.head_dim, local.text.hidden_size / local.heads, 0)
+  dimensions_valid          = try(alltrue([for n in [local.layers, local.heads, local.kv_heads, local.head_dim] : n > 0 && floor(n) == n]) && local.kv_heads <= local.heads && local.heads % local.kv_heads == 0, false)
+  max_context               = try(local.text.max_position_embeddings, null)
+  quantization              = try(local.config.quantization_config, local.text.quantization_config, null)
+  root_checkpoints          = [for file in try(local.info.siblings, []) : file.rfilename if endswith(file.rfilename, ".safetensors") && !strcontains(file.rfilename, "/")]
+  checkpoint_file_sizes     = [for file in try(local.info.siblings, []) : try(file.size, file.lfs.size, null) if contains(local.root_checkpoints, file.rfilename)]
+  checkpoint_download_bytes = try(length(local.checkpoint_file_sizes) > 0 && alltrue([for size in local.checkpoint_file_sizes : size > 0]) ? sum(local.checkpoint_file_sizes) : null, null)
+  has_index                 = contains([for file in try(local.info.siblings, []) : file.rfilename], "model.safetensors.index.json")
+  canonical                 = local.has_index || (length(local.root_checkpoints) == 1 && contains(local.root_checkpoints, "model.safetensors"))
   reasons = compact([
     local.conventional ? "" : "Architecture requires a dedicated estimator.",
     local.counts_valid ? "" : "Hub safetensors counts are missing, inconsistent or use unsupported dtypes.",
@@ -158,12 +160,14 @@ output "profile" {
       interpretation = "Regex evidence only; examples may not state mandatory minimum versions. No match does not imply incompatibility."
     }
     weights = {
-      selected_checkpoint = local.has_index ? "model.safetensors.index.json" : local.canonical ? "model.safetensors" : null
-      tensor_data_bytes   = local.weight_bytes
-      tensor_elements     = try(local.info.safetensors.total, null)
-      elements_by_dtype   = local.parameters
-      source              = "Hub-published safetensors counts by dtype; not independently verified headers"
-      confidence          = "declared_metadata"
+      selected_checkpoint       = local.has_index ? "model.safetensors.index.json" : local.canonical ? "model.safetensors" : null
+      checkpoint_download_bytes = local.checkpoint_download_bytes
+      storage_source            = "Hub-published root safetensors file sizes; storage only, never resident GPU memory"
+      tensor_data_bytes         = local.weight_bytes
+      tensor_elements           = try(local.info.safetensors.total, null)
+      elements_by_dtype         = local.parameters
+      source                    = "Hub-published safetensors counts by dtype; not independently verified headers"
+      confidence                = "declared_metadata"
     }
     memory = {
       status                      = local.supported ? "estimated" : "unsupported"

@@ -110,7 +110,7 @@ resource "terraform_data" "specification" {
       error_message = "Serving argv/env cannot override managed identity, topology or reserved distributed settings; use dedicated deployment variables."
     }
     precondition {
-      condition     = try(var.boot_volume_gib * pow(1024, 3) >= local.profile.weights.tensor_data_bytes * 1.3 + 50 * pow(1024, 3), false)
+      condition     = try(var.boot_volume_gib * pow(1024, 3) >= coalesce(try(local.profile.weights.checkpoint_download_bytes, null), local.profile.weights.tensor_data_bytes) * 1.3 + 50 * pow(1024, 3), false)
       error_message = "Boot volume must allow the complete checkpoint cache plus image/OS headroom on every worker."
     }
   }

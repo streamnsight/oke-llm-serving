@@ -12,7 +12,7 @@ trap 'rm -rf "$scratch"' EXIT
 cat > "$scratch/input.json"
 jq -e '
   if type!="object" or any(.[];type!="string") then error("Expected Terraform external string-map query") else . end |
-  .regions=((.regions|fromjson)//[]|unique) | .shape_names=((.shape_names|fromjson)//[]|unique) |
+  .regions=((.regions|fromjson)//[]|map(if type=="string" then gsub("^[[:space:]]+|[[:space:]]+$";"") else . end)|map(select(.!=""))|unique) | .shape_names=((.shape_names|fromjson)//[]|map(if type=="string" then gsub("^[[:space:]]+|[[:space:]]+$";"") else . end)|map(select(.!=""))|unique) |
   .gpu_catalog|=fromjson | .query_resource_availability|=fromjson | .only_shapes_with_limits|=fromjson |
   if (.tenancy_ocid|length)>0 and
     (.regions|type)=="array" and all(.regions[];type=="string") and

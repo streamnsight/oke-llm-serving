@@ -96,3 +96,15 @@ run "flint_sizing_options_do_not_invent_a_serving_layout" {
     error_message="Identify the actual recipe hardware/platform even when it is absent from the scanned inventory."
   }
 }
+run "image_platform_is_assessed_per_hardware_without_a_discovery_override" {
+  command=plan
+  variables {
+    engines=[{id="resolved",framework="vllm",version="0.33.0",image="vllm/image@sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",platform="linux/amd64",available_images={"linux/arm64"="vllm/image@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"},architectures=["LlamaForCausalLM"],gpu_compute_capabilities=[100],multi_node_backend="mp"}]
+    serving_resolution={status="resolved_requires_validation",recipe={hardware={gb200="verified"},selected_hardware="gb200",compatible_strategies=["single_node_tp"],strategy_overrides={single_node_tp={tp=1}},variant_metadata={}}}
+    regions=[{inventory={region="region-one",availability_domains=[{name="AD-1",shapes=[{shape="BM.GPU.GB200.4",gpus=4,rdma_ports=0,quota_names=[]}]}],limits=[]},capacity={region="region-one",availability_domains=[{name="AD-1",assessment={observed_at="test",shapes=[{shape="BM.GPU.GB200.4",available_instances=2,availability_status="AVAILABLE"}]}}]}}]
+  }
+  assert {
+    condition=anytrue([for c in output.assessment.candidates : c.engine.platform=="linux/arm64" && c.configuration_status=="recipe_configuration_requires_validation" && c.engine.image=="vllm/image@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"])
+    error_message="A published ARM image must be selected automatically for Grace hardware, without an image-platform choice in discovery."
+  }
+}

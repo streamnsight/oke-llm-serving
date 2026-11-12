@@ -34,7 +34,7 @@ locals {
     configuration_status                    = "undetermined_requires_expert", runtime_validation = "not_run"
     recipe_hardware_status                  = contains(local.tested_hardware, row.hardware) ? "upstream_hardware_match_only" : "no_tested_recipe_for_this_hardware"
     recipe_hardware                         = row.hardware, image_platform = row.platform
-    selected_image_platform_matches         = try(row.platform == var.serving_resolution.engine.platform, false)
+    assessed_image_available                = try(var.serving_resolution.engine.available_images[row.platform] != null, row.platform == var.serving_resolution.engine.platform)
     capacity_status                         = row.capacity_status, limit_status = row.limit_status, headroom_status = row.headroom_status
     available_instances                     = try(row.capacity.available_instances, null)
     capacity_covers_estimated_minimum_nodes = try(row.capacity.available_instances >= row.minimum_nodes, false)

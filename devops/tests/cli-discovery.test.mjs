@@ -86,3 +86,7 @@ test('home region is discovered even when the local caller omits a connection re
  assert.equal(subscriptions[0].includes('--region'),false,'first request uses CLI defaults');
  assert.equal(subscriptions[1][subscriptions[1].indexOf('--region')+1],'new-region-99','home region handles subscription discovery');
 });
+
+test('blank RMS scope list entries mean no filter',()=>{
+ const r=run('',{regions:'["", "  "]',shape_names:'[" "]'});assert.equal(r.status,0,r.stderr);assert.deepEqual(r.result.assessed_regions,['new-region-99']);assert.equal(r.result.regions[0].inventory.availability_domains[0].shapes.length,1);
+});

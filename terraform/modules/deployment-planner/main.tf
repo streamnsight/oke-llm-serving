@@ -42,7 +42,10 @@ locals {
     headroom = [for limit in region.inventory.limits : limit if contains(shape.quota_names, limit.name) && (limit.scope_type != "AD" || limit.availability_domain == ad.name)]
   }]]])
   layouts = flatten([for row in local.quota_observations : [for engine in local.usable_engines : [for tp in [1, 2, 4, 8] : [for pp in range(1, var.max_nodes_per_replica + 1) : {
-    row = row, engine = engine, tp = tp, pp = pp
+    row = row, engine = merge(engine, {
+      image    = local.resolution_present ? try(engine.available_images["linux/${row.gpu.cpu_architecture}"], engine.platform == "linux/${row.gpu.cpu_architecture}" ? engine.image : null) : engine.image,
+      platform = local.resolution_present ? try("linux/${row.gpu.cpu_architecture}", engine.platform) : try(engine.platform, null)
+    }), tp     = tp, pp = pp
     # TP stays inside one host; PP spans hosts. Extra embedding allowance is conservative.
     rank_bytes = local.memory_supported ? ceil((
       local.profile.memory.weight_bytes / tp * min(local.a.layers, ceil(local.a.layers / pp) + (pp > 1 ? 1 : 0)) / local.a.layers +
@@ -53,6 +56,7 @@ locals {
     reasons = compact([
       try(local.profile.model.pipeline_tag == "text-generation" && local.profile.model.chat_template_available, false) ? "" : "The initial serving recipe requires text generation and a declared chat template.",
       local.memory_supported ? "" : "Memory estimator or layout dimensions unsupported.",
+      !local.resolution_present || try(engine.available_images["linux/${row.gpu.cpu_architecture}"] != null, engine.platform == "linux/${row.gpu.cpu_architecture}", false) ? "" : "No assessed image for this GPU node CPU platform.",
       try(row.gpu.gpus == row.shape.gpus, false) ? "" : "GPU catalog missing or GPU count disagrees with OCI.",
       try(contains(engine.gpu_compute_capabilities, row.gpu.compute_capability), false) ? "" : "Engine/GPU architecture is not covered by the catalog.",
       try(tp <= row.shape.gpus && local.a.heads % tp == 0 && (local.a.kv_heads % tp == 0 || tp % local.a.kv_heads == 0) && pp <= local.a.layers, false) ? "" : "Unsupported TP/PP attention partition.",

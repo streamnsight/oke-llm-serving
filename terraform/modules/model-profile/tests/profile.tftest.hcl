@@ -121,3 +121,14 @@ run "float32_resident_conversion_is_reserved" {
     error_message = "Serving float32 must reserve converted weights and KV, without altering measured checkpoint byte metadata."
   }
 }
+run "storage_bytes_do_not_fabricate_quantized_GPU_memory" {
+  command=plan
+  override_data {
+    target=data.http.model
+    values={status_code=200,response_body="{\"sha\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"siblings\":[{\"rfilename\":\"model-00000.safetensors\",\"size\":1000},{\"rfilename\":\"model-00001.safetensors\",\"size\":2000}]}"}
+  }
+  assert {
+    condition=output.profile.weights.checkpoint_download_bytes==3000 && output.profile.memory.status=="unsupported" && output.profile.weights.tensor_data_bytes==null
+    error_message="File sizes can size checkpoint storage but cannot become a quantized resident-memory estimate."
+  }
+}
