@@ -108,3 +108,15 @@ run "image_platform_is_assessed_per_hardware_without_a_discovery_override" {
     error_message="A published ARM image must be selected automatically for Grace hardware, without an image-platform choice in discovery."
   }
 }
+run "uncatalogued_gpu_does_not_crash_resolved_image_selection" {
+  command = plan
+  variables {
+    gpu_catalog = {}
+    engines = [{id="resolved",framework="vllm",version="0.33.0",image="fixture",platform="linux/amd64",available_images={"linux/amd64"="fixture"},architectures=["LlamaForCausalLM"],gpu_compute_capabilities=[86]}]
+    serving_resolution = {status="resolved_requires_validation",recipe={}}
+  }
+  assert {
+    condition = length(output.assessment.candidates) == 0 && output.assessment.shape_observations[0].catalog_known == false
+    error_message = "Unknown GPU metadata must remain an observation, without crashing or inventing a deployable image/layout."
+  }
+}

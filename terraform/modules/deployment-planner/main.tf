@@ -43,7 +43,7 @@ locals {
   }]]])
   layouts = flatten([for row in local.quota_observations : [for engine in local.usable_engines : [for tp in [1, 2, 4, 8] : [for pp in range(1, var.max_nodes_per_replica + 1) : {
     row = row, engine = merge(engine, {
-      image    = local.resolution_present ? try(engine.available_images["linux/${row.gpu.cpu_architecture}"], engine.platform == "linux/${row.gpu.cpu_architecture}" ? engine.image : null) : engine.image,
+      image    = local.resolution_present ? try(engine.available_images["linux/${row.gpu.cpu_architecture}"], engine.platform == "linux/${row.gpu.cpu_architecture}" ? engine.image : null, null) : engine.image,
       platform = local.resolution_present ? try("linux/${row.gpu.cpu_architecture}", engine.platform) : try(engine.platform, null)
     }), tp     = tp, pp = pp
     # TP stays inside one host; PP spans hosts. Extra embedding allowance is conservative.
