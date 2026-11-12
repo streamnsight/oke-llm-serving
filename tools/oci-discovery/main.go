@@ -480,19 +480,46 @@ func run(ctx context.Context, q query, factory func(string) (api, error)) (objec
 	}
 	return object{"schema_version": "1.0", "subscribed_regions": ready, "assessed_regions": selected, "regions": results}, nil
 }
+
+// Honor the same authentication mode variables as the native OCI provider.
+func authenticationMode() (string, error) {
+	mode := os.Getenv("TF_VAR_auth")
+	if mode == "" {
+		mode = os.Getenv("OCI_AUTH")
+	}
+	if mode == "" && os.Getenv("OCI_RESOURCE_PRINCIPAL_VERSION") != "" {
+		mode = "ResourcePrincipal"
+	}
+	switch strings.ToLower(mode) {
+	case "", "apikey":
+		return "apikey", nil
+	case "instanceprincipal", "resourceprincipal":
+		return strings.ToLower(mode), nil
+	default:
+		return "", errors.New("unsupported discovery authentication mode; use APIKey, InstancePrincipal or ResourcePrincipal")
+	}
+}
+
 func execute() error {
 	q, err := decode(os.Stdin)
 	if err != nil {
 		return err
 	}
+	mode, err := authenticationMode()
+	if err != nil {
+		return err
+	}
 	var provider common.ConfigurationProvider
-	if os.Getenv("OCI_RESOURCE_PRINCIPAL_VERSION") != "" {
+	switch mode {
+	case "instanceprincipal":
+		provider, err = auth.InstancePrincipalConfigurationProviderForRegion(common.StringToRegion(q.Region))
+	case "resourceprincipal":
 		provider, err = auth.ResourcePrincipalConfigurationProvider()
-		if err != nil {
-			return fmt.Errorf("resource principal authentication: %w", err)
-		}
-	} else {
+	default:
 		provider = common.DefaultConfigProvider()
+	}
+	if err != nil {
+		return fmt.Errorf("%s authentication: %w", mode, err)
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()

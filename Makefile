@@ -10,7 +10,7 @@ help:
 	@echo 'make package             Build both RMS ZIPs from committed HEAD'
 	@echo 'make package-discovery   Build the discovery stack ZIP'
 	@echo 'make package-deployment  Build the deployment stack ZIP'
-	@echo 'make refresh-model-catalog Update all recipe models and RMS choices (requires npm ci)'
+	@echo 'make refresh-model-catalog Update the alphabetical recipe model reference (requires npm ci)'
 	@echo 'make build-discovery-sdk Build the local Go OCI SDK lookup executable'
 	@echo 'Optional: DIST_DIR=/path REFRESH_CATALOG=true'
 

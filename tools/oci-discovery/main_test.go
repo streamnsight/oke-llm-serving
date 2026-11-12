@@ -135,3 +135,27 @@ func TestExternalProtocolValidation(t *testing.T) {
 		t.Fatal("accepted malformed scope")
 	}
 }
+
+func TestAuthenticationMode(t *testing.T) {
+	for _, tc := range []struct {
+		name, tf, oci, rp, want string
+		invalid                 bool
+	}{
+		{"local default", "", "", "", "apikey", false},
+		{"RMS instance principal", "InstancePrincipal", "InstancePrincipal", "", "instanceprincipal", false},
+		{"OCI auth", "", "InstancePrincipal", "", "instanceprincipal", false},
+		{"resource principal environment", "", "", "2.2", "resourceprincipal", false},
+		{"explicit precedence", "APIKey", "InstancePrincipal", "2.2", "apikey", false},
+		{"unsupported fails closed", "SecurityToken", "", "", "", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("TF_VAR_auth", tc.tf)
+			t.Setenv("OCI_AUTH", tc.oci)
+			t.Setenv("OCI_RESOURCE_PRINCIPAL_VERSION", tc.rp)
+			got, err := authenticationMode()
+			if got != tc.want || (err != nil) != tc.invalid {
+				t.Fatalf("got %q, %v; want %q, invalid=%v", got, err, tc.want, tc.invalid)
+			}
+		})
+	}
+}
