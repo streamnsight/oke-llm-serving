@@ -39,12 +39,13 @@ locals {
     [try(local.profile.model.pipeline_tag == "text-generation" && local.profile.model.chat_template_available, false) ? "" : "The initial recipe requires text generation and a declared chat template."]
   ))
   shape_rows = flatten([for region in var.regions : [for ad in region.inventory.availability_domains : [for shape in ad.shapes : {
-    region   = region.inventory.region, ad = ad.name, shape = shape
-    gpu      = try(local.catalog[shape.shape], null)
-    capacity = try(one(flatten([for observation in region.capacity.availability_domains : [for row in observation.assessment.shapes : row if row.shape == shape.shape] if observation.name == ad.name])), null)
-    headroom = [for limit in region.inventory.limits : limit if contains(shape.quota_names, limit.name) && (limit.scope_type != "AD" || limit.availability_domain == ad.name)]
+    region               = region.inventory.region, ad = ad.name, shape = shape
+    gpu                  = try(local.catalog[shape.shape], null)
+    capacity_observed_at = try(one([for observation in region.capacity.availability_domains : observation.assessment.observed_at if observation.name == ad.name]), null)
+    capacity             = try(one(flatten([for observation in region.capacity.availability_domains : [for row in observation.assessment.shapes : row if row.shape == shape.shape] if observation.name == ad.name])), null)
+    headroom             = [for limit in region.inventory.limits : limit if contains(shape.quota_names, limit.name) && (limit.scope_type != "AD" || limit.availability_domain == ad.name)]
   }]]])
-  layouts = flatten([for row in local.quota_observations : [for engine in local.usable_engines : [for tp in [1, 2, 4, 8] : [for pp in range(1, var.max_nodes_per_replica + 1) : {
+  layouts = flatten([for row in local.quantity_observations : [for engine in local.usable_engines : [for tp in [1, 2, 4, 8] : [for pp in range(1, var.max_nodes_per_replica + 1) : {
     row = row, engine = merge(engine, {
       image    = local.resolution_present ? try(engine.available_images["linux/${row.gpu.cpu_architecture}"], engine.platform == "linux/${row.gpu.cpu_architecture}" ? engine.image : null, null) : engine.image,
       platform = local.resolution_present ? try("linux/${row.gpu.cpu_architecture}", engine.platform) : try(engine.platform, null)
@@ -70,7 +71,7 @@ locals {
     memory_fit  = try(layout.rank_bytes <= layout.row.gpu.memory_bytes_per_gpu * 0.9, false)
     capacity_ok = try(layout.row.capacity.availability_status == "AVAILABLE" && layout.row.capacity.available_instances >= layout.pp * var.replicas, false)
     # Quota names can have units such as GPUs/cores. Positive headroom alone is not a quantity proof.
-    entitlement = layout.row.limit_status == "zero" || layout.row.headroom_status == "zero" ? "blocked" : layout.row.mapping_complete && layout.row.headroom_status == "positive" ? "positive_unconverted" : "unknown"
+    entitlement = try(layout.row.limit_status == "positive" && layout.row.entitled_instances >= layout.pp * var.replicas, false) ? "confirmed_for_quantity" : "not_confirmed_for_quantity"
   })]
   candidates = [for layout in local.evaluated : {
     id                   = substr(sha256(jsonencode([local.profile.model, local.profile.memory.assumptions, layout.row.region, layout.row.ad, layout.row.shape.shape, layout.engine.image, layout.tp, layout.pp, var.replicas, var.serving_resolution])), 0, 16)
@@ -96,7 +97,7 @@ locals {
     ) ? "recipe_configuration_requires_validation" : "undetermined_requires_expert"
     recipe_hardware_status = contains(local.tested_hardware, try(layout.row.gpu.recipe_hardware, "unknown")) ? "upstream_hardware_match_only" : "no_tested_recipe_for_this_hardware"
     remaining_checks       = ["Recheck quantity-specific quota/entitlement.", "Confirm OKE image driver/CUDA compatibility and per-rank memory at runtime.", "Validate requested APIs and workload performance; Ethernet PP has no RDMA performance claim."]
-  } if length(layout.reasons) == 0 && layout.memory_fit && layout.capacity_ok && layout.entitlement != "blocked"]
+  } if length(layout.reasons) == 0 && layout.memory_fit && layout.capacity_ok && layout.entitlement == "confirmed_for_quantity"]
 }
 
 output "assessment" {
@@ -110,6 +111,7 @@ output "assessment" {
     recipe_alternatives            = try(local.api.variants, {})
     recipe_api_diagnostics         = { for k, r in local.renderings : k => r.selection if !contains(keys(local.valid_renderings), k) }
     sizing_options                 = local.sizing_options
+    sizing_diagnostics             = local.sizing_diagnostics
     recipe_hardware_targets        = local.recipe_targets
     serving_configuration_status   = try(var.serving_resolution.status, "legacy_catalog")
     engine_checks                  = [for check in local.engine_checks : { engine = check.engine.id, architecture_supported = check.architecture_ok, version_hints_satisfied = check.hints_ok }]
@@ -122,9 +124,9 @@ output "assessment" {
       layout_or_catalog = length([for layout in local.evaluated : true if length(layout.reasons) > 0])
       memory            = length([for layout in local.evaluated : true if !layout.memory_fit])
       capacity          = length([for layout in local.evaluated : true if !layout.capacity_ok])
-      entitlement_zero  = length([for layout in local.evaluated : true if layout.entitlement == "blocked"])
+      entitlement_zero  = length([for layout in local.evaluated : true if layout.entitlement != "confirmed_for_quantity"])
     }
     prompt_path = "outputs/model-compatibility-assessment-prompt.md"
-    warnings    = ["Per-rank values are analytical estimates, including an extra embedding allowance; not load-test evidence.", "Quota units are not assumed to be instances. Positive unconverted headroom requires quantity validation.", "Shapes may share host inventory. Candidates are alternatives; capacity counts are never summed.", "Resolved image references use immutable digests; hardware and serving validation remain required."]
+    warnings    = ["Per-rank values are analytical estimates, including an extra embedding allowance; not load-test evidence.", "Quota units are not assumed to be instances. Selectable options require quantity-specific GPU headroom for the complete shape allocation.", "Shapes may share host inventory. Candidates are alternatives; capacity counts are never summed.", "Resolved image references use immutable digests; hardware and serving validation remain required."]
   }
 }

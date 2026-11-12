@@ -155,3 +155,11 @@ Final handoff verification: 24 script/render checks and 54 native Terraform test
 - [x] Verify Qwen RMS discovery and actual JSON handoff with mocked cloud deployment; test Flint BF16 adaptation and NVFP4 requirements.
 
 New-path verification: final Qwen RMS Plan succeeded, returning 22 suggestions and four cache plans across 16 READY regions. Local checks cover 24 planner, 10 profile, 14 deployment-root and seven discovery-root tests, one real-JSON mock integration and 24 script/render checks. GPU runtime validation and benchmarking remain not run. Multi-node suggestion inference, full multimodal tests, cache companion deployment and automatic external-config staging remain future work, explicitly identified in the handoff/documentation.
+
+## Confirmed capacity choices
+- [x] Trace incomplete/zero capacity and entitlement observations; distinguish diagnostics from selectable deployment options.
+- [x] Require AVAILABLE reports and enough instances, positive applicable limits and quantity-specific GPU headroom for every selectable option. Charge entitlement for the full OCI host, not just TP GPUs.
+- [x] Preserve excluded rows and reasons in diagnostics; make the selectable availability result explicitly available-at-scan.
+- [x] Test zero, missing/unknown, insufficient quantity, unknown quota units and successful observations; verify against saved live scan, package and commit.
+
+Confirmed-capacity verification: 32 planner tests, seven discovery-root tests and 14 deployment-root tests passed. A native Terraform replay of the actual saved Qwen/API observations returned nine selectable suggestions, all available_at_scan with sufficient whole-host GPU entitlement; all thirteen zero-capacity suggestions were excluded. The replay handoff explicitly records that it is not a new capacity query.

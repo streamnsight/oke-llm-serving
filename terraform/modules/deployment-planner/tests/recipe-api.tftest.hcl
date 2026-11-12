@@ -10,7 +10,7 @@ variables {
   }
   engines=[]
   serving_resolution={engine={platform="linux/amd64",image="fixture",id="stable",version="0.33.0",architectures=["Qwen3_5ForConditionalGeneration"],gpu_compute_capabilities=[86,90],multi_node_backend="mp"},recipe={feature_options={},compatible_strategies=["single_node_tp"]}}
-  regions=[{inventory={region="region-one",availability_domains=[{name="AD-1",shapes=[{shape="BM.GPU.A10.4",gpus=4,rdma_ports=0,quota_names=[]}]}],limits=[]},capacity={region="region-one",availability_domains=[{name="AD-1",assessment={observed_at="test",shapes=[{shape="BM.GPU.A10.4",available_instances=1,availability_status="AVAILABLE"}]}}]}}]
+  regions=[{inventory={region="region-one",availability_domains=[{name="AD-1",shapes=[{shape="BM.GPU.A10.4",gpus=4,rdma_ports=0,quota_names=["gpu-count"]}]}],limits=[{name="gpu-count",description="GPUs for test instances",scope_type="AD",availability_domain="AD-1",tenancy_limit=64,resource_availability={status="observed",available=64}}]},capacity={region="region-one",availability_domains=[{name="AD-1",assessment={observed_at="test",shapes=[{shape="BM.GPU.A10.4",available_instances=1,availability_status="AVAILABLE"}]}}]}}]
 }
 override_data {
  target = data.http.recipe_metadata[0]
@@ -38,10 +38,10 @@ run "adapt_bf16_to_four_a10s_without_a_complete_estimator" {
 run "one_a10_is_not_a_bf16_suggestion" {
  command=plan
  variables {
-  regions=[{inventory={region="region-one",availability_domains=[{name="AD-1",shapes=[{shape="VM.GPU.A10.1",gpus=1,rdma_ports=0,quota_names=[]}]}],limits=[]},capacity={region="region-one",availability_domains=[]}}]
+  regions=[{inventory={region="region-one",availability_domains=[{name="AD-1",shapes=[{shape="VM.GPU.A10.1",gpus=1,rdma_ports=0,quota_names=["gpu-count"]}]}],limits=[{name="gpu-count",description="GPUs for test instances",scope_type="AD",availability_domain="AD-1",tenancy_limit=64,resource_availability={status="observed",available=64}}]},capacity={region="region-one",availability_domains=[]}}]
  }
  assert {
-  condition=length(output.assessment.suggestions)==0 && length(output.assessment.sizing_options)==1
+  condition=length(output.assessment.suggestions)==0 && length(output.assessment.sizing_diagnostics)==1
   error_message="Do not present a one-card configuration when even the heuristic weight/runtime budget cannot fit."
  }
 }
@@ -97,5 +97,68 @@ run "requested_context_and_concurrency_expand_the_heuristic_budget" {
  assert {
   condition=length(output.assessment.suggestions)==0
   error_message="A small upstream memory guideline must not hide the requested long-context/concurrency budget."
+ }
+}
+
+run "exclude_zero_physical_capacity" {
+ command=plan
+ variables { regions=[{inventory={region="region-one",availability_domains=[{name="AD-1",shapes=[{shape="BM.GPU.A10.4",gpus=4,rdma_ports=0,quota_names=["gpu-count"]}]}],limits=[{name="gpu-count",description="GPUs for test instances",scope_type="AD",availability_domain="AD-1",tenancy_limit=64,resource_availability={status="observed",available=64}}]},capacity={region="region-one",availability_domains=[{name="AD-1",assessment={observed_at="test",shapes=[{shape="BM.GPU.A10.4",available_instances=0,availability_status="OUT_OF_HOST_CAPACITY"}]}}]}}] }
+ assert {
+ condition=length(output.assessment.suggestions)==0 && length(output.assessment.sizing_options)==0 && output.assessment.recommended_selection_id==null && length(output.assessment.shape_observations)>0
+ error_message="Unavailable or unconfirmed hardware must remain diagnostic, never selectable."
+ }
+}
+
+run "exclude_missing_physical_capacity" {
+ command=plan
+ variables { regions=[{inventory={region="region-one",availability_domains=[{name="AD-1",shapes=[{shape="BM.GPU.A10.4",gpus=4,rdma_ports=0,quota_names=["gpu-count"]}]}],limits=[{name="gpu-count",description="GPUs for test instances",scope_type="AD",availability_domain="AD-1",tenancy_limit=64,resource_availability={status="observed",available=64}}]},capacity={region="region-one",availability_domains=[{name="AD-1",assessment={observed_at="test",shapes=[{shape="BM.GPU.A10.4",available_instances=1,availability_status="UNKNOWN"}]}}]}}] }
+ assert {
+ condition=length(output.assessment.suggestions)==0 && length(output.assessment.sizing_options)==0 && output.assessment.recommended_selection_id==null && length(output.assessment.shape_observations)>0
+ error_message="Unavailable or unconfirmed hardware must remain diagnostic, never selectable."
+ }
+}
+
+run "exclude_insufficient_GPU_headroom" {
+ command=plan
+ variables { regions=[{inventory={region="region-one",availability_domains=[{name="AD-1",shapes=[{shape="BM.GPU.A10.4",gpus=4,rdma_ports=0,quota_names=["gpu-count"]}]}],limits=[{name="gpu-count",description="GPUs for test instances",scope_type="AD",availability_domain="AD-1",tenancy_limit=64,resource_availability={status="observed",available=3}}]},capacity={region="region-one",availability_domains=[{name="AD-1",assessment={observed_at="test",shapes=[{shape="BM.GPU.A10.4",available_instances=1,availability_status="AVAILABLE"}]}}]}}] }
+ assert {
+ condition=length(output.assessment.suggestions)==0 && length(output.assessment.sizing_options)==0 && output.assessment.recommended_selection_id==null && length(output.assessment.shape_observations)>0
+ error_message="Unavailable or unconfirmed hardware must remain diagnostic, never selectable."
+ }
+}
+
+run "exclude_unknown_quota_units" {
+ command=plan
+ variables { regions=[{inventory={region="region-one",availability_domains=[{name="AD-1",shapes=[{shape="BM.GPU.A10.4",gpus=4,rdma_ports=0,quota_names=["gpu-count"]}]}],limits=[{name="gpu-count",description="Instances or cores (unspecified)",scope_type="AD",availability_domain="AD-1",tenancy_limit=64,resource_availability={status="observed",available=64}}]},capacity={region="region-one",availability_domains=[{name="AD-1",assessment={observed_at="test",shapes=[{shape="BM.GPU.A10.4",available_instances=1,availability_status="AVAILABLE"}]}}]}}] }
+ assert {
+ condition=length(output.assessment.suggestions)==0 && length(output.assessment.sizing_options)==0 && output.assessment.recommended_selection_id==null && length(output.assessment.shape_observations)>0
+ error_message="Unavailable or unconfirmed hardware must remain diagnostic, never selectable."
+ }
+}
+
+run "exclude_missing_headroom" {
+ command=plan
+ variables { regions=[{inventory={region="region-one",availability_domains=[{name="AD-1",shapes=[{shape="BM.GPU.A10.4",gpus=4,rdma_ports=0,quota_names=["gpu-count"]}]}],limits=[{name="gpu-count",description="GPUs for test instances",scope_type="AD",availability_domain="AD-1",tenancy_limit=64,resource_availability={status="unknown",available=null}}]},capacity={region="region-one",availability_domains=[{name="AD-1",assessment={observed_at="test",shapes=[{shape="BM.GPU.A10.4",available_instances=1,availability_status="AVAILABLE"}]}}]}}] }
+ assert {
+ condition=length(output.assessment.suggestions)==0 && length(output.assessment.sizing_options)==0 && output.assessment.recommended_selection_id==null && length(output.assessment.shape_observations)>0
+ error_message="Unavailable or unconfirmed hardware must remain diagnostic, never selectable."
+ }
+}
+
+run "exclude_wrong_AD_limits" {
+ command=plan
+ variables { regions=[{inventory={region="region-one",availability_domains=[{name="AD-1",shapes=[{shape="BM.GPU.A10.4",gpus=4,rdma_ports=0,quota_names=["gpu-count"]}]}],limits=[{name="gpu-count",description="GPUs for test instances",scope_type="AD",availability_domain="AD-2",tenancy_limit=64,resource_availability={status="observed",available=64}}]},capacity={region="region-one",availability_domains=[{name="AD-1",assessment={observed_at="test",shapes=[{shape="BM.GPU.A10.4",available_instances=1,availability_status="AVAILABLE"}]}}]}}] }
+ assert {
+ condition=length(output.assessment.suggestions)==0 && length(output.assessment.sizing_options)==0 && output.assessment.recommended_selection_id==null && length(output.assessment.shape_observations)>0
+ error_message="Unavailable or unconfirmed hardware must remain diagnostic, never selectable."
+ }
+}
+
+run "replicas_require_enough_full_hosts_and_GPU_entitlement" {
+ command=plan
+ variables {replicas=2}
+ assert {
+ condition=length(output.assessment.suggestions)==0
+ error_message="A single available host cannot confirm two replicas."
  }
 }

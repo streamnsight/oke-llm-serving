@@ -75,7 +75,9 @@ locals {
     memory_status           = "heuristic_recipe_budget_not_per_rank_proof", aggregate_payload_bytes = local.api_budget
     capacity_status         = row.capacity_status, limit_status = row.limit_status, headroom_status = row.headroom_status
     available_instances     = try(row.capacity.available_instances, null)
-    availability            = try(row.capacity.available_instances >= var.replicas && row.limit_status != "zero" && row.headroom_status != "zero", false) ? "observed_capacity_requires_allocation_check" : "capacity_or_entitlement_unconfirmed"
+    availability            = "available_at_scan"
+    entitled_instances      = row.entitled_instances
+    capacity_observed_at    = row.capacity_observed_at
     serving_configuration = {
       status = "suggested_requires_validation", model = local.profile.model
       engine = merge(var.serving_resolution.engine, { id = "recipe-${row.hardware}", image = row.image, platform = row.platform, available_images = local.recipe_images[row.rendering.docker_image], image_tag = row.rendering.docker_image, version = "recipe-${split(":", row.rendering.docker_image)[1]}", channel = "recipe", image_source_association = "recipe_image_digest_runtime_not_verified" })
@@ -87,14 +89,14 @@ locals {
         serving_mode = "text", modality_validation = "text_only_test_pipeline"
       })
     }
-    recommendation_reason = "Smallest enumerated intra-host TP layout meeting a heuristic memory budget; ranking prefers observed capacity/headroom then fewer allocated host GPUs. No price or throughput prediction."
+    recommendation_reason = "Smallest enumerated intra-host TP layout meeting a heuristic memory budget; all selectable options have confirmed capacity/headroom; ranking prefers fewer allocated host GPUs. No price or throughput prediction."
     warnings              = ["Untested configuration; run deployment validation and benchmarking.", "Memory budget divides upstream guidance approximately; sharding balance, recurrent/vision state, CUDA graphs and workload KV fit are not proven.", "Recipe dependency commands are evidence, not executed; validate their availability in the pinned image.", row.hardware == "a10" ? "A10 adapts the H100 BF16 baseline; TP may cross PCIe and is not upstream validated." : "GPU model match alone does not establish validation of this image/variant/TP/workload."]
-  } if length(row.tp_options) > 0 && try(contains(local.api.meta.tasks, "text"), false) && try(!contains(keys(local.api_variant_metadata), "supported_hardware") || contains(local.api_variant_metadata.supported_hardware, row.hardware), true)]
+  } if try(row.capacity_status == "positive" && row.capacity.available_instances >= var.replicas && row.limit_status == "positive" && row.entitled_instances >= var.replicas, false) && length(row.tp_options) > 0 && try(contains(local.api.meta.tasks, "text"), false) && try(!contains(keys(local.api_variant_metadata), "supported_hardware") || contains(local.api_variant_metadata.supported_hardware, row.hardware), true)]
   recipe_managed_flags = ["--tensor-parallel-size", "-tp", "--pipeline-parallel-size", "-pp", "--max-model-len", "--max-num-seqs", "--dtype", "--kv-cache-dtype", "--gpu-memory-utilization"]
 }
 
 locals {
-  suggestion_rank_index = { for s in local.suggestions : format("%01d-%01d-%03d-%03d-%s", s.availability == "observed_capacity_requires_allocation_check" ? 0 : 1, s.headroom_status == "positive" ? 0 : 1, s.gpus_per_node, s.tensor_parallel_size, s.id) => s }
+  suggestion_rank_index = { for s in local.suggestions : format("%03d-%03d-%s", s.gpus_per_node, s.tensor_parallel_size, s.id) => s }
   ranked_suggestions    = [for key in sort(keys(local.suggestion_rank_index)) : local.suggestion_rank_index[key]]
 }
 

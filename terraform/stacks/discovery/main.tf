@@ -83,6 +83,8 @@ output "deployment_inputs" {
       suggestions                    = try(module.planner.assessment.suggestions, [])
       recipe_options                 = try(module.planner.assessment.recipe_options, {})
       recipe_alternatives            = try(module.planner.assessment.recipe_alternatives, {})
+      sizing_diagnostics             = try(module.planner.assessment.sizing_diagnostics, [])
+      availability_diagnostics       = try(module.planner.assessment.shape_observations, [])
       recipe_api_diagnostics         = try(module.planner.assessment.recipe_api_diagnostics, {})
       status                         = try(module.planner.assessment.status, "requires_validation"),
       blocking_reasons               = try(module.planner.assessment.blocking_reasons, []),
@@ -112,7 +114,7 @@ output "recommendations" {
   description = "Readable GPU/region choices. Pass deployment_inputs unchanged and select one ID in deployment."
   value = {
     recommended_selection_id = try(module.planner.assessment.recommended_selection_id, null)
-    ranking                  = "Observed capacity/headroom, then fewer allocated host GPUs and smaller TP; no cost/throughput prediction."
+    ranking                  = "Only capacity/headroom-confirmed options; fewer allocated host GPUs, then smaller TP. No cost/throughput prediction."
     choices = [for s in try(module.planner.assessment.suggestions, []) : {
       id           = s.id, region = s.region, availability_domain = s.availability_domain, gpu_shape = s.gpu_shape,
       node_count   = s.node_count, tensor_parallel_size = s.tensor_parallel_size, pipeline_parallel_size = s.pipeline_parallel_size,

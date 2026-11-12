@@ -13,7 +13,7 @@ variables {
     inventory = {
       region               = "region-one"
       availability_domains = [{ name = "AD-1", shapes = [{ shape = "VM.GPU.A10.1", gpus = 1, rdma_ports = 0, quota_names = ["gpu-a10-count"] }] }]
-      limits               = [{ name = "gpu-a10-count", scope_type = "AD", availability_domain = "AD-1", resource_availability = { available = 10, status = "observed" } }]
+      limits               = [{ name="gpu-a10-count", description="GPUs for test instances", tenancy_limit=10, scope_type = "AD", availability_domain = "AD-1", resource_availability = { available = 10, status = "observed" } }]
     }
     capacity = { region = "region-one", availability_domains = [{ name = "AD-1", assessment = { observed_at = "2026-11-11T00:00:00Z", shapes = [{ shape = "VM.GPU.A10.1", available_instances = 2, availability_status = "AVAILABLE" }] } }] }
   }]
@@ -21,7 +21,7 @@ variables {
 run "single_gpu_candidate" {
   command = plan
   assert {
-    condition     = length(output.assessment.candidates) == 2 && output.assessment.candidates[0].node_count == 1 && output.assessment.candidates[0].runtime_validation == "not_run" && output.assessment.candidates[0].entitlement == "positive_unconverted"
+    condition     = length(output.assessment.candidates) == 2 && output.assessment.candidates[0].node_count == 1 && output.assessment.candidates[0].runtime_validation == "not_run" && output.assessment.candidates[0].entitlement == "confirmed_for_quantity"
     error_message = "A catalogued single GPU should produce a candidate without claiming runtime or quantity-specific quota validation."
   }
 }
@@ -88,7 +88,7 @@ run "flint_sizing_options_do_not_invent_a_serving_layout" {
     serving_resolution={status="resolved_requires_validation",recipe={hardware={gb200="verified"},selected_hardware="gb200"},engine={platform="linux/amd64"}}
   }
   assert {
-    condition=length(output.assessment.candidates)==0 && output.assessment.status=="expert_options_available" && output.assessment.sizing_options[0].estimated_minimum_gpus==5 && output.assessment.sizing_options[0].configuration_status=="undetermined_requires_expert" && output.assessment.sizing_options[0].recipe_hardware_status=="no_tested_recipe_for_this_hardware"
+    condition=length(output.assessment.candidates)==0 && output.assessment.status=="requires_validation" && output.assessment.sizing_diagnostics[0].estimated_minimum_gpus==5 && output.assessment.sizing_diagnostics[0].configuration_status=="undetermined_requires_expert" && output.assessment.sizing_diagnostics[0].recipe_hardware_status=="no_tested_recipe_for_this_hardware"
     error_message="Flint on A10 must expose a memory-only lower bound, not fabricate TP/PP or claim runtime feasibility."
   }
   assert {
@@ -101,7 +101,7 @@ run "image_platform_is_assessed_per_hardware_without_a_discovery_override" {
   variables {
     engines=[{id="resolved",framework="vllm",version="0.33.0",image="vllm/image@sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",platform="linux/amd64",available_images={"linux/arm64"="vllm/image@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"},architectures=["LlamaForCausalLM"],gpu_compute_capabilities=[100],multi_node_backend="mp"}]
     serving_resolution={status="resolved_requires_validation",recipe={hardware={gb200="verified"},selected_hardware="gb200",compatible_strategies=["single_node_tp"],strategy_overrides={single_node_tp={tp=1}},variant_metadata={}}}
-    regions=[{inventory={region="region-one",availability_domains=[{name="AD-1",shapes=[{shape="BM.GPU.GB200.4",gpus=4,rdma_ports=0,quota_names=[]}]}],limits=[]},capacity={region="region-one",availability_domains=[{name="AD-1",assessment={observed_at="test",shapes=[{shape="BM.GPU.GB200.4",available_instances=2,availability_status="AVAILABLE"}]}}]}}]
+    regions=[{inventory={region="region-one",availability_domains=[{name="AD-1",shapes=[{shape="BM.GPU.GB200.4",gpus=4,rdma_ports=0,quota_names=["gpu-count"]}]}],limits=[{name="gpu-count",description="GPUs for test instances",scope_type="AD",availability_domain="AD-1",tenancy_limit=64,resource_availability={status="observed",available=64}}]},capacity={region="region-one",availability_domains=[{name="AD-1",assessment={observed_at="test",shapes=[{shape="BM.GPU.GB200.4",available_instances=2,availability_status="AVAILABLE"}]}}]}}]
   }
   assert {
     condition=anytrue([for c in output.assessment.candidates : c.engine.platform=="linux/arm64" && c.configuration_status=="recipe_configuration_requires_validation" && c.engine.image=="vllm/image@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"])

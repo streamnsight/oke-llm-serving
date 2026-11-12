@@ -18,7 +18,12 @@ locals {
       try(row.capacity.availability_status == "OUT_OF_HOST_CAPACITY" || (row.capacity.availability_status == "AVAILABLE" && row.capacity.available_instances == 0), false) ? "zero" : "unknown"
     )
   })]
-  availability_observations = [for row in local.quota_observations : {
+  # Use the same explicit GPU-unit evidence required by allocation admission.
+  # Positive headroom alone does not establish enough quota for a whole host.
+  quantity_observations = [for row in local.quota_observations : merge(row, {
+    entitled_instances = try(row.mapping_complete && alltrue([for limit in row.headroom : startswith(limit.description, "GPUs for ") && limit.resource_availability.status == "observed"]) ? floor(min([for limit in row.headroom : coalesce(try(tonumber(limit.resource_availability.fractional_availability), null), try(tonumber(limit.resource_availability.available), null))]...) / row.shape.gpus) : null, null)
+  })]
+  availability_observations = [for row in local.quantity_observations : {
     region                 = row.region
     availability_domain    = row.ad
     shape                  = row.shape.shape
@@ -27,6 +32,13 @@ locals {
     limit_status           = row.limit_status
     headroom_status        = row.mapping_complete ? row.headroom_status : "unknown"
     quota_mapping_complete = row.mapping_complete
+    entitled_instances     = row.entitled_instances
+    eligible_at_scan       = try(row.capacity_status == "positive" && row.capacity.available_instances >= var.replicas && row.limit_status == "positive" && row.entitled_instances >= var.replicas, false)
+    exclusion_reasons = compact([
+      row.capacity_status == "zero" ? "No physical capacity reported." : row.capacity_status != "positive" ? "No positive physical capacity report." : try(row.capacity.available_instances < var.replicas, true) ? "Insufficient physical instances for the requested replicas." : "",
+      row.limit_status == "zero" ? "GPU limit is zero." : row.limit_status != "positive" ? "Applicable positive GPU limits are not confirmed." : "",
+      row.entitled_instances == null ? "Quantity-specific GPU headroom or its units are not confirmed." : row.entitled_instances < var.replicas ? "GPU headroom cannot cover the requested complete shape instances." : ""
+    ])
     limits = [for limit in row.headroom : {
       name                  = limit.name
       scope_type            = limit.scope_type
