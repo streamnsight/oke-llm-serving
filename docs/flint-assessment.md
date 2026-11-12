@@ -12,7 +12,7 @@ The live recipe JSON endpoint resolves model aliases and upstream source referen
 
 Flint's catalog entry points to [this immutable recipe](https://github.com/vllm-project/vllm/blob/3bc0f430883c575d4076280d8d10d77cd4bfc07c/recipes/models/RecursiveSI/flint.yaml), SHA256 `96ab1b64c6bed851dea6157426f18d8910643d583bf7cb85b3947767d175c323` for the fetched YAML. It still declares `min_vllm_version: nightly`. Separately, the [v0.33.0 registry](https://github.com/vllm-project/vllm/blob/v0.33.0/vllm/model_executor/models/registry.py) explicitly registers `FlintForCausalLM`, and the [release notes](https://github.com/vllm-project/vllm/releases/tag/v0.33.0) announce BF16 and NVFP4 GGUF support. A resolver must keep both pieces of evidence; interpreting the older recipe's nightly field as a strict permanent requirement would reject a supporting stable release.
 
-## Implementation status, beyond editing engines.json
+## Implementation status
 
 | Layer | Current gap | Current role / remaining checks |
 | --- | --- | --- |

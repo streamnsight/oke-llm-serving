@@ -165,19 +165,23 @@ New-path verification: final Qwen RMS Plan succeeded, returning 22 suggestions a
 Confirmed-capacity verification: 32 planner tests, seven discovery-root tests and 14 deployment-root tests passed. A native Terraform replay of the actual saved Qwen/API observations returned nine selectable suggestions, all available_at_scan with sufficient whole-host GPU entitlement; all thirteen zero-capacity suggestions were excluded. The replay handoff explicitly records that it is not a new capacity query.
 
 ## Root-level RMS packages and CI artifacts
-- [ ] Flatten each stack's Terraform files/schema/provider lock to ZIP root, place modules in modules/, and relocate packaged local module/asset paths without changing repository development layout.
-- [ ] Verify both extracted packages with Terraform init/validate from the root and reject missing assets or leaked state/tests/private files.
-- [ ] Add a main-push GitHub Actions workflow that builds, validates and uploads the two stack ZIP artifacts.
-- [ ] Update packaging/RMS instructions, build final ZIPs, commit and integrate after local verification. GitHub-hosted execution awaits a remote push/merge.
+- [x] Flatten each stack's Terraform files/schema/provider lock to ZIP root, place modules in modules/, and relocate packaged local module/asset paths without changing repository development layout.
+- [x] Verify both extracted packages with Terraform init/validate from the root and reject missing assets or leaked state/tests/private files.
+- [x] Add a main-push GitHub Actions workflow that builds, validates and uploads the two stack ZIP artifacts.
+- [x] Update packaging/RMS instructions, build final ZIPs, commit and integrate after local verification. GitHub-hosted execution awaits a remote push/merge.
 
 ## Module-owned assets and workspace cleanup
-- [ ] Trace runtime/build catalog and DevOps references; retain active variant aliases, fallback engines, GPU metadata and deployment components.
-- [ ] Move runtime scripts/data into owning modules; encapsulate cross-region OCI CLI discovery in a module and move developer tests to tests/.
-- [ ] Simplify ZIP packaging to module-local assets and exclude build tooling from deployment archives; update tools/docs/tests.
-- [ ] Validate modules, scripts, JSON handoff and extracted packages; clean obsolete caches/research copies while preserving state, inputs and current handoff evidence.
+- [x] Trace runtime/build references; remove model/engine catalogs and retain only GPU metadata and deployment infrastructure defaults.
+- [x] Move runtime scripts/data into owning modules; encapsulate cross-region OCI CLI discovery in a module and move developer tests to tests/.
+- [x] Simplify ZIP packaging to module-local assets and exclude build tooling from deployment archives; update tools/docs/tests.
+- [x] Validate modules, scripts, JSON handoff and extracted packages; clean obsolete caches/research copies while preserving state, inputs and current handoff evidence.
 
 ## Live-only model/engine lookup (scope update)
 - [x] Remove static model/engine catalogs, dropdown compatibility input, catalog policy/generator and selection helper.
 - [x] Resolve recipe source owner/path/SHA from the live per-model API and select alias variants from its recommended variant metadata.
 - [x] Keep GPU specifications and deployment infrastructure pins module-owned; no serving engine fallback catalog remains.
-- [ ] Revalidate native/runtime/package flows and finish temporary workspace cleanup before integration.
+- [x] Revalidate native/runtime/package flows and finish temporary workspace cleanup before integration.
+
+Module-owned/live-only verification: 19 script/render/schema checks and native model-profile (10), recipe resolution (10), planner (32), discovery-root (6), deployment-root (14) checks passed. Both delivered root-level ZIPs passed extraction/init/validate. A real RMS Plan with module-owned OCI discovery and live recipe source metadata succeeded; its handoff also passed mocked deployment planning without catalogs. Latest private evidence is work/latest-discovery-plan.json and work/deployment-inputs.tfvars.json. No GPU allocation or inference occurred. GitHub workflow execution remains pending a remote push/merge to main.
+
+Cleanup removed the clean production-stack research clone, unused OCI 7.32.0 cache, duplicate Helm cache, obsolete SDK/CLI intermediate reports and logs. Active provider caches/symlink targets, 18 Terraform state files, input tfvars, research notes and current handoff were preserved. work/ was reduced from about 621 MiB to 326 MiB; remaining size is mostly active providers. tools/ was empty and removed.

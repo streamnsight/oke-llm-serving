@@ -75,7 +75,7 @@ The profile can follow explicit GGUF config/tokenizer references and pins their 
 
 ## Verification evidence
 
-The final Qwen/Qwen3.8-27B RMS Plan succeeded across all 16 READY subscribed regions. It returned 22 suggestions and four optional cache renderings. The single handoff is retained privately at `work/deployment-inputs.tfvars.json`, with the source plan at `work/recipe-api-final-rms-plan.json`. Passing that actual JSON into a deployment Terraform test with cloud resources mocked inherited model, image, TP4/node count and parser settings successfully. No GPUs or DevOps resources were allocated by these checks; no inference or benchmark was run.
+The final Qwen/Qwen3.8-27B RMS Plan succeeded across all 16 READY subscribed regions. It returned 22 suggestions and four optional cache renderings. The single handoff is retained privately at `work/deployment-inputs.tfvars.json`, with the source plan at `work/latest-discovery-plan.json`. Passing that actual JSON into a deployment Terraform test with cloud resources mocked inherited model, image, TP4/node count and parser settings successfully. No GPUs or DevOps resources were allocated by these checks; no inference or benchmark was run.
 
 Local checks cover 24 planner tests, 10 profile tests, 14 deployment-root tests, seven discovery-root tests, an additional actual-JSON handoff test and 24 script/render checks. Optional LMCache plans retain installation/companion commands but require explicit Kubernetes integration. A local live lookup encountered the host's Docker Hub TLS trust issue; TLS verification was not bypassed, and the RMS image lookup succeeded.
 
