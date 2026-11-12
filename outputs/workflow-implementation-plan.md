@@ -68,6 +68,8 @@ Packaging verification: both Make targets produced isolated, integrity-checked Z
 ## Optional RMS scope filters
 - [x] Inspect root defaults and RMS schema; retain all-region/all-shape behavior.
 - [x] Make schema filters explicitly optional with empty defaults; normalize explicit Terraform nulls to defaults.
-- [ ] Test omitted/null values and schema defaults; rebuild the discovery ZIP.
+- [x] Test omitted/null values and schema defaults; rebuild the discovery ZIP.
 
 The reported RMS job error has not been inspected. These changes harden the optional-input contract; a literal `var.shapes` error cannot originate from this root, which declares `shape_names`. Actual RMS verification requires the failing job details.
+
+Verification: ten Node tests and four discovery Terraform tests passed, including omitted/null filter values. The rebuilt ZIP was inspected for explicit optional schema defaults and non-null Terraform defaults. Exact failing RMS job details remain needed to establish its cause; no live RMS job was run for this change.
