@@ -132,3 +132,19 @@ test('discovery assesses requirements while deployment owns image and serving ov
  for(const name of ['engine_channel','engine_version','engine_platform','recipe_features','kv_dtype','runtime_gib','margin'])assert.equal(discovery.variables[name],undefined,name+' must not be requested during discovery');
  for(const name of ['discovery_json','selection_id','engine_channel','engine_image','engine_version','engine_platform','recipe_features','engine_args','engine_env'])assert.ok(deployment.variables[name],name+' belongs in deployment');
 });
+
+test('deployment RMS uses dynamic target fields and hides routine infrastructure tuning',()=>{
+ const schema=parse(readFileSync(`${root}/terraform/stacks/deployment/schema.yaml`,'utf8'));
+ assert.equal(schema.variables.compartment_id.type,'oci:identity:compartment:id');
+ assert.equal(schema.variables.compartment_id.default,'compartment_ocid');
+ assert.equal(schema.variables.cluster_id.type,'oci:container:cluster:id');
+ assert.equal(schema.variables.cluster_id.dependsOn.compartmentId,'compartment_id');
+ assert.equal(schema.variables.provision_resources.default,false);
+ for(const name of ['gpu_image_id','cpu_image_id','subnet_id','cpu_subnet_id','devops_subnet_id','pod_subnet_id','cpu_node_count','rdma_resource_name','rdma_network_attachment']) {
+  const group=schema.variableGroups.find(g=>g.variables.includes(name));
+  assert.equal(group.visible,'advanced_settings',name);
+  assert.equal(schema.variables[name].required,false,name);
+ }
+ for(const name of ['benchmark_requests','benchmark_input_tokens','benchmark_output_tokens']) assert.equal(schema.variables[name].visible,false);
+ for(const name of ['subnet_id','cpu_subnet_id','devops_subnet_id','pod_subnet_id']) assert.equal(schema.variables[name].dependsOn.vcnId,'network_vcn_id');
+});

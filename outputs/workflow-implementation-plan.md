@@ -194,3 +194,16 @@ Cleanup removed the clean production-stack research clone, unused OCI 7.32.0 cac
 - [ ] Validate on live OKE GPU nodes before integrating into main, following the branch validation workflow.
 
 Local verification passed: 24 script/render checks (including the released Helm chart), 10 allocation tests, 14 deployment-root tests and both extracted RMS ZIP validations. The feature is committed on `feature/reuse-oke-addons`. GPU allocation, actual inference and RDMA fabric validation were not run for this change.
+
+## Deployment defaults, read-only preview and RMS handoff
+
+Design: use RMS's stack compartment and dynamic cluster picker. A read-only target module resolves the cluster's VCN, existing worker/pod subnets and OKE-supported images for the exact Kubernetes version, OS and shape. Unambiguous existing subnets are reused; ambiguous choices remain explicit advanced overrides. Sharing a VCN does not prove API security/routing. Default to preview mode: no OCI allocation or DevOps resources. CPU sizing is an explicit component-budget estimate carried by discovery, not a model-weight heuristic. Keep image/network overrides hidden behind advanced settings. GPU driver/container CUDA compatibility remains pending until actual GPU runtime validation; image metadata must not be presented as that proof.
+
+RMS limits each input variable to 8192 bytes. Retain the full report for audit/local workflows, emit a compact frozen handoff per selection with a measured inline budget, and support authenticated Object Storage input for larger reports. Never silently truncate launch arguments or model/image provenance.
+
+1. [x] Generate compact per-selection handoffs, byte limits and authenticated large-payload input; verify the existing report and oversize/Unicode cases.
+2. [x] Implement native image/cluster/network target discovery and CPU sizing; verify exact-version/shape filtering, overrides, ambiguous subnets and VCN mismatch.
+3. [x] Default deployment to a read-only preview, simplify RMS controls and use derived values downstream; verify no OCI managed resources are planned in preview.
+4. [ ] Document the minimal workflow, CUDA/RDMA boundaries and artifacts; run native/render/package checks, commit the feature. No live allocations, deletions or DevOps executions during this work.
+
+Verification: all 13 configurations in the saved report export as RMS-safe inline JSON (maximum 7966 UTF-8 bytes, retaining capacity timestamps). Tests passed: 27 script/render and 92 native checks, including the actual saved report through a compact handoff to a mocked no-allocation deployment preview. A real OCI image selection confirmed the OKE/version/shape combination without creating managed resources. Docker manifest metadata was reachable, but the live config-blob redirect encountered a local CDN certificate trust failure; TLS was not disabled. Registry metadata is optional in preview and required before provisioning; driver/kernel checks still need real GPU nodes. Runtime execution and RMS form validation remain pending a selected cluster.

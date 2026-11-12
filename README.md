@@ -29,7 +29,9 @@ Discovery creates reports, not GPU allocations. Counts represent available insta
 
 ## Deploy a selected configuration
 
-The deployment stack at `terraform/stacks/deployment` creates retained GPU/CPU pools, optional supported RDMA Compute Cluster placement, and OCI DevOps deploy, validation and benchmark pipelines. Pass the single `deployment_inputs` JSON from discovery directly to deployment, then choose an assessment ID and target infrastructure there. Image/version/platform, features and expert overrides belong to deployment; no selection/export script is required.
+The deployment stack at `terraform/stacks/deployment` defaults to a read-only OCI preview. In RMS, paste one `deployment_handoffs[ID].inline_json` and select an existing OKE cluster; the compartment defaults to the stack's compartment. OKE images, existing subnets/NSGs, CPU sizing and storage defaults are resolved automatically. The full `deployment_inputs` report remains usable locally or through authenticated Object Storage; it exceeds RMS's 8192-byte variable limit for typical reports. See [preview and handoff instructions](docs/deployment-preview.md).
+
+Review `deployment_preview` before enabling `provision_resources`. Provisioning creates retained GPU/CPU pools, supported RDMA Compute Cluster placement when required, and OCI DevOps deploy, validation and benchmark pipelines. No GPU resources are allocated or released by the default preview. Overrides are optional advanced controls.
 
 Discovery now uses the vLLM Recipes JSON API to provide ranked, untested hardware-specific suggestions with frozen images and parser flags. Choose an ID from `assessment.suggestions`; `assessment.recommended_selection_id` identifies the resource-oriented default. See [recipe-derived suggestions and limitations](docs/recipe-derived-suggestions.md).
 

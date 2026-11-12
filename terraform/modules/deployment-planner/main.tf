@@ -103,6 +103,7 @@ locals {
 output "assessment" {
   value = {
     schema_version                 = "1.0"
+    control_plane                  = module.control_plane.requirements
     candidates                     = local.candidates
     status                         = length(local.suggestions) > 0 ? "suggestions_available" : length(local.candidates) > 0 ? "candidates_found" : length(local.sizing_options) > 0 ? "expert_options_available" : "requires_validation"
     recommended_selection_id       = try(local.ranked_suggestions[0].id, null)

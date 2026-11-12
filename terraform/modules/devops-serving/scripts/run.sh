@@ -11,10 +11,12 @@ printf '%s' "$CONFIG_B64" | base64 --decode > config.json
 printf '%s' "$RENDER_B64" | base64 --decode > render.jq
 printf '%s' "$BENCHMARK_B64" | base64 --decode > benchmark.sh
 printf '%s' "$CAPABILITIES_B64" | base64 --decode > node-capabilities.jq
+printf '%s' "$PARAMETERS_B64" | base64 --decode > benchmark-parameters.jq
 name=$(jq -r .name config.json)
 namespace=$(jq -r .namespace config.json)
 region=$(jq -r .region config.json)
 job_name="${name}-${MODE}-$(date -u +%s)-$RANDOM"
+deployment_id=${OCI_DEPLOYMENT_ID:-}
 export OCI_CLI_AUTH=resource_principal
 export OCI_CLI_REGION="$region"
 forward_pid=''
@@ -28,7 +30,7 @@ archive() {
   local bucket storage_namespace prefix
   bucket=$(jq -r .artifact_bucket config.json)
   storage_namespace=$(jq -r .storage_namespace config.json)
-  prefix="$name/$(jq -r .assessment_id config.json)/${OCI_DEVOPS_DEPLOYMENT_ID:-$job_name}/$MODE"
+  prefix="$name/$(jq -r .assessment_id config.json)/${deployment_id:-$job_name}/$MODE"
   for artifact in provenance-report.json raw-results.log benchmark-result.json context-test.json context-response.json pods.json nodes.json node-capabilities.json rdma-evidence.log helm-releases.json; do
     [[ -s "$artifact" ]] || continue
     oci os object put --namespace-name "$storage_namespace" --bucket-name "$bucket" --name "$prefix/$artifact" --file "$artifact" --force >/dev/null || code=1
@@ -42,6 +44,11 @@ archive() {
   exit "$code"
 }
 trap archive EXIT
+if [[ "$MODE" == benchmark && -n "$deployment_id" ]]; then
+  oci devops deployment get --deployment-id "$deployment_id" > deployment.json
+  jq -n --slurpfile c config.json --slurpfile d deployment.json '{config:$c[0],arguments:($d[0].data["deployment-arguments"].items // [])}' | jq -f benchmark-parameters.jq > adjusted-config.json
+  mv adjusted-config.json config.json
+fi
 if [[ "$MODE" != benchmark ]]; then
   printf '{"status":"in_progress"}\n' > validation-marker.json
   oci os object put --namespace-name "$(jq -r .storage_namespace config.json)" --bucket-name "$(jq -r .artifact_bucket config.json)" --name "$name/$(jq -r .specification_hash config.json)/validated.json" --file validation-marker.json --force >/dev/null

@@ -73,9 +73,10 @@ locals {
 
 output "discovery" { value = local.discovery_result }
 output "deployment_inputs" {
-  description = "Single JSON handoff: use directly as deployment tfvars, or paste the object in the deployment discovery input."
+  description = "Full audit/local tfvars handoff. Too large for an RMS variable: use deployment_handoffs or authenticated Object Storage transport."
   value = { discovery = {
     schema_version        = "2.0", observation_id = var.observation_id, profile = module.model_profile.profile,
+    control_plane         = module.control_plane.requirements,
     serving_configuration = module.serving_resolution.resolution,
     assessment = {
       recommended_selection_id       = try(module.planner.assessment.recommended_selection_id, null)
@@ -96,6 +97,16 @@ output "deployment_inputs" {
   } }
 }
 
+module "control_plane" { source = "../../modules/control-plane-sizing" }
+module "handoff" {
+  source                = "../../modules/deployment-handoff"
+  profile               = module.model_profile.profile
+  assessment            = merge(module.planner.assessment, { control_plane = module.control_plane.requirements })
+  serving_configuration = module.serving_resolution.resolution
+  observation_id        = var.observation_id
+}
+output "deployment_handoffs" { value = module.handoff.handoffs }
+
 module "planner" {
   source             = "../../modules/deployment-planner"
   recipe_api_enabled = true
@@ -110,7 +121,7 @@ output "assessment" {
 }
 
 output "recommendations" {
-  description = "Readable GPU/region choices. Pass deployment_inputs unchanged and select one ID in deployment."
+  description = "Readable GPU/region choices. For RMS, copy the chosen deployment_handoffs entry's inline_json."
   value = {
     recommended_selection_id = try(module.planner.assessment.recommended_selection_id, null)
     ranking                  = "Only capacity/headroom-confirmed options; fewer allocated host GPUs, then smaller TP. No cost/throughput prediction."

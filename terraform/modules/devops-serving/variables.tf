@@ -8,3 +8,8 @@ variable "config" {
   description = "Selected immutable deployment specification, including target cluster and allocation labels."
   type        = any
 }
+
+variable "nsg_ids" {
+  type    = list(string)
+  default = []
+}

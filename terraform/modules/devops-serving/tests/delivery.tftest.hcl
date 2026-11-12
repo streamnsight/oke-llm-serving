@@ -6,7 +6,7 @@ variables {
   compartment_id = "target"
   subnet_id      = "runner-subnet"
   name           = "fixture"
-  config         = { name = "fixture", namespace = "fixture", model_revision = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }
+  config         = { name = "fixture", namespace = "fixture", model_revision = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", context_length = 4096, benchmark_requests = 50, benchmark_input_tokens = 1024, benchmark_output_tokens = 128 }
 }
 override_data {
   target = data.oci_objectstorage_namespace.target
@@ -23,7 +23,7 @@ run "separate_benchmark_and_automatic_validation" {
     error_message = "Deploy must chain validation; benchmark must remain in its own explicitly invoked pipeline."
   }
   assert {
-    condition     = oci_objectstorage_bucket.evidence.access_type == "NoPublicAccess" && length(output.delivery.bootstrap_rbac.items) == 9 && yamldecode(output.delivery.command_specs["benchmark"]).failImmediatelyOnError == true
+    condition     = oci_objectstorage_bucket.evidence.access_type == "NoPublicAccess" && length(output.delivery.bootstrap_rbac.items) == 6 && yamldecode(output.delivery.command_specs["benchmark"]).failImmediatelyOnError == true
     error_message = "Evidence storage must remain private and pipeline access/bootstrap must be explicit."
   }
 }

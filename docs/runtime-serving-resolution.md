@@ -42,7 +42,7 @@ terraform -chdir=terraform/stacks/deployment plan \
   -var-file="$PWD/work/target.json"
 ```
 
-For RMS, paste the **same entire JSON document** into the deployment form's **Discovery JSON** field. It uses literal text transport (`discovery_json`) and decodes the object internally, so recipe placeholders cannot become Terraform expressions. Choose `selection_id` and fill the OKE/network/image target fields there. A sole assessment choice can be selected automatically. Model ID/SHA, workload and assessed settings do not need to be re-entered. No selection/export script is required.
+For RMS, paste the chosen `deployment_handoffs[ID].inline_json` into **Discovery JSON**. Do not paste the entire report: each RMS variable is limited to 8192 bytes. The compact payload contains one frozen selection and preserves literal recipe placeholders. Select the existing cluster; images, known networking and CPU defaults are resolved automatically in preview mode. Larger payloads use authenticated Object Storage input. See [the compact handoff and preview guide](deployment-preview.md).
 
 ## Three distinct results
 

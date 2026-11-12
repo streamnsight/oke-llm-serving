@@ -19,6 +19,18 @@ variable "name" { type = string }
 variable "requires_rdma" { type = bool }
 variable "observation_id" { type = string }
 variable "cpu_image_id" { type = string }
+variable "cpu_shape" {
+  type    = string
+  default = "VM.Standard.E4.Flex"
+}
+variable "cpu_ocpus" {
+  type    = number
+  default = 4
+}
+variable "cpu_memory_gib" {
+  type    = number
+  default = 24
+}
 variable "cpu_node_count" {
   type    = number
   default = 1
@@ -41,4 +53,19 @@ variable "specification_id" {
   description = "Dependency on the caller's validated specification, without deferring native inventory reads."
   type        = string
   default     = "standalone"
+}
+
+variable "gpu_nsg_ids" {
+  type    = list(string)
+  default = []
+}
+
+variable "cpu_nsg_ids" {
+  type    = list(string)
+  default = []
+}
+
+variable "pod_nsg_ids" {
+  type    = list(string)
+  default = []
 }

@@ -50,7 +50,7 @@ Capacity diagnostic reports are now requested when the data source is read, incl
 
 ## Obtain JSON
 
-After a completed Apply job, open **Job → Outputs** for `deployment_inputs` (the handoff) and `discovery` / `assessment` (full reports). For an exact machine-readable handoff, download the Terraform state:
+After a completed Apply job, open **Job → Outputs** for `deployment_handoffs` (compact per-selection inputs) and `discovery` / `assessment` / `deployment_inputs` (full reports). For exact machine-readable outputs, download the Terraform state:
 
 ```sh
 mkdir -p work
@@ -69,7 +69,9 @@ Discovery assesses recipes, stable/nightly candidates, published image platforms
 
 ## Deploy a selected configuration
 
-Fill `terraform/stacks/deployment/target.example.json` with an existing cluster and compatible regional images/subnets. Pass the one deployment_inputs JSON unchanged, choose `selection_id` and target infrastructure in deployment. The second stack uses native OCI Terraform to create retained GPU/CPU infrastructure and DevOps resources. Apply the emitted Kubernetes RBAC manifest, then run the deploy pipeline; validation follows automatically and benchmarking runs separately. See [the complete workflow](deployment-workflow.md).
+RMS limits each variable value to 8192 bytes. Do not paste the full `deployment_inputs` report into a variable. Copy the selected `deployment_handoffs[ID].inline_json`; it contains one frozen choice and is measured against an 8000-byte budget. If it is null, use the emitted `object_json` through authenticated Object Storage instead. [The preview/handoff guide](deployment-preview.md) includes exact export commands.
+
+Create the deployment stack in the selected GPU region, paste that compact JSON and choose an existing cluster using the dynamic picker. The compartment defaults to the stack compartment. Images, known worker/pod subnets and NSGs are resolved from OCI; normal users need not supply their OCIDs. The default preview creates no OCI resources. Review its output before opting into allocation and DevOps provisioning. See [the complete workflow](deployment-workflow.md).
 
 References: [Oracle RMS schema/control specification](https://docs.oracle.com/en-us/iaas/Content/ResourceManager/Concepts/terraformconfigresourcemanager_topic-schema.htm), [OCI regional APIs](https://docs.oracle.com/en-us/iaas/Content/API/Concepts/usingapi.htm), [external data-source protocol](https://registry.terraform.io/providers/hashicorp/external/latest/docs/data-sources/external), [RMS job outputs](https://docs.oracle.com/en-us/iaas/Content/ResourceManager/Tasks/list-job-outputs.htm).
 

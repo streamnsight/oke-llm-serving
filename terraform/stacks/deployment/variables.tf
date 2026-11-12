@@ -1,7 +1,39 @@
 # Copyright (c) 2020-2022 Oracle and/or its affiliates. All rights reserved.
 # Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
 variable "tenancy_ocid" { type = string }
-variable "compartment_id" { type = string }
+variable "compartment_ocid" {
+  description = "Automatically supplied by Resource Manager."
+  type        = string
+  default     = null
+}
+variable "compartment_id" {
+  type    = string
+  default = null
+}
+variable "provision_resources" {
+  description = "False previews resolved infrastructure without creating OCI resources. Enable only after reviewing the preview. Do not disable again on an allocated stack."
+  type        = bool
+  default     = false
+}
+variable "advanced_settings" {
+  description = "Show optional RMS overrides."
+  type        = bool
+  default     = false
+}
+variable "inspect_serving_image" {
+  description = "Also inspect the serving image's digest-verified CUDA metadata during preview. Provisioning always performs this read. Requires Docker Registry/CDN access."
+  type        = bool
+  default     = false
+}
+variable "os_version" {
+  description = "Oracle Linux major version for automatic OKE image selection."
+  type        = string
+  default     = "8"
+  validation {
+    condition     = contains(["8", "9"], var.os_version)
+    error_message = "Select Oracle Linux 8 or 9."
+  }
+}
 variable "region" {
   default = null
   type    = string
@@ -11,17 +43,43 @@ variable "availability_domain" {
   default = null
   type    = string
 }
-variable "subnet_id" { type = string }
-variable "cpu_subnet_id" { type = string }
-variable "devops_subnet_id" { type = string }
-variable "gpu_image_id" { type = string }
-variable "cpu_image_id" { type = string }
+variable "subnet_id" {
+  type    = string
+  default = null
+}
+variable "cpu_subnet_id" {
+  type    = string
+  default = null
+}
+variable "network_compartment_id" {
+  description = "Optional RMS network-picker compartment. Does not change the cluster's derived VCN."
+  type        = string
+  default     = null
+}
+variable "network_vcn_id" {
+  description = "Optional RMS subnet-picker filter. Must equal the selected cluster's VCN."
+  type        = string
+  default     = null
+}
+variable "devops_subnet_id" {
+  type    = string
+  default = null
+}
+variable "gpu_image_id" {
+  type    = string
+  default = null
+}
+variable "cpu_image_id" {
+  type    = string
+  default = null
+}
 variable "gpu_shape" {
   default = null
   type    = string
 }
 variable "name" {
-  type = string
+  type    = string
+  default = "llm-serving"
   validation {
     condition     = can(regex("^[a-z][a-z0-9-]{0,30}[a-z0-9]$", var.name))
     error_message = "Use a DNS-safe deployment name of 2–32 characters."
@@ -102,11 +160,19 @@ variable "assessment_id" {
 }
 variable "cpu_node_count" {
   type    = number
-  default = 1
+  default = null
+}
+variable "cpu_ocpus" {
+  type    = number
+  default = null
+}
+variable "cpu_memory_gib" {
+  type    = number
+  default = null
 }
 variable "boot_volume_gib" {
   type    = number
-  default = 200
+  default = null
 }
 variable "rdma_network_attachment" {
   description = "Existing Multus NetworkAttachmentDefinition name or namespace/name, when required by the OKE-managed RDMA/SR-IOV network configuration. The stack does not create or configure the cluster network."
@@ -118,7 +184,7 @@ variable "rdma_resource_name" {
   type        = string
   default     = null
   validation {
-    condition     = var.rdma_resource_name == null ? true : can(regex("^[a-z0-9]([-a-z0-9.]*[a-z0-9])?/[A-Za-z0-9][-A-Za-z0-9_.]*$", var.rdma_resource_name))
+    condition     = try(trimspace(var.rdma_resource_name), "") == "" ? true : can(regex("^[a-z0-9]([-a-z0-9.]*[a-z0-9])?/[A-Za-z0-9][-A-Za-z0-9_.]*$", var.rdma_resource_name))
     error_message = "Use a qualified existing resource name, such as nvidia.com/rdma_shared_device_a."
   }
 }
@@ -132,17 +198,17 @@ variable "benchmark_requests" {
 }
 variable "benchmark_output_tokens" {
   type    = number
-  default = 128
+  default = null
   validation {
-    condition     = var.benchmark_output_tokens >= 1 && floor(var.benchmark_output_tokens) == var.benchmark_output_tokens
+    condition     = var.benchmark_output_tokens == null ? true : var.benchmark_output_tokens >= 1 && floor(var.benchmark_output_tokens) == var.benchmark_output_tokens
     error_message = "benchmark_output_tokens must be a positive integer."
   }
 }
 variable "benchmark_input_tokens" {
   type    = number
-  default = 1024
+  default = null
   validation {
-    condition     = var.benchmark_input_tokens >= 1 && floor(var.benchmark_input_tokens) == var.benchmark_input_tokens
+    condition     = var.benchmark_input_tokens == null ? true : var.benchmark_input_tokens >= 1 && floor(var.benchmark_input_tokens) == var.benchmark_input_tokens
     error_message = "benchmark_input_tokens must be a positive integer."
   }
 }
@@ -228,11 +294,48 @@ variable "recipe_features" {
   nullable    = false
 }
 variable "discovery_json" {
-  description = "RMS text transport: paste the entire deployment_inputs JSON. A string input preserves recipe placeholders literally."
+  description = "RMS: paste one deployment_handoffs[selection].inline_json, not the full report. Resource Manager limits each variable to 8192 bytes."
   type        = string
   default     = null
   validation {
-    condition     = var.discovery_json == null || can(jsondecode(var.discovery_json).discovery.profile.model.resolved_revision) || can(jsondecode(var.discovery_json).profile.model.resolved_revision)
+    condition     = try(trimspace(var.discovery_json), "") == "" || can(jsondecode(var.discovery_json).discovery.profile.model.resolved_revision) || can(jsondecode(var.discovery_json).profile.model.resolved_revision)
     error_message = "Paste valid deployment_inputs JSON or its discovery object."
   }
+  validation {
+    condition     = var.discovery_json == null ? true : length(base64encode(var.discovery_json)) * 3 / 4 - length(regexall("=", base64encode(var.discovery_json))) <= 8000
+    error_message = "Inline handoff exceeds the RMS-safe 8000-byte budget. Use a compact per-selection handoff or discovery_object_uri with discovery_sha256."
+  }
+}
+variable "discovery_object_uri" {
+  description = "Authenticated large-payload transport: oci://REGION/NAMESPACE/BUCKET/OBJECT. No public URL or PAR is required."
+  type        = string
+  default     = null
+  validation {
+    condition     = try(trimspace(var.discovery_object_uri), "") == "" || can(regex("^oci://[^/]+/[^/]+/[^/]+/.+$", var.discovery_object_uri))
+    error_message = "Use oci://REGION/NAMESPACE/BUCKET/OBJECT."
+  }
+}
+variable "discovery_sha256" {
+  description = "SHA256 of the Object Storage JSON bytes; required for object transport."
+  type        = string
+  default     = null
+  validation {
+    condition     = try(trimspace(var.discovery_sha256), "") == "" || can(regex("^[a-f0-9]{64}$", var.discovery_sha256))
+    error_message = "Use a lowercase SHA256 hex digest."
+  }
+}
+
+variable "worker_nsg_ids" {
+  type    = list(string)
+  default = null
+}
+
+variable "pod_nsg_ids" {
+  type    = list(string)
+  default = null
+}
+
+variable "devops_nsg_ids" {
+  type    = list(string)
+  default = null
 }

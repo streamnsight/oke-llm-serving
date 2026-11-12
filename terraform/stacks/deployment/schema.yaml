@@ -1,21 +1,32 @@
 # Copyright (c) 2020-2022 Oracle and/or its affiliates. All rights reserved.
 # Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
 title: OKE LLM deployment
-description: Apply the selected discovery configuration to an existing regional OKE cluster. Creates billable GPU/CPU pools and DevOps resources; pipelines run separately.
+description: Preview the selected configuration in an existing regional OKE cluster. Images and networking are discovered automatically. No OCI resources are created unless resource creation is explicitly enabled. Create this stack in the selected GPU region.
 schemaVersion: 1.1.0
 version: "0.1.0"
 variableGroups:
   - title: Discovery assessment
-    variables: [discovery_json, selection_id]
+    variables: [discovery_json]
   - title: Deployment target
-    variables: [name, compartment_id, cluster_id, gpu_image_id, subnet_id, cpu_image_id, cpu_subnet_id, devops_subnet_id, pod_subnet_id, cpu_node_count, boot_volume_gib]
+    variables: [name, compartment_id, cluster_id, provision_resources, advanced_settings]
+  - title: Image and network overrides
+    visible: advanced_settings
+    variables: [os_version, gpu_image_id, cpu_image_id, inspect_serving_image, network_compartment_id, network_vcn_id, subnet_id, cpu_subnet_id, devops_subnet_id, pod_subnet_id, worker_nsg_ids, pod_nsg_ids, devops_nsg_ids]
+  - title: CPU and storage overrides
+    visible: advanced_settings
+    variables: [cpu_node_count, cpu_ocpus, cpu_memory_gib, boot_volume_gib]
+  - title: Large discovery payload
+    visible: advanced_settings
+    variables: [discovery_object_uri, discovery_sha256, selection_id]
   - title: Deployment settings and overrides
+    visible: advanced_settings
     variables: [engine_channel, engine_version, engine_image, engine_platform, recipe_features, expert_configuration, expert_rank_memory_gib, engine_args, engine_env, node_count, tensor_parallel_size, pipeline_parallel_size, replicas, requires_rdma, context_length, concurrency, kv_dtype, runtime_gib, margin]
-  - title: Delivery and benchmark
-    variables: [rdma_resource_name, rdma_network_attachment, benchmark_requests, benchmark_input_tokens, benchmark_output_tokens, observation_id]
+  - title: Existing RDMA network overrides
+    visible: advanced_settings
+    variables: [rdma_resource_name, rdma_network_attachment, observation_id]
   - title: Advanced and derived inputs
     visible: false
-    variables: [discovery, tenancy_ocid, region, availability_domain, gpu_shape, model, model_revision, serving_configuration, assessment_id]
+    variables: [discovery, tenancy_ocid, compartment_ocid, region, availability_domain, gpu_shape, model, model_revision, serving_configuration, assessment_id, benchmark_requests, benchmark_input_tokens, benchmark_output_tokens]
 
 variables:
   tenancy_ocid:
@@ -25,15 +36,43 @@ variables:
   name:
     type: string
     title: Name
+    default: llm-serving
+  compartment_ocid:
+    type: string
+    visible: false
+  provision_resources:
+    type: boolean
+    default: false
+    title: Create GPU pools and DevOps resources
+    description: Leave disabled to inspect deployment_preview safely. Enabling creates billable infrastructure. Do not disable again after allocating resources.
+  advanced_settings:
+    type: boolean
+    default: false
+    title: Show optional overrides
+  os_version:
+    type: enum
+    enum: ["8", "9"]
+    default: "8"
+    title: Oracle Linux major version
+  inspect_serving_image:
+    type: boolean
+    default: false
+    title: Inspect container CUDA metadata during preview
+    description: Optional Docker Registry/CDN read. Provisioning always performs this inspection; actual node driver/kernel compatibility still needs runtime validation.
   region:
     type: string
     title: Region
   compartment_id:
-    type: string
-    title: Compartment id
+    type: oci:identity:compartment:id
+    default: compartment_ocid
+    title: Deployment compartment
+    required: true
   cluster_id:
-    type: string
-    title: Cluster id
+    type: oci:container:cluster:id
+    title: Existing OKE cluster
+    required: true
+    dependsOn:
+      compartmentId: compartment_id
   availability_domain:
     type: string
     title: Availability domain
@@ -48,25 +87,85 @@ variables:
     title: Requires rdma
   gpu_image_id:
     type: string
-    title: Gpu image id
+    title: GPU image OCID override
+    required: false
+    description: Normally selected automatically for the shape, region, OS and exact cluster Kubernetes version.
+  network_compartment_id:
+    type: oci:identity:compartment:id
+    default: compartment_id
+    title: Network compartment for overrides
+    required: false
+  network_vcn_id:
+    type: oci:core:vcn:id
+    title: Cluster VCN for subnet overrides
+    required: false
+    dependsOn:
+      compartmentId: network_compartment_id
   subnet_id:
-    type: string
-    title: Subnet id
+    type: oci:core:subnet:id
+    title: GPU worker subnet override
+    required: false
+    dependsOn:
+      compartmentId: network_compartment_id
+      vcnId: network_vcn_id
   cpu_image_id:
     type: string
-    title: Cpu image id
+    title: CPU image OCID override
+    required: false
   cpu_subnet_id:
-    type: string
-    title: Cpu subnet id
+    type: oci:core:subnet:id
+    title: CPU worker subnet override
+    required: false
+    dependsOn:
+      compartmentId: network_compartment_id
+      vcnId: network_vcn_id
   devops_subnet_id:
-    type: string
-    title: Devops subnet id
+    type: oci:core:subnet:id
+    title: DevOps runner subnet override
+    required: false
+    dependsOn:
+      compartmentId: network_compartment_id
+      vcnId: network_vcn_id
   pod_subnet_id:
-    type: string
-    title: Pod subnet id
+    type: oci:core:subnet:id
+    title: Pod subnet override
+    required: false
+    dependsOn:
+      compartmentId: network_compartment_id
+      vcnId: network_vcn_id
   cpu_node_count:
     type: integer
     title: Cpu node count
+    required: false
+  worker_nsg_ids:
+    type: list
+    valueType: network_nsg_item
+    required: false
+    title: Worker NSG override
+  pod_nsg_ids:
+    type: list
+    valueType: network_nsg_item
+    required: false
+    title: Pod NSG override
+  devops_nsg_ids:
+    type: list
+    valueType: network_nsg_item
+    required: false
+    title: DevOps NSG override
+  network_nsg_item:
+    type: oci:core:nsg:id
+    visible: false
+    dependsOn:
+      compartmentId: network_compartment_id
+      vcnId: network_vcn_id
+  cpu_ocpus:
+    type: integer
+    title: CPU OCPUs per node override
+    required: false
+  cpu_memory_gib:
+    type: number
+    title: CPU memory per node override (GiB)
+    required: false
   boot_volume_gib:
     type: integer
     title: Boot volume gib
@@ -119,12 +218,15 @@ variables:
   benchmark_requests:
     type: integer
     title: Benchmark requests
+    visible: false
   benchmark_input_tokens:
     type: integer
     title: Benchmark input tokens
+    visible: false
   benchmark_output_tokens:
     type: integer
     title: Benchmark output tokens
+    visible: false
   observation_id:
     type: string
     title: Observation id
@@ -203,4 +305,14 @@ variables:
     title: Discovery JSON
     required: false
     multiline: true
-    description: Paste the entire deployment_inputs JSON from discovery. Model, assessment and recipe/image evidence are loaded together; placeholders remain literal data.
+    description: Paste the chosen deployment_handoffs entry's inline_json exactly. Do not paste the full report (RMS limits each variable to 8192 bytes). Leave empty for Object Storage input under optional overrides.
+  discovery_object_uri:
+    type: string
+    title: Private discovery object URI
+    required: false
+    description: oci://REGION/NAMESPACE/BUCKET/OBJECT. The RMS principal must have permission to read this object. No public access or PAR is needed.
+  discovery_sha256:
+    type: string
+    title: Discovery object SHA256
+    required: false
+    description: Required with object URI. Must match the exact uploaded JSON bytes.

@@ -13,6 +13,11 @@ Licensed under the Universal Permissive License v 1.0 as shown at http://oss.ora
 | `terraform/modules/serving-resolution` | Live recipe JSON source/alias lookup, immutable upstream YAML and engine image assessment |
 | `terraform/modules/devops-serving/scripts` | Runtime deployment runner, Kubernetes renderer and official vLLM benchmark wrapper |
 | `terraform/modules/devops-serving/data/components.json` | Deployment infrastructure versions and image digests |
+| `terraform/modules/deployment-target` | Read-only cluster, network/NSG and regional image resolution |
+| `terraform/modules/oke-node-image` | Native OKE image/version/shape selector |
+| `terraform/modules/deployment-handoff` | Byte-budgeted per-selection RMS payloads |
+| `terraform/modules/control-plane-sizing` | CPU component budget shared by discovery/deployment |
+| `terraform/modules/serving-image-metadata` | Digest-verified public vLLM CUDA metadata |
 | `scripts` | ZIP packaging and extracted-package validation only |
 | `tests` | Development-only script, renderer and schema checks |
 | `work` | Ignored inputs, handoff/reports, package outputs and active local caches |

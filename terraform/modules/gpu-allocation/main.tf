@@ -92,12 +92,14 @@ resource "oci_containerengine_node_pool" "gpu" {
   }
   node_config_details {
     size               = var.node_count
+    nsg_ids            = var.gpu_nsg_ids
     compute_cluster_id = var.requires_rdma ? oci_core_compute_cluster.gpu[0].id : null
     dynamic "node_pool_pod_network_option_details" {
       for_each = try(data.oci_containerengine_cluster.target.cluster_pod_network_options[0].cni_type == "OCI_VCN_IP_NATIVE", false) ? [1] : []
       content {
         cni_type          = "OCI_VCN_IP_NATIVE"
         pod_subnet_ids    = [coalesce(var.pod_subnet_id, var.subnet_id)]
+        pod_nsg_ids       = var.pod_nsg_ids
         max_pods_per_node = 31
       }
     }
@@ -147,10 +149,10 @@ resource "oci_containerengine_node_pool" "cpu" {
   cluster_id         = var.cluster_id
   name               = "${var.name}-control"
   kubernetes_version = data.oci_containerengine_cluster.target.kubernetes_version
-  node_shape         = "VM.Standard.E4.Flex"
+  node_shape         = var.cpu_shape
   node_shape_config {
-    ocpus         = 2
-    memory_in_gbs = 16
+    ocpus         = var.cpu_ocpus
+    memory_in_gbs = var.cpu_memory_gib
   }
   node_source_details {
     source_type = "IMAGE"
@@ -161,12 +163,14 @@ resource "oci_containerengine_node_pool" "cpu" {
     value = var.name
   }
   node_config_details {
-    size = var.cpu_node_count
+    size    = var.cpu_node_count
+    nsg_ids = var.cpu_nsg_ids
     dynamic "node_pool_pod_network_option_details" {
       for_each = try(data.oci_containerengine_cluster.target.cluster_pod_network_options[0].cni_type == "OCI_VCN_IP_NATIVE", false) ? [1] : []
       content {
         cni_type          = "OCI_VCN_IP_NATIVE"
         pod_subnet_ids    = [coalesce(var.pod_subnet_id, var.cpu_subnet_id)]
+        pod_nsg_ids       = var.pod_nsg_ids
         max_pods_per_node = 31
       }
     }

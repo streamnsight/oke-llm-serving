@@ -4,7 +4,27 @@ terraform {
   required_version = ">= 1.5.0"
   required_providers { oci = { source = "oracle/oci", version = "~> 9.12" } }
 }
-provider "oci" { region = local.region }
+provider "oci" { region = coalesce(var.region, local.region) }
+module "control_plane" { source = "../../modules/control-plane-sizing" }
+module "serving_runtime" {
+  count  = var.provision_resources || var.inspect_serving_image ? 1 : 0
+  source = "../../modules/serving-image-metadata"
+  image  = local.engine_image
+}
+module "target" {
+  source              = "../../modules/deployment-target"
+  cluster_id          = var.cluster_id
+  availability_domain = local.availability_domain
+  gpu_shape           = local.gpu_shape
+  gpu_architecture    = try(local.gpu.cpu_architecture, "amd64")
+  requires_rdma       = local.requires_rdma
+  cpu_shape           = local.cpu_requirements.shape
+  os_version          = var.os_version
+  worker_nsg_ids      = var.worker_nsg_ids
+  pod_nsg_ids         = var.pod_nsg_ids
+  devops_nsg_ids      = var.devops_nsg_ids
+  overrides           = { for k, v in { gpu_image_id = var.gpu_image_id, cpu_image_id = var.cpu_image_id, subnet_id = var.subnet_id, cpu_subnet_id = var.cpu_subnet_id, devops_subnet_id = var.devops_subnet_id, pod_subnet_id = var.pod_subnet_id } : k => try(trimspace(v) != "" ? trimspace(v) : null, null) }
+}
 module "model_profile" {
   source         = "../../modules/model-profile"
   model          = local.model
@@ -40,8 +60,28 @@ resource "terraform_data" "specification" {
 
   lifecycle {
     precondition {
-      condition     = var.discovery == null || var.discovery_json == null
-      error_message = "Provide the discovery object or discovery_json text, not both."
+      condition     = var.region == null || local.region == null || var.region == local.region
+      error_message = "The RMS/CLI region must match the selected discovery region. Create the deployment stack in that region so the cluster picker and regional images match."
+    }
+    precondition {
+      condition     = length(compact([var.discovery != null ? "object" : "", local.inline_json != null ? "inline" : "", local.object_uri != null ? "storage" : ""])) <= 1
+      error_message = "Use only one discovery transport: local object, compact inline JSON or Object Storage."
+    }
+    precondition {
+      condition     = !var.provision_resources || module.target.target.ready
+      error_message = "Resolve all deployment_preview.target.issues before enabling resource creation."
+    }
+    precondition {
+      condition     = try(trimspace(var.network_vcn_id), "") == "" || var.network_vcn_id == module.target.target.vcn_id
+      error_message = "The network VCN filter must match the selected OKE cluster's VCN."
+    }
+    precondition {
+      condition     = local.benchmark_input_tokens > 0 && local.benchmark_input_tokens + local.benchmark_output_tokens + 128 <= local.context_length
+      error_message = "Benchmark token overrides must fit the configured context with 128 tokens reserved for the chat template."
+    }
+    precondition {
+      condition     = local.cpu_node_count >= local.cpu_requirements.node_count && local.cpu_ocpus >= local.cpu_requirements.ocpus && local.cpu_memory_gib >= local.cpu_requirements.memory_gib
+      error_message = "CPU overrides must meet the component budget in discovery (including one benchmark job)."
     }
     precondition {
       condition     = can(regex("@sha256:[a-f0-9]{64}$", local.engine_image))
@@ -52,7 +92,7 @@ resource "terraform_data" "specification" {
       error_message = "An unassessed image override requires expert_configuration; its model/platform compatibility is not established by discovery."
     }
     precondition {
-      condition     = (var.discovery == null && var.discovery_json == null) || local.selected != null
+      condition     = local.discovery_document == null || local.selected != null
       error_message = "Select one candidate/sizing-option ID from the supplied discovery JSON."
     }
     precondition {
@@ -125,57 +165,77 @@ resource "terraform_data" "specification" {
       error_message = "Serving argv/env cannot override managed identity, topology or reserved distributed settings; use dedicated deployment variables."
     }
     precondition {
-      condition     = try(var.boot_volume_gib * pow(1024, 3) >= coalesce(try(local.profile.weights.checkpoint_download_bytes, null), local.profile.weights.tensor_data_bytes) * 1.3 + 50 * pow(1024, 3), false)
+      condition     = try(local.boot_volume_gib * pow(1024, 3) >= coalesce(try(local.profile.weights.checkpoint_download_bytes, null), local.profile.weights.tensor_data_bytes) * 1.3 + 50 * pow(1024, 3), false)
       error_message = "Boot volume must allow the complete checkpoint cache plus image/OS headroom on every worker."
     }
   }
 }
 module "allocation" {
+  count               = var.provision_resources ? 1 : 0
   source              = "../../modules/gpu-allocation"
   tenancy_ocid        = var.tenancy_ocid
-  compartment_id      = var.compartment_id
+  compartment_id      = local.compartment_id
   cluster_id          = var.cluster_id
   region              = local.region
   availability_domain = local.availability_domain
-  subnet_id           = var.subnet_id
-  gpu_image_id        = var.gpu_image_id
-  cpu_image_id        = var.cpu_image_id
-  cpu_subnet_id       = var.cpu_subnet_id
-  cpu_node_count      = var.cpu_node_count
+  subnet_id           = module.target.target.subnet_id
+  gpu_image_id        = module.target.target.gpu_image.id
+  cpu_image_id        = module.target.target.cpu_image.id
+  cpu_subnet_id       = module.target.target.cpu_subnet_id
+  cpu_node_count      = local.cpu_node_count
+  cpu_shape           = local.cpu_requirements.shape
+  cpu_ocpus           = local.cpu_ocpus
+  cpu_memory_gib      = local.cpu_memory_gib
+  gpu_nsg_ids         = try(module.target.target.gpu_nsg_ids, [])
+  cpu_nsg_ids         = try(module.target.target.cpu_nsg_ids, [])
+  pod_nsg_ids         = try(module.target.target.pod_nsg_ids, [])
   gpu_shape           = local.gpu_shape
   node_count          = local.node_count
   requires_rdma       = local.requires_rdma
   name                = var.name
   observation_id      = local.observation_id
-  boot_volume_gib     = var.boot_volume_gib
-  pod_subnet_id       = var.pod_subnet_id
+  boot_volume_gib     = local.boot_volume_gib
+  pod_subnet_id       = module.target.target.pod_subnet_id
   specification_id    = terraform_data.specification.id
 }
 module "delivery" {
+  count          = var.provision_resources ? 1 : 0
   source         = "../../modules/devops-serving"
   tenancy_ocid   = var.tenancy_ocid
-  compartment_id = var.compartment_id
-  subnet_id      = var.devops_subnet_id
+  compartment_id = local.compartment_id
+  subnet_id      = module.target.target.devops_subnet_id
+  nsg_ids        = try(module.target.target.devops_nsg_ids, [])
   name           = var.name
   config = {
-    name                    = var.name, namespace = var.name, cluster_id = var.cluster_id, cluster_compartment_id = module.allocation.allocation.cluster_compartment_id, region = local.region
+    name                    = var.name, namespace = var.name, cluster_id = var.cluster_id, cluster_compartment_id = module.target.target.cluster_compartment_id, region = local.region
     model                   = local.model, model_revision = local.model_revision, engine_image = local.engine_image, engine_version = local.engine_version
     node_count              = local.node_count, gpu_shape = local.gpu_shape, tensor_parallel_size = local.tp, pipeline_parallel_size = local.pp, replicas = local.replicas
     context_length          = local.context_length, concurrency = local.concurrency, kv_dtype = local.kv_dtype, requires_rdma = local.requires_rdma
-    kubernetes_version      = module.allocation.allocation.kubernetes_version, assessment_id = local.assessment_id
+    kubernetes_version      = module.target.target.kubernetes_version, assessment_id = local.assessment_id
     serving_configuration   = local.serving_configuration, expert_configuration = var.expert_configuration
     engine_args             = local.engine_args, engine_env = local.engine_env, expert_rank_memory_gib = var.expert_rank_memory_gib
     rdma_network_attachment = var.rdma_network_attachment
     rdma_resource_name      = var.rdma_resource_name
-    oke_addons              = try(module.allocation.allocation.oke_addons, [])
-    benchmark_requests      = var.benchmark_requests, benchmark_input_tokens = var.benchmark_input_tokens, benchmark_output_tokens = var.benchmark_output_tokens
+    oke_addons              = module.target.target.oke_addons
+    benchmark_requests      = var.benchmark_requests, benchmark_input_tokens = local.benchmark_input_tokens, benchmark_output_tokens = local.benchmark_output_tokens
   }
   depends_on = [module.allocation]
 }
-output "allocation" { value = module.allocation.allocation }
-output "delivery" { value = module.delivery.delivery }
-output "bootstrap_rbac" { value = module.delivery.delivery.bootstrap_rbac }
+output "allocation" { value = try(module.allocation[0].allocation, null) }
+output "delivery" { value = try(module.delivery[0].delivery, null) }
+output "bootstrap_rbac" { value = try(module.delivery[0].delivery.bootstrap_rbac, null) }
+
+output "deployment_preview" {
+  value = {
+    mode           = var.provision_resources ? "provision" : "preview_no_oci_resources",
+    compartment_id = local.compartment_id, region = local.region, target = module.target.target,
+    gpu_pool       = { name = var.name, shape = local.gpu_shape, node_count = local.node_count, image_id = module.target.target.gpu_image.id, subnet_id = module.target.target.subnet_id, availability_domain = local.availability_domain, boot_volume_gib = local.boot_volume_gib },
+    cpu_pool       = { shape = local.cpu_requirements.shape, node_count = local.cpu_node_count, ocpus = local.cpu_ocpus, memory_gib = local.cpu_memory_gib, image_id = module.target.target.cpu_image.id, subnet_id = module.target.target.cpu_subnet_id, sizing = local.cpu_requirements },
+    rdma           = { required = local.requires_rdma, allocation = local.requires_rdma ? "create_retained_compute_cluster_on_provision" : "not_required", network = local.requires_rdma ? "reuse_configured_oke_network_addon_verify_after_allocation" : "not_required" },
+    cuda           = { status = "requires_runtime_validation", container = try(module.serving_runtime[0].runtime, { image = local.engine_image, status = "not_inspected_in_preview" }), worker_image = module.target.target.gpu_image.id, checks = ["Read actual NVIDIA driver version on every GPU host.", "Run the pinned serving image and verify CUDA initialization and kernels on each GPU model.", "A host CUDA toolkit version is not the container CUDA runtime or a driver compatibility proof; the minor compatibility floor may not cover PTX/JIT requirements."] }
+  }
+}
 
 output "selected_configuration" {
-  value = { selection_id = local.assessment_id, region = local.region, gpu_shape = local.gpu_shape, tp = local.tp, pp = local.pp, node_count = local.node_count, engine_image = local.engine_image, engine_args = local.engine_args, engine_env = local.engine_env, runtime_validation = "not_run", configuration_status = try(local.selected.configuration_status, "manual"), warnings = try(local.selected.warnings, []), dependencies = try(local.serving_configuration.recipe.dependencies, []) }
+  value = { selection_id = local.assessment_id, region = local.region, gpu_shape = local.gpu_shape, tp = local.tp, pp = local.pp, node_count = local.node_count, engine_image = local.engine_image, engine_args = local.engine_args, engine_env = local.engine_env, runtime_validation = "not_run", capacity_observed_at = try(local.selected.capacity_observed_at, null), configuration_status = try(local.selected.configuration_status, "manual"), warnings = concat(try(local.selected.warnings, []), local.suggested ? ["Suggested serving settings are untested; validate the pinned image, driver, kernels, memory and workload on the selected hardware."] : []), dependencies = try(local.serving_configuration.recipe.dependencies, []) }
 }

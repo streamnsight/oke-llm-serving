@@ -47,10 +47,23 @@ resource "oci_devops_deploy_pipeline" "task" {
   project_id   = oci_devops_project.serving.id
   display_name = "${var.name}-${each.key}"
   description  = each.key == "benchmark" ? "Manual benchmark; requires a matching successful validation artifact. May saturate the serving pool." : "${each.key} selected LLM configuration."
+  dynamic "deploy_pipeline_parameters" {
+    for_each = each.key == "benchmark" ? [1] : []
+    content {
+      dynamic "items" {
+        for_each = { BENCHMARK_REQUESTS = var.config.benchmark_requests, BENCHMARK_INPUT_TOKENS = var.config.benchmark_input_tokens, BENCHMARK_OUTPUT_TOKENS = var.config.benchmark_output_tokens }
+        content {
+          name          = items.key
+          default_value = tostring(items.value)
+          description   = "Numeric benchmark override; token counts must fit the deployed model context."
+        }
+      }
+    }
+  }
 }
 locals {
   components         = jsondecode(file("${path.module}/data/components.json"))
-  specification_hash = sha256(jsonencode({ config = var.config, components = local.components, runner = filesha256("${path.module}/scripts/run.sh"), renderer = filesha256("${path.module}/scripts/render.jq"), client = filesha256("${path.module}/scripts/benchmark.sh"), capabilities = filesha256("${path.module}/scripts/node-capabilities.jq") }))
+  specification_hash = sha256(jsonencode({ config = var.config, components = local.components, runner = filesha256("${path.module}/scripts/run.sh"), renderer = filesha256("${path.module}/scripts/render.jq"), client = filesha256("${path.module}/scripts/benchmark.sh"), capabilities = filesha256("${path.module}/scripts/node-capabilities.jq"), parameters = filesha256("${path.module}/scripts/benchmark-parameters.jq") }))
   config = merge(var.config, {
     specification_hash = local.specification_hash
     artifact_bucket    = oci_objectstorage_bucket.evidence.name
@@ -65,6 +78,7 @@ locals {
       "export CONFIG_B64='${base64encode(jsonencode(local.config))}'",
       "export RENDER_B64='${filebase64("${path.module}/scripts/render.jq")}'",
       "export CAPABILITIES_B64='${filebase64("${path.module}/scripts/node-capabilities.jq")}'",
+      "export PARAMETERS_B64='${filebase64("${path.module}/scripts/benchmark-parameters.jq")}'",
       "export BENCHMARK_B64='${filebase64("${path.module}/scripts/benchmark.sh")}'",
       "printf '%s' '${filebase64("${path.module}/scripts/run.sh")}' | base64 --decode > run-serving.sh",
       "bash run-serving.sh",
@@ -102,6 +116,7 @@ resource "oci_devops_deploy_stage" "task" {
     network_channel {
       network_channel_type = "SERVICE_VNIC_CHANNEL"
       subnet_id            = var.subnet_id
+      nsg_ids              = var.nsg_ids
     }
   }
 }
@@ -124,6 +139,7 @@ resource "oci_devops_deploy_stage" "validate_after_deploy" {
     network_channel {
       network_channel_type = "SERVICE_VNIC_CHANNEL"
       subnet_id            = var.subnet_id
+      nsg_ids              = var.nsg_ids
     }
   }
 }

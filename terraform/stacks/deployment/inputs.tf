@@ -1,10 +1,12 @@
 # Copyright (c) 2020-2022 Oracle and/or its affiliates. All rights reserved.
 # Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
 locals {
+  inline_json         = try(trimspace(var.discovery_json) != "", false) ? var.discovery_json : null
+  object_uri          = try(trimspace(var.discovery_object_uri) != "", false) ? trimspace(var.discovery_object_uri) : null
   image_override      = try(length(trimspace(var.engine_image)) > 0, false) ? trimspace(var.engine_image) : null
   version_override    = try(length(trimspace(var.engine_version)) > 0, false) ? trimspace(var.engine_version) : null
   selection_key       = try(length(trimspace(var.selection_id)) > 0, false) ? trimspace(var.selection_id) : null
-  discovery_document  = var.discovery_json != null ? jsondecode(var.discovery_json) : var.discovery
+  discovery_document  = jsondecode(local.object_uri != null ? data.oci_objectstorage_object.discovery[0].content : local.inline_json != null ? local.inline_json : jsonencode(var.discovery))
   discovery_input     = try(local.discovery_document.discovery, local.discovery_document)
   choices             = concat(try(local.discovery_input.assessment.suggestions, []), try(local.discovery_input.assessment.candidates, []), try(local.discovery_input.assessment.sizing_options, []))
   choice_matches      = [for c in local.choices : c if local.selection_key == null ? length(local.choices) == 1 : c.id == local.selection_key]
@@ -50,4 +52,36 @@ locals {
       env               = merge(try(local.resolution.recipe.env, {}), local.feature_env)
     })
   })
+  compartment_id          = try(coalesce(var.compartment_id, var.compartment_ocid, module.target.target.cluster_compartment_id), null)
+  cpu_requirements        = try(local.discovery_input.control_plane, null) != null ? local.discovery_input.control_plane : module.control_plane.requirements
+  cpu_node_count          = coalesce(var.cpu_node_count, local.cpu_requirements.node_count)
+  cpu_ocpus               = coalesce(var.cpu_ocpus, local.cpu_requirements.ocpus)
+  cpu_memory_gib          = coalesce(var.cpu_memory_gib, local.cpu_requirements.memory_gib)
+  benchmark_output_tokens = coalesce(var.benchmark_output_tokens, min(128, max(1, floor((local.context_length - 128) / 3))))
+  benchmark_input_tokens  = coalesce(var.benchmark_input_tokens, min(1024, local.context_length - local.benchmark_output_tokens - 128))
+  boot_volume_gib         = coalesce(var.boot_volume_gib, max(200, ceil(try(coalesce(try(local.profile.weights.checkpoint_download_bytes, null), local.profile.weights.tensor_data_bytes), 0) * 1.3 / pow(1024, 3) + 50)))
+}
+
+# Read private artifacts independently of the selected deployment region, avoiding
+# a provider-region dependency on the JSON that provider is about to download.
+locals {
+  artifact = try(regex("^oci://(?P<region>[^/]+)/(?P<namespace>[^/]+)/(?P<bucket>[^/]+)/(?P<object>.+)$", local.object_uri), null)
+}
+provider "oci" {
+  alias  = "handoff"
+  region = try(local.artifact.region, var.region)
+}
+data "oci_objectstorage_object" "discovery" {
+  provider             = oci.handoff
+  count                = local.object_uri == null ? 0 : 1
+  namespace            = local.artifact.namespace
+  bucket               = local.artifact.bucket
+  object               = local.artifact.object
+  content_length_limit = 10000000
+  lifecycle {
+    postcondition {
+      condition     = var.discovery_sha256 != null && sha256(self.content) == var.discovery_sha256
+      error_message = "The discovery object must match discovery_sha256. Use the exact frozen JSON bytes, not a mutable or reserialized report."
+    }
+  }
 }

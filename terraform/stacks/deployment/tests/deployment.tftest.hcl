@@ -1,6 +1,10 @@
 # Copyright (c) 2020-2022 Oracle and/or its affiliates. All rights reserved.
 # Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
 mock_provider "oci" {}
+override_module {
+  target  = module.serving_runtime
+  outputs = { runtime = { cuda_version = "13.0", status = "container_metadata_only_driver_and_kernels_require_runtime_validation" } }
+}
 mock_provider "http" {}
 variables {
   tenancy_ocid           = "root"
@@ -46,6 +50,10 @@ override_module {
   } }
 }
 override_module {
+  target  = module.target
+  outputs = { target = { ready = true, issues = [], cluster_compartment_id = "target", kubernetes_version = "v1.34.1", vcn_id = "vcn", gpu_image = { id = "gpu-image" }, cpu_image = { id = "cpu-image" }, subnet_id = "gpu-subnet", cpu_subnet_id = "cpu-subnet", devops_subnet_id = "devops-subnet", pod_subnet_id = null, oke_addons = [] } }
+}
+override_module {
   target  = module.allocation
   outputs = { allocation = { kubernetes_version = "v1.34.1" } }
 }
@@ -53,7 +61,46 @@ override_module {
   target  = module.delivery
   outputs = { delivery = { bootstrap_rbac = {} } }
 }
-run "valid_selected_specification" { command = plan }
+run "valid_selected_specification" {
+  command = plan
+  assert {
+    condition     = output.deployment_preview.mode == "preview_no_oci_resources" && length(module.allocation) == 0 && length(module.delivery) == 0 && local.cpu_node_count == 1 && local.cpu_ocpus == 4
+    error_message = "Default mode must resolve a CPU budget while planning no allocation or DevOps module instances."
+  }
+}
+run "provisioning_is_an_explicit_opt_in" {
+  command = plan
+  variables { provision_resources = true }
+  assert {
+    condition     = length(module.allocation) == 1 && length(module.delivery) == 1
+    error_message = "Resource modules must exist only after opting in."
+  }
+}
+run "stack_compartment_is_the_default" {
+  command = plan
+  variables {
+    compartment_id   = null
+    compartment_ocid = "stack-compartment"
+  }
+  assert {
+    condition     = output.deployment_preview.compartment_id == "stack-compartment"
+    error_message = "Default deployment to RMS's injected compartment."
+  }
+}
+run "unresolved_targets_cannot_allocate" {
+  command = plan
+  variables { provision_resources = true }
+  override_module {
+    target  = module.target
+    outputs = { target = { ready = false, issues = ["ambiguous subnet"], cluster_compartment_id = "target", kubernetes_version = "v1.34.1", vcn_id = "vcn", gpu_image = { id = "gpu-image" }, cpu_image = { id = "cpu-image" }, subnet_id = "gpu-subnet", cpu_subnet_id = "cpu-subnet", devops_subnet_id = "devops-subnet", pod_subnet_id = null, oke_addons = [] } }
+  }
+  expect_failures = [terraform_data.specification]
+}
+run "wrong_vcn_filter_is_rejected" {
+  command = plan
+  variables { network_vcn_id = "other-vcn" }
+  expect_failures = [terraform_data.specification]
+}
 run "reject_gpu_oversubscription" {
   command = plan
   variables { tensor_parallel_size = 2 }
@@ -308,4 +355,52 @@ run "changed_suggestion_workload_requires_reassessment" {
  context_length=65536
  }
  expect_failures=[terraform_data.specification]
+}
+
+run "private_object_handoff" {
+  command = plan
+  variables {
+    assessment_id        = null
+    discovery_object_uri = "oci://artifact-region/ns/bucket/handoff.json"
+    discovery_sha256     = "13b11beb4ce713b89b7fefceee666fd4dfc30b5916c883fd83f88f88753483c2"
+  }
+  override_data {
+    target = data.oci_objectstorage_object.discovery[0]
+    values = { content = "{\"discovery\":{\"profile\":{\"model\":{\"repository\":\"org/model\",\"resolved_revision\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}},\"assessment\":{\"candidates\":[{\"id\":\"object\",\"region\":\"region-one\",\"availability_domain\":\"AD-1\",\"gpu_shape\":\"VM.GPU.A10.1\",\"node_count\":1,\"tensor_parallel_size\":1,\"pipeline_parallel_size\":1,\"requires_rdma\":false,\"configuration_status\":\"candidate_requires_validation\"}]}}}" }
+  }
+  assert {
+    condition     = output.selected_configuration.selection_id == "object" && local.artifact.region == "artifact-region" && data.oci_objectstorage_object.discovery[0].bucket == "bucket"
+    error_message = "Resolve private frozen handoffs through the artifact region provider and native OCI authentication."
+  }
+}
+
+run "object_digest_mismatch" {
+  command = plan
+  variables {
+    assessment_id        = null
+    discovery_object_uri = "oci://artifact-region/ns/bucket/handoff.json"
+    discovery_sha256     = "0000000000000000000000000000000000000000000000000000000000000000"
+  }
+  override_data {
+    target = data.oci_objectstorage_object.discovery[0]
+    values = { content = "{\"discovery\":{\"profile\":{\"model\":{\"repository\":\"org/model\",\"resolved_revision\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}},\"assessment\":{\"candidates\":[{\"id\":\"object\",\"region\":\"region-one\",\"availability_domain\":\"AD-1\",\"gpu_shape\":\"VM.GPU.A10.1\",\"node_count\":1,\"tensor_parallel_size\":1,\"pipeline_parallel_size\":1,\"requires_rdma\":false,\"configuration_status\":\"candidate_requires_validation\"}]}}}" }
+  }
+  expect_failures = [data.oci_objectstorage_object.discovery]
+}
+
+run "oversize_inline_transport_is_rejected" {
+  command = plan
+  variables {
+    discovery_json = jsonencode(merge(jsondecode(file("tests/fixtures/handoff.json")), { padding = join("", [for i in range(900) : "0123456789"]) }))
+  }
+  expect_failures = [var.discovery_json]
+}
+
+run "RMS_region_must_match_the_selected_capacity_region" {
+  command = plan
+  variables {
+    discovery_json = file("tests/fixtures/handoff.json")
+    region         = "wrong-region"
+  }
+  expect_failures = [terraform_data.specification]
 }

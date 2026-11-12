@@ -1,14 +1,7 @@
 {
   "tenancy_ocid": "ocid1.tenancy.REPLACE",
-  "compartment_id": "ocid1.compartment.REPLACE",
   "cluster_id": "ocid1.cluster.REPLACE",
-  "subnet_id": "ocid1.subnet.GPU_REPLACE",
-  "cpu_subnet_id": "ocid1.subnet.CPU_REPLACE",
-  "devops_subnet_id": "ocid1.subnet.DEVOPS_REPLACE",
-  "gpu_image_id": "ocid1.image.OKE_GPU_REPLACE",
-  "cpu_image_id": "ocid1.image.OKE_CPU_REPLACE",
   "name": "my-model",
-  "benchmark_requests": 50,
-  "benchmark_input_tokens": 1024,
-  "benchmark_output_tokens": 128
+  "selection_id": "REPLACE_WITH_ASSESSMENT_ID",
+  "provision_resources": false
 }
