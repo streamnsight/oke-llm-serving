@@ -190,4 +190,7 @@ Cleanup removed the clean production-stack research clone, unused OCI 7.32.0 cac
 - [x] Remove application-owned GPU Operator/RDMA plugin installation and pins; retain OKE ownership.
 - [x] Record existing enhanced-cluster add-ons and versions through native OCI data sources.
 - [x] Validate node GPU/RDMA resource availability, resolve the advertised RDMA resource name, and render requests against it without guessing a service version upgrade.
-- [ ] Test missing/ambiguous resources, managed names, rendering, inventory and packaging; document prerequisites and runtime validation boundaries, commit and integrate.
+- [x] Test missing/ambiguous resources, managed names, rendering, inventory and packaging; document prerequisites and runtime validation boundaries; commit the feature.
+- [ ] Validate on live OKE GPU nodes before integrating into main, following the branch validation workflow.
+
+Local verification passed: 24 script/render checks (including the released Helm chart), 10 allocation tests, 14 deployment-root tests and both extracted RMS ZIP validations. The feature is committed on `feature/reuse-oke-addons`. GPU allocation, actual inference and RDMA fabric validation were not run for this change.
