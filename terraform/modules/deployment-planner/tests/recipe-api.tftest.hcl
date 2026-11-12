@@ -88,3 +88,14 @@ run "cache_companion_plans_are_preserved_without_enabling_them" {
   error_message="Companion/dependency commands must remain reviewable evidence without implicitly enabling an undeployed cache service."
  }
 }
+
+run "requested_context_and_concurrency_expand_the_heuristic_budget" {
+ command=plan
+ variables {
+  profile={model={repository="Qwen/Qwen3.8-27B",resolved_revision="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",pipeline_tag="image-text-to-text",chat_template_available=true},architecture={architectures=["Qwen3_5ForConditionalGeneration"],attention={layers=64,heads=32,kv_heads=4,head_dim=256}},weights={tensor_data_bytes=55000000000,tensor_elements=27500000000},memory={status="unsupported",runtime_allowance_bytes=2147483648,assumptions={context_length=262144,concurrency=4,kv_dtype="bfloat16"},reasons=["hybrid estimator missing"]}}
+ }
+ assert {
+  condition=length(output.assessment.suggestions)==0
+  error_message="A small upstream memory guideline must not hide the requested long-context/concurrency budget."
+ }
+}
