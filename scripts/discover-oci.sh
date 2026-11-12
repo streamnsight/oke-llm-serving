@@ -23,6 +23,10 @@ jq -e '
 ' "$scratch/input.json" > "$scratch/query.json"
 query="$scratch/query.json"
 tenancy=$(jq -r .tenancy_ocid "$query"); compartment=$(jq -r .compartment_id "$query"); connection_region=$(jq -r '.region // ""' "$query")
+# Older RMS forms can persist the default expression literally. Let the CLI
+# infer its initial endpoint from the profile or principal instead.
+if [[ "$connection_region" == *'${'* ]]; then connection_region=''; fi
+if [[ ${OCI_CLI_REGION:-} == *'${'* ]]; then unset OCI_CLI_REGION; fi
 # Native-provider auth settings are mapped explicitly; local CLI defaults/profile remain usable.
 setting() { local key value; for key in "TF_VAR_$1" "OCI_$1" "$1"; do value=${!key:-}; if [[ -n "$value" ]]; then printf '%s' "$value"; return; fi; done; }
 auth_args=()

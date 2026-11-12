@@ -89,8 +89,8 @@ test('RMS groups reference defined variable names and connection context is hidd
     }
   }
   const schema=parse(readFileSync(`${root}/terraform/stacks/discovery/schema.yaml`,'utf8'));
-  assert.equal(schema.variables.region.type,'oci:identity:region:name');
-  assert.equal(schema.variables.region.default,'${session.region}');
+  assert.equal(schema.variables.region.type,'string');
+  assert.equal(schema.variables.region.default,'');
   assert.equal(schema.variables.region.visible,false);
   assert.equal(schema.variableGroups.find(g=>g.variables.includes('region')).visible,false);
 });

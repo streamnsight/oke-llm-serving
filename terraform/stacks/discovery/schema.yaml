@@ -19,11 +19,11 @@ variables:
     required: true
     visible: false
   region:
-    type: oci:identity:region:name
-    title: Internal RMS connection region
-    description: Injected by RMS for initial contact only. Discovery uses OCI metadata to select the tenancy home region.
-    required: true
-    default: ${session.region}
+    type: string
+    title: Legacy initial connection hint
+    description: Normally empty. The CLI infers an initial endpoint from its principal or profile, then discovers the tenancy home region.
+    required: false
+    default: ""
     visible: false
   model_choice:
     type: string

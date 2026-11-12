@@ -90,3 +90,9 @@ test('home region is discovered even when the local caller omits a connection re
 test('blank RMS scope list entries mean no filter',()=>{
  const r=run('',{regions:'["", "  "]',shape_names:'[" "]'});assert.equal(r.status,0,r.stderr);assert.deepEqual(r.result.assessed_regions,['new-region-99']);assert.equal(r.result.regions[0].inventory.availability_domains[0].shapes.length,1);
 });
+
+test('literal legacy RMS region expressions never become endpoint hosts',()=>{
+ const r=run('',{region:'${session.region}'});assert.equal(r.status,0,r.stderr);
+ const first=r.calls.find(c=>c.includes('region-subscription'));assert.equal(first.includes('--region'),false);
+ assert.equal(r.result.home_region,'new-region-99');
+});
