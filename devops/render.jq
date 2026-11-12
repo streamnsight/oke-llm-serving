@@ -24,12 +24,14 @@ def container($leader):
 def pod($leader):
   {metadata:{labels:{"oke-llm/model":$c.name,"oke-llm/specification":($c.specification_hash[:32]),role:(if $leader then "leader" else "worker" end)}},spec:{affinity:affinity,containers:[container($leader)],volumes:[{name:"shm",emptyDir:{medium:"Memory",sizeLimit:"8Gi"}}]}};
 ($c.engine_image|split("@")) as $image |
+($image[0]|sub(":[^/:]+$";"")) as $engine_repository |
+(($image[0]|capture(":(?<tag>[^/:]+)$").tag)? // null) as $explicit_tag |
 ($c.components.production_stack.router_image|split("@")) as $router |
 {
  helm_values:{
   servingEngineSpec:{enableEngine:($c.pipeline_parallel_size==1),strategy:{type:"Recreate"},startupProbe:{failureThreshold:180,periodSeconds:10},runtimeClassName:"",modelSpec:[{
     name:"model",modelURL:$c.model,modelRevision:$c.model_revision,
-    repository:$image[0],tag:((if $c.engine_version=="nightly" then "nightly" else "v"+$c.engine_version end)+"@"+$image[1]),
+    repository:$engine_repository,tag:(($explicit_tag // ((if $c.engine_version=="nightly" then "nightly" else "v"+$c.engine_version end)|gsub("[^A-Za-z0-9_.-]";"-")[0:128]))+"@"+$image[1]),
     replicaCount:$c.replicas,resources:resources,affinity:affinity,podLabels:{"oke-llm/model":$c.name,"oke-llm/specification":($c.specification_hash[:32])},runtimeClassName:"",
     command:["vllm"],args:vllm_args,env:serving_env,
     vllmConfig:{v1:"1",maxModelLen:$c.context_length,maxNumSeqs:$c.concurrency,tensorParallelSize:$c.tensor_parallel_size,dtype:"auto",extraArgs:["--served-model-name","model","--revision",$c.model_revision,"--default-chat-template-kwargs","{\"enable_thinking\":false}"]},

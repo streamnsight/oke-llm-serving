@@ -45,7 +45,7 @@ variable "margin" {
   default = 0.2
 }
 variable "observation_id" {
-  description = "Change for each new capacity observation; refresh alone preserves the old reports."
+  description = "Snapshot label. Discovery requests fresh reports whenever its data source is read."
   type        = string
   default     = "initial"
 }

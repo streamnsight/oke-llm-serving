@@ -115,3 +115,11 @@ test('frozen recipe argv and environment reach both Helm and distributed pods',(
   assert.ok(pod.spec.containers[0].env.some(e=>e.name==='TEST_SETTING'&&e.value==='recipe-value'));
  }
 });
+
+test('expert images preserve registry ports and explicit tags while pinning the digest',()=>{
+ const image='registry.example:5000/org/engine:custom@sha256:'+'e'.repeat(64);
+ const spec=render({...base,engine_image:image,engine_version:'0.33.0+custom'}).helm_values.servingEngineSpec.modelSpec[0];
+ assert.equal(spec.repository,'registry.example:5000/org/engine');assert.equal(spec.tag,'custom@sha256:'+'e'.repeat(64));
+ const untagged=render({...base,engine_image:'registry.example:5000/org/engine@sha256:'+'e'.repeat(64),engine_version:'0.33.0+custom'}).helm_values.servingEngineSpec.modelSpec[0];
+ assert.equal(untagged.tag,'v0.33.0-custom@sha256:'+'e'.repeat(64));
+});
