@@ -33,6 +33,10 @@ override_module {
   target  = module.capacity
   outputs = { result = { shapes = [{ reported_sufficient = true }] } }
 }
+override_data {
+  target = data.oci_containerengine_addons.target[0]
+  values = { addons = [] }
+}
 run "regular_pool_and_cpu_capacity" {
   command = plan
   assert {
@@ -139,4 +143,16 @@ run "quantity_specific_entitlement_blocks_new_allocation" {
     outputs = { result = { limits = [{ name = "gpu-a10-count", description = "GPUs for test instances", scope_type = "AD", availability_domain = "AD-1", resource_availability = { available = 0, fractional_availability = null, status = "observed" } }] } }
   }
   expect_failures = [oci_containerengine_node_pool.gpu]
+}
+
+run "reports_service_addon_versions_without_installing_a_second_operator" {
+  command = plan
+  override_data {
+    target = data.oci_containerengine_addons.target[0]
+    values = { addons = [{ addon_name = "NvidiaGpuOperator", current_installed_version = "25.10.0", version = "25.10.0", state = "ACTIVE" }] }
+  }
+  assert {
+    condition     = output.allocation.oke_addons[0].name == "NvidiaGpuOperator" && output.allocation.oke_addons[0].installed_version == "25.10.0" && output.allocation.oke_addons[0].state == "ACTIVE"
+    error_message = "Use the service's installed add-on version as evidence, without a hardcoded self-managed operator release."
+  }
 }

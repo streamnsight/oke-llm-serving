@@ -7,23 +7,15 @@
     "repository": "https://vllm-project.github.io/production-stack",
     "router_image": "lmcache/lmstack-router:v0.1.14@sha256:7107e6a17740478749ef28c812df48f405ccfab8d92f40372a50ef678b6c6b63"
   },
-  "gpu_operator": {
-    "chart": "gpu-operator",
-    "version": "v26.7.2",
-    "repository": "https://helm.ngc.nvidia.com/nvidia"
-  },
   "lws": {
     "version": "1.0.0",
     "chart": "oci://registry.k8s.io/lws/charts/lws"
   },
-  "rdma_plugin_image": "ghcr.io/mellanox/k8s-rdma-shared-dev-plugin@sha256:a10820c3f3ad8cdf4b2c8c740809947f523d5618ac149c03aa3f0869b7fa404c",
   "benchmark_image": "vllm/vllm-openai-cpu@sha256:827ef38187f9b52f2bb838695ef815ec5b65f4bf3e4c061b002b2b0a19cb0701",
   "helm_version": "v3.19.2",
   "sources": [
     "https://github.com/vllm-project/production-stack/releases/tag/vllm-stack-0.1.14",
-    "https://github.com/NVIDIA/gpu-operator/releases/tag/v26.7.2",
     "https://github.com/kubernetes-sigs/lws/releases/tag/v1.0.0",
-    "https://github.com/Mellanox/k8s-rdma-shared-dev-plugin/releases/tag/v1.5.4",
     "https://github.com/vllm-project/vllm/blob/v0.32.0/docker/Dockerfile.cpu"
   ]
 }

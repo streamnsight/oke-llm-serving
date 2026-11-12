@@ -21,7 +21,7 @@ function checkPod(pod) {
   }
 }
 test('distributed groups have correct ranks, anti-affinity, RDMA requests and pinned images',()=>{
-  const result=render({...base,pipeline_parallel_size:2,replicas:2,requires_rdma:true});
+  const result=render({...base,pipeline_parallel_size:2,replicas:2,requires_rdma:true,rdma_resource_name:"nvidia.com/rdma_shared_device_a",rdma_network_attachment:"network-system/rdma-net"});
   assert.equal(result.helm_values.servingEngineSpec.enableEngine,false);
   const lws=result.multi_node_manifest.items[0];
   assert.equal(lws.spec.replicas,2); assert.equal(lws.spec.leaderWorkerTemplate.size,2);
@@ -29,12 +29,17 @@ test('distributed groups have correct ranks, anti-affinity, RDMA requests and pi
   checkPod(leader);checkPod(worker);
   assert.ok(worker.spec.containers[0].args.includes('--headless'));
   assert.ok(worker.spec.containers[0].args.includes('$(LWS_WORKER_INDEX)'));
-  assert.equal(leader.spec.containers[0].resources.requests['rdma/rdma_shared_device_a'],1);
+  assert.equal(leader.spec.containers[0].resources.requests['nvidia.com/rdma_shared_device_a'],1);
+  assert.equal(leader.metadata.annotations['k8s.v1.cni.cncf.io/networks'],'network-system/rdma-net');
+  assert.ok(leader.spec.tolerations.some(t=>t.key==='nvidia.com/gpu'));
   assert.ok(leader.spec.affinity.podAntiAffinity.requiredDuringSchedulingIgnoredDuringExecution.length);
   assert.equal(result.multi_node_manifest.items[2].spec.selector['leaderworkerset.sigs.k8s.io/group-index'],'1');
   assert.equal(result.helm_values.routerSpec.staticModels,'model,model');
   assert.equal(result.benchmark_job.spec.template.spec.containers[0].resources.requests['nvidia.com/gpu'],undefined);
   checkPod(result.benchmark_job.spec.template);
+  assert.equal(result.rdma_manifest,undefined);
+  assert.equal(components.gpu_operator,undefined);
+  assert.equal(components.rdma_plugin_image,undefined);
   const benchmark=result.benchmark_job.spec.template.spec.containers[0];
   assert.match(benchmark.image,/^vllm\/vllm-openai-cpu@sha256:/);
   assert.deepEqual(benchmark.command,['bash','/benchmark/benchmark.sh']);
@@ -54,6 +59,7 @@ test('released production-stack chart produces valid single-node pod structure',
     const deployment=documents.find(d=>d.kind==='Deployment'&&d.spec.template.metadata.labels['oke-llm/model']==='fixture');
     assert.ok(deployment);checkPod(deployment.spec.template);
     assert.equal(deployment.spec.strategy.type,'Recreate');
+    assert.ok(deployment.spec.template.spec.tolerations.some(t=>t.key==='nvidia.com/gpu'));
     assert.ok(deployment.spec.template.spec.containers[0].args.includes(base.model_revision));
   } finally {rmSync(directory,{recursive:true,force:true});}
 });

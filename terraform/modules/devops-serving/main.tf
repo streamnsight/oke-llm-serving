@@ -50,7 +50,7 @@ resource "oci_devops_deploy_pipeline" "task" {
 }
 locals {
   components         = jsondecode(file("${path.module}/data/components.json"))
-  specification_hash = sha256(jsonencode({ config = var.config, components = local.components, runner = filesha256("${path.module}/scripts/run.sh"), renderer = filesha256("${path.module}/scripts/render.jq"), client = filesha256("${path.module}/scripts/benchmark.sh") }))
+  specification_hash = sha256(jsonencode({ config = var.config, components = local.components, runner = filesha256("${path.module}/scripts/run.sh"), renderer = filesha256("${path.module}/scripts/render.jq"), client = filesha256("${path.module}/scripts/benchmark.sh"), capabilities = filesha256("${path.module}/scripts/node-capabilities.jq") }))
   config = merge(var.config, {
     specification_hash = local.specification_hash
     artifact_bucket    = oci_objectstorage_bucket.evidence.name
@@ -64,6 +64,7 @@ locals {
       "export MODE='${mode}'",
       "export CONFIG_B64='${base64encode(jsonencode(local.config))}'",
       "export RENDER_B64='${filebase64("${path.module}/scripts/render.jq")}'",
+      "export CAPABILITIES_B64='${filebase64("${path.module}/scripts/node-capabilities.jq")}'",
       "export BENCHMARK_B64='${filebase64("${path.module}/scripts/benchmark.sh")}'",
       "printf '%s' '${filebase64("${path.module}/scripts/run.sh")}' | base64 --decode > run-serving.sh",
       "bash run-serving.sh",
@@ -156,19 +157,18 @@ output "delivery" {
       apiVersion = "v1", kind = "List"
       items = concat([
         { apiVersion = "v1", kind = "Namespace", metadata = { name = var.name } },
-        { apiVersion = "v1", kind = "Namespace", metadata = { name = "gpu-operator" } },
         { apiVersion = "rbac.authorization.k8s.io/v1", kind = "ClusterRoleBinding", metadata = { name = "${var.name}-installer" }, roleRef = { apiGroup = "rbac.authorization.k8s.io", kind = "ClusterRole", name = "cluster-admin" }, subjects = [{ kind = "User", name = oci_devops_deploy_pipeline.task["deploy"].id, apiGroup = "rbac.authorization.k8s.io" }] },
         { apiVersion = "rbac.authorization.k8s.io/v1", kind = "ClusterRole", metadata = { name = "${var.name}-node-reader" }, rules = [{ apiGroups = [""], resources = ["nodes"], verbs = ["get", "list", "watch"] }] },
         { apiVersion = "rbac.authorization.k8s.io/v1", kind = "ClusterRoleBinding", metadata = { name = "${var.name}-node-reader" }, roleRef = { apiGroup = "rbac.authorization.k8s.io", kind = "ClusterRole", name = "${var.name}-node-reader" }, subjects = [for name in ["validate", "benchmark"] : { kind = "User", name = oci_devops_deploy_pipeline.task[name].id, apiGroup = "rbac.authorization.k8s.io" }] },
-        ], [for namespace in [var.name, "gpu-operator"] : {
+        ], [for namespace in [var.name] : {
           apiVersion = "rbac.authorization.k8s.io/v1", kind = "Role", metadata = { name = "${var.name}-tester", namespace = namespace }
-          rules = namespace == var.name ? [
+          rules = [
             { apiGroups = [""], resources = ["pods", "pods/log", "services"], verbs = ["get", "list", "watch"] },
             { apiGroups = [""], resources = ["pods/portforward"], verbs = ["create"] },
             { apiGroups = [""], resources = ["configmaps"], verbs = ["get", "create", "patch", "update", "delete"] },
             { apiGroups = ["batch"], resources = ["jobs"], verbs = ["get", "list", "watch", "create", "delete"] },
-          ] : [{ apiGroups = [""], resources = ["pods"], verbs = ["get", "list"] }]
-          }], [for namespace in [var.name, "gpu-operator"] : {
+          ]
+          }], [for namespace in [var.name] : {
           apiVersion = "rbac.authorization.k8s.io/v1", kind = "RoleBinding", metadata = { name = "${var.name}-tester", namespace = namespace }
           roleRef    = { apiGroup = "rbac.authorization.k8s.io", kind = "Role", name = "${var.name}-tester" }
           subjects   = [for name in ["validate", "benchmark"] : { kind = "User", name = oci_devops_deploy_pipeline.task[name].id, apiGroup = "rbac.authorization.k8s.io" }]

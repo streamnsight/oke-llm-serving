@@ -185,3 +185,9 @@ Confirmed-capacity verification: 32 planner tests, seven discovery-root tests an
 Module-owned/live-only verification: 19 script/render/schema checks and native model-profile (10), recipe resolution (10), planner (32), discovery-root (6), deployment-root (14) checks passed. Both delivered root-level ZIPs passed extraction/init/validate. A real RMS Plan with module-owned OCI discovery and live recipe source metadata succeeded; its handoff also passed mocked deployment planning without catalogs. Latest private evidence is work/latest-discovery-plan.json and work/deployment-inputs.tfvars.json. No GPU allocation or inference occurred. GitHub workflow execution remains pending a remote push/merge to main.
 
 Cleanup removed the clean production-stack research clone, unused OCI 7.32.0 cache, duplicate Helm cache, obsolete SDK/CLI intermediate reports and logs. Active provider caches/symlink targets, 18 Terraform state files, input tfvars, research notes and current handoff were preserved. work/ was reduced from about 621 MiB to 326 MiB; remaining size is mostly active providers. tools/ was empty and removed.
+
+## Reuse OKE GPU/network add-ons
+- [x] Remove application-owned GPU Operator/RDMA plugin installation and pins; retain OKE ownership.
+- [x] Record existing enhanced-cluster add-ons and versions through native OCI data sources.
+- [x] Validate node GPU/RDMA resource availability, resolve the advertised RDMA resource name, and render requests against it without guessing a service version upgrade.
+- [ ] Test missing/ambiguous resources, managed names, rendering, inventory and packaging; document prerequisites and runtime validation boundaries, commit and integrate.

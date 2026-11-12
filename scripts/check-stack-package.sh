@@ -9,7 +9,7 @@ staging=$(mktemp -d)
 trap 'rm -rf "$staging"' EXIT
 unzip -tq "$archive"
 unzip -q "$archive" -d "$staging"
-for required in main.tf variables.tf schema.yaml .terraform.lock.hcl modules modules/oci-discovery/scripts/discover-oci.sh modules/oci-discovery/scripts/lib/oci-discovery.jq modules/accelerator-inventory/data/gpus.json modules/devops-serving/data/components.json modules/devops-serving/scripts/run.sh modules/devops-serving/scripts/render.jq modules/devops-serving/scripts/benchmark.sh; do
+for required in main.tf variables.tf schema.yaml .terraform.lock.hcl modules modules/oci-discovery/scripts/discover-oci.sh modules/oci-discovery/scripts/lib/oci-discovery.jq modules/accelerator-inventory/data/gpus.json modules/devops-serving/data/components.json modules/devops-serving/scripts/run.sh modules/devops-serving/scripts/render.jq modules/devops-serving/scripts/benchmark.sh modules/devops-serving/scripts/node-capabilities.jq; do
   [[ -e "$staging/$required" ]] || { echo "Missing package asset: $required" >&2; exit 1; }
 done
 for obsolete in terraform catalogs scripts devops; do

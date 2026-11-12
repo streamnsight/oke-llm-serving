@@ -108,10 +108,19 @@ variable "boot_volume_gib" {
   type    = number
   default = 200
 }
-variable "install_gpu_operator" {
-  description = "Install only when this cluster does not already manage the NVIDIA device plugin/operator. OKE GPU image must provide drivers/toolkit."
-  type        = bool
-  default     = true
+variable "rdma_network_attachment" {
+  description = "Existing Multus NetworkAttachmentDefinition name or namespace/name, when required by the OKE-managed RDMA/SR-IOV network configuration. The stack does not create or configure the cluster network."
+  type        = string
+  default     = null
+}
+variable "rdma_resource_name" {
+  description = "Optional existing cluster RDMA extended-resource name. Null detects a unique advertised RDMA resource; no device plugins are installed."
+  type        = string
+  default     = null
+  validation {
+    condition     = var.rdma_resource_name == null ? true : can(regex("^[a-z0-9]([-a-z0-9.]*[a-z0-9])?/[A-Za-z0-9][-A-Za-z0-9_.]*$", var.rdma_resource_name))
+    error_message = "Use a qualified existing resource name, such as nvidia.com/rdma_shared_device_a."
+  }
 }
 variable "benchmark_requests" {
   type    = number

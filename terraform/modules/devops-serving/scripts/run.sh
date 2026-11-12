@@ -10,12 +10,11 @@ cd "$run_dir"
 printf '%s' "$CONFIG_B64" | base64 --decode > config.json
 printf '%s' "$RENDER_B64" | base64 --decode > render.jq
 printf '%s' "$BENCHMARK_B64" | base64 --decode > benchmark.sh
+printf '%s' "$CAPABILITIES_B64" | base64 --decode > node-capabilities.jq
 name=$(jq -r .name config.json)
 namespace=$(jq -r .namespace config.json)
 region=$(jq -r .region config.json)
 job_name="${name}-${MODE}-$(date -u +%s)-$RANDOM"
-jq --arg job "$job_name" '.job_name=$job' config.json > rendered-config.json
-jq -f render.jq rendered-config.json > rendered.json
 export OCI_CLI_AUTH=resource_principal
 export OCI_CLI_REGION="$region"
 forward_pid=''
@@ -30,7 +29,7 @@ archive() {
   bucket=$(jq -r .artifact_bucket config.json)
   storage_namespace=$(jq -r .storage_namespace config.json)
   prefix="$name/$(jq -r .assessment_id config.json)/${OCI_DEVOPS_DEPLOYMENT_ID:-$job_name}/$MODE"
-  for artifact in provenance-report.json raw-results.log benchmark-result.json context-test.json context-response.json pods.json rdma-evidence.log helm-releases.json; do
+  for artifact in provenance-report.json raw-results.log benchmark-result.json context-test.json context-response.json pods.json nodes.json node-capabilities.json rdma-evidence.log helm-releases.json; do
     [[ -s "$artifact" ]] || continue
     oci os object put --namespace-name "$storage_namespace" --bucket-name "$bucket" --name "$prefix/$artifact" --file "$artifact" --force >/dev/null || code=1
   done
@@ -70,21 +69,33 @@ replicas=$(jq -r .replicas config.json)
 wait_gpus() {
   for attempt in $(seq 1 180); do
     kubectl get nodes -l "$node_selector" -o json > nodes.json
-    if jq -e --slurpfile c config.json '(.items|length)>=$c[0].node_count and all(.items[]; any(.status.conditions[]; .type=="Ready" and .status=="True") and ((.status.allocatable["nvidia.com/gpu"] // "0")|tonumber)>=$c[0].tensor_parallel_size and (if $c[0].requires_rdma then ((.status.allocatable["rdma/rdma_shared_device_a"] // "0")|tonumber)>0 else true end))' nodes.json >/dev/null; then return; fi
+    jq -n --slurpfile c config.json --slurpfile n nodes.json '{config:$c[0],nodes:$n[0]}' | jq -f node-capabilities.jq > node-capabilities.json
+    if jq -e .ready node-capabilities.json >/dev/null; then
+      jq --slurpfile capabilities node-capabilities.json '.rdma_resource_name=$capabilities[0].rdma_resource_name' config.json > resolved-config.json
+      mv resolved-config.json config.json
+      return
+    fi
+    if jq -e .fatal node-capabilities.json >/dev/null; then jq -r '.reasons[]' node-capabilities.json >&2; return 1; fi
     sleep 10
   done
-  echo 'GPU/RDMA nodes did not become allocatable.' >&2; return 1
+  jq -r '.reasons[]' node-capabilities.json >&2
+  echo 'Configure/enable the OKE-managed GPU/network add-ons and node image; no standalone plugin will be installed.' >&2
+  return 1
 }
+# Reuse the existing cluster's advertised capabilities for every pipeline mode.
+# Add-on inventory/version evidence is supplied by Terraform; readiness is checked
+# on the actual allocation nodes, including plugins supplied by the node image.
+wait_gpus
+jq --arg job "$job_name" '.job_name=$job' config.json > rendered-config.json
+jq -f render.jq rendered-config.json > rendered.json
 if [[ "$MODE" == deploy ]]; then
-  if [[ $(jq -r .install_gpu_operator config.json) == true ]]; then
-    helm upgrade --install "${name}-gpu-operator" gpu-operator --repo "$(jq -r .components.gpu_operator.repository config.json)" --version "$(jq -r .components.gpu_operator.version config.json)" --namespace gpu-operator --create-namespace --set driver.enabled=false --set toolkit.enabled=false --set-json "operator.nodeSelector=$control_selector" --wait --timeout 20m
-  fi
   kubectl create namespace "$namespace" --dry-run=client -o yaml | kubectl apply -f -
-  if [[ $(jq -r .requires_rdma config.json) == true ]]; then
-    jq .rdma_manifest rendered.json | kubectl apply -f -
-    kubectl rollout status "daemonset/${name}-rdma" -n kube-system --timeout=600s
+  attachment=$(jq -r '.rdma_network_attachment // empty' config.json)
+  if [[ $(jq -r .requires_rdma config.json) == true && -n "$attachment" ]]; then
+    attachment_namespace="$namespace"; attachment_name="$attachment"
+    if [[ "$attachment" == */* ]]; then attachment_namespace=${attachment%%/*}; attachment_name=${attachment#*/}; fi
+    kubectl get network-attachment-definitions.k8s.cni.cncf.io "$attachment_name" -n "$attachment_namespace" >/dev/null
   fi
-  wait_gpus
   if [[ "$pp" -gt 1 ]]; then
     helm upgrade --install lws "$(jq -r .components.lws.chart config.json)" --version "$(jq -r .components.lws.version config.json)" --namespace lws-system --create-namespace --set-json "nodeSelector=$control_selector" --wait --timeout 10m
     jq .multi_node_manifest rendered.json | kubectl apply -f -
@@ -101,9 +112,11 @@ if [[ "$MODE" == deploy ]]; then
   jq -n --argjson seconds "$(($(date +%s)-stage_started))" '{mode:"deploy",status:"passed",runtime_validation:"pending",deployment_readiness_seconds:$seconds}' > report.json
   exit
 fi
-wait_gpus
 kubectl get pods -n "$namespace" -l "oke-llm/model=$name" -o json > pods.json
 jq -e --slurpfile c config.json '(.items|length)==$c[0].node_count and ([.items[].spec.nodeName]|unique|length)==$c[0].node_count and all(.items[]; any(.status.conditions[]?; .type=="Ready" and .status=="True"))' pods.json >/dev/null
+if [[ $(jq -r .requires_rdma config.json) == true ]]; then
+  jq -e --slurpfile c config.json 'all(.items[]; any(.spec.containers[]; ((.resources.requests[$c[0].rdma_resource_name] // "0")|tonumber)>=1))' pods.json >/dev/null
+fi
 # Bind this run to the deployed specification and resolved runtime digest.
 jq -e --slurpfile c config.json 'all(.items[]; any(.spec.containers[]; .image|endswith($c[0].engine_image|split("@")[1])))' pods.json >/dev/null
 jq -e --slurpfile c config.json 'all(.items[]; .metadata.labels["oke-llm/specification"]==$c[0].specification_hash[:32] and any(.status.containerStatuses[]?; .imageID|endswith($c[0].engine_image|split("@")[1])))' pods.json >/dev/null

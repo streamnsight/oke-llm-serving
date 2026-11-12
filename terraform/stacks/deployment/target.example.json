@@ -8,7 +8,6 @@
   "gpu_image_id": "ocid1.image.OKE_GPU_REPLACE",
   "cpu_image_id": "ocid1.image.OKE_CPU_REPLACE",
   "name": "my-model",
-  "install_gpu_operator": true,
   "benchmark_requests": 50,
   "benchmark_input_tokens": 1024,
   "benchmark_output_tokens": 128

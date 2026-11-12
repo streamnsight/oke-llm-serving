@@ -158,15 +158,17 @@ module "delivery" {
   subnet_id      = var.devops_subnet_id
   name           = var.name
   config = {
-    name                  = var.name, namespace = var.name, cluster_id = var.cluster_id, cluster_compartment_id = module.allocation.allocation.cluster_compartment_id, region = local.region
-    model                 = local.model, model_revision = local.model_revision, engine_image = local.engine_image, engine_version = local.engine_version
-    node_count            = local.node_count, gpu_shape = local.gpu_shape, tensor_parallel_size = local.tp, pipeline_parallel_size = local.pp, replicas = local.replicas
-    context_length        = local.context_length, concurrency = local.concurrency, kv_dtype = local.kv_dtype, requires_rdma = local.requires_rdma
-    kubernetes_version    = module.allocation.allocation.kubernetes_version, assessment_id = local.assessment_id
-    serving_configuration = local.serving_configuration, expert_configuration = var.expert_configuration
-    engine_args           = local.engine_args, engine_env = local.engine_env, expert_rank_memory_gib = var.expert_rank_memory_gib
-    install_gpu_operator  = var.install_gpu_operator
-    benchmark_requests    = var.benchmark_requests, benchmark_input_tokens = var.benchmark_input_tokens, benchmark_output_tokens = var.benchmark_output_tokens
+    name                    = var.name, namespace = var.name, cluster_id = var.cluster_id, cluster_compartment_id = module.allocation.allocation.cluster_compartment_id, region = local.region
+    model                   = local.model, model_revision = local.model_revision, engine_image = local.engine_image, engine_version = local.engine_version
+    node_count              = local.node_count, gpu_shape = local.gpu_shape, tensor_parallel_size = local.tp, pipeline_parallel_size = local.pp, replicas = local.replicas
+    context_length          = local.context_length, concurrency = local.concurrency, kv_dtype = local.kv_dtype, requires_rdma = local.requires_rdma
+    kubernetes_version      = module.allocation.allocation.kubernetes_version, assessment_id = local.assessment_id
+    serving_configuration   = local.serving_configuration, expert_configuration = var.expert_configuration
+    engine_args             = local.engine_args, engine_env = local.engine_env, expert_rank_memory_gib = var.expert_rank_memory_gib
+    rdma_network_attachment = var.rdma_network_attachment
+    rdma_resource_name      = var.rdma_resource_name
+    oke_addons              = try(module.allocation.allocation.oke_addons, [])
+    benchmark_requests      = var.benchmark_requests, benchmark_input_tokens = var.benchmark_input_tokens, benchmark_output_tokens = var.benchmark_output_tokens
   }
   depends_on = [module.allocation]
 }
