@@ -105,3 +105,11 @@ Local SDK verification: seven Go tests, five root Terraform tests, and eleven co
 - [x] Inspect the actual RMS execution host: OCI CLI, Python 3.9.25 and OCI Python SDK 2.189.0 are installed. A Go executable is not required for this environment. The simpler replacement is a Terraform external shell helper invoking OCI CLI with regional and delegated-auth settings; that replacement is not implemented yet.
 
 Nine Go test functions (including auth-mode and delegated-token cases), five discovery Terraform tests and twelve Node checks passed. Both stack ZIPs were rebuilt and the discovery archive passed integrity validation. The model URL/ID field and dynamic scan are on the feature branch; no main merge has been made while the user reviews the execution approach.
+
+## OCI CLI replacement and Flint gap assessment
+- [x] Phase 1: replace the Go data-source helper with Bash/OCI CLI/jq, preserving planner JSON, scoped discovery, pagination, unknown capacity and delegated RMS authorization.
+- [x] Phase 2: exercise CLI fixtures and live local discovery; remove obsolete Go source, launchers and binary packaging once replacement checks pass.
+- [ ] Phase 3: package and run a Plan against the existing RMS discovery stack; verify real cross-region output without allocating GPU nodes.
+- [x] Phase 4: inspect Flint's pinned recipe, released engine support, hybrid-attention memory/layout constraints and GPU coverage; document exact blockers and the work required rather than treating a model-list entry as deployment validation.
+
+CLI replacement pre-cloud checks: six CLI fixture tests and five discovery Terraform tests passed; the complete Node suite passed before the added complete-batch regression, which then passed separately. A live Melbourne/A10 CLI run queried compartment headroom and physical capacity and matched the previous SDK inventory/capacity/shape JSON keys. Its current capacity response was OUT_OF_HOST_CAPACITY (zero), preserved as observed rather than treated as a software failure. Go sources/build launchers/binary packaging were removed. Flint requirements and remaining implementation gaps are documented in docs/flint-assessment.md.

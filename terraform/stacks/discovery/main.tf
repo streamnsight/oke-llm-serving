@@ -14,9 +14,9 @@ terraform {
   }
 }
 
-# The Go SDK lookup uses resource-principal credentials in RMS, DEFAULT locally.
+# The CLI helper maps RMS delegated auth; local runs use the OCI CLI config/profile.
 data "external" "oci_discovery" {
-  program = ["bash", "${path.module}/../../../scripts/run-discovery-sdk.sh"]
+  program = ["bash", "${path.module}/../../../scripts/discover-oci.sh"]
   query = {
     tenancy_ocid                = var.tenancy_ocid
     compartment_id              = coalesce(var.compartment_id, var.tenancy_ocid)

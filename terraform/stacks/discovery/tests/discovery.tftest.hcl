@@ -23,10 +23,10 @@ run "all_ready_subscriptions_include_new_regions" {
   command = plan
   assert {
     condition = length(var.regions)==0 && length(var.shape_names)==0 && contains(output.discovery.assessed_regions,"new-future-region-1")
-    error_message = "Empty scope must accept SDK-discovered regions without provider aliases."
+    error_message = "Empty scope must accept CLI-discovered regions without provider aliases."
   }
 }
-run "explicit_scope_is_forwarded_to_sdk" {
+run "explicit_scope_is_forwarded_to_cli" {
   command = plan
   variables {
     regions = ["new-future-region-1"]
@@ -34,7 +34,7 @@ run "explicit_scope_is_forwarded_to_sdk" {
   }
   assert {
     condition = data.external.oci_discovery.query.regions==jsonencode(["new-future-region-1"]) && data.external.oci_discovery.query.shape_names==jsonencode(["BM.GPU.H100.8"])
-    error_message = "Explicit region/shape subsets must reach the dynamic SDK lookup."
+    error_message = "Explicit region/shape subsets must reach the dynamic CLI lookup."
   }
 }
 run "legacy_recipe_choice_resolves_model_revision" {

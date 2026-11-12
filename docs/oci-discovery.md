@@ -5,6 +5,9 @@ Licensed under the Universal Permissive License v 1.0 as shown at http://oss.ora
 
 # Native Terraform OCI discovery
 
+This page describes the native regional modules retained for deployment admission and standalone examples. The discovery stack now uses the dynamic CLI helper documented in [RMS discovery](rms-discovery.md).
+
+
 OCI inventory and capacity assessment now use only the oracle/oci Terraform provider and Terraform expressions. There are no OCI Python SDK calls, external programs, shell provisioners or OCI CLI dependencies. The old inventory, capacity and terraform-oci Python commands have been removed.
 
 ## Modules

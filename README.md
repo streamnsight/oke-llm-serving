@@ -12,7 +12,6 @@ Deploy open-weight models onto GPUs in an existing OKE cluster through a model-f
 The first stack is implemented at [terraform/stacks/discovery](terraform/stacks/discovery). Supply a public Hugging Face model URL, context length and concurrency. It returns a model profile, GPU shapes, limit/headroom observations and AD-scoped host capacity across READY subscribed regions.
 
 ```sh
-make build-discovery-sdk
 terraform -chdir=terraform/stacks/discovery init
 terraform -chdir=terraform/stacks/discovery plan -var-file=/path/to/request.tfvars.json -out=/path/to/discovery.tfplan
 terraform -chdir=terraform/stacks/discovery apply /path/to/discovery.tfplan
@@ -23,9 +22,9 @@ For RMS packages, run `make package` from the repository root. This writes separ
 
 For RMS, use this repository as the configuration source and set the working directory to `terraform/stacks/discovery`. Its `schema.yaml` describes the user inputs. See [RMS setup, scope and limitations](docs/rms-discovery.md).
 
-Hugging Face profiling uses `hashicorp/http` and HCL. OCI regional discovery uses a compiled Go SDK lookup through `hashicorp/external`, dynamically scanning subscribed regions without provider aliases. RMS packages include the Linux executable; local runs build their platform executable first. There is no runtime Python/OCI CLI dependency and no nested Terraform invocation. Deployment admission/allocation remains native `oracle/oci`.
+Hugging Face profiling uses `hashicorp/http` and HCL. OCI regional discovery uses Bash, OCI CLI and jq through `hashicorp/external`, dynamically scanning subscribed regions without provider aliases. These tools must be installed on the execution host (OCI CLI was verified on the tested RMS host). There is no Go build, custom Python script or nested Terraform invocation. Deployment admission/allocation remains native `oracle/oci`.
 
-Discovery creates reports, not GPU allocations. Counts represent available instances at the observation time and do not reserve them. Hub-published model counts are declared metadata, not independent tensor inspection. Discovery now includes conservative per-rank GPU layouts and engine compatibility assessment. Actual RMS execution still needs validation; local provider execution is tested.
+Discovery creates reports, not GPU allocations. Counts represent available instances at the observation time and do not reserve them. Hub-published model counts are declared metadata, not independent tensor inspection. Discovery now includes conservative per-rank GPU layouts and engine compatibility assessment. Execution evidence and remaining cloud validation are recorded in [project status](outputs/project-status.md).
 
 ## Deploy a selected configuration
 
@@ -34,6 +33,8 @@ The deployment stack at `terraform/stacks/deployment` creates retained GPU/CPU p
 See the [complete deployment workflow](docs/deployment-workflow.md) for the target-file example, RMS handoff, Kubernetes RBAC bootstrap, official vLLM CPU benchmark container and validation boundaries. Cloud/GPU/DevOps execution remains pending a selected target. Durable Responses conversation storage remains a separate API-layer feature.
 
 ## Documentation
+
+[Flint compatibility assessment](docs/flint-assessment.md) explains why upstream recipe coverage and local deployment admission currently differ.
 
 - [Model profile inputs, arithmetic and evidence](docs/model-profile.md)
 - [Native OCI inventory and capacity modules](docs/oci-discovery.md)

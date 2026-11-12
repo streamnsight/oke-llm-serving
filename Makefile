@@ -5,13 +5,12 @@ DIST_DIR ?= work/packages
 REFRESH_CATALOG ?= false
 PACKAGE_FLAGS = $(if $(filter true,$(REFRESH_CATALOG)),--refresh-catalog,)
 
-.PHONY: help package package-discovery package-deployment refresh-model-catalog build-discovery-sdk test-discovery-sdk
+.PHONY: help package package-discovery package-deployment refresh-model-catalog
 help:
 	@echo 'make package             Build both RMS ZIPs from committed HEAD'
 	@echo 'make package-discovery   Build the discovery stack ZIP'
 	@echo 'make package-deployment  Build the deployment stack ZIP'
 	@echo 'make refresh-model-catalog Update the alphabetical recipe model reference (requires npm ci)'
-	@echo 'make build-discovery-sdk Build the local Go OCI SDK lookup executable'
 	@echo 'Optional: DIST_DIR=/path REFRESH_CATALOG=true'
 
 package: package-discovery package-deployment
@@ -26,9 +25,3 @@ package-deployment:
 
 refresh-model-catalog:
 	@bash scripts/refresh-model-catalog.sh
-
-build-discovery-sdk:
-	@bash scripts/build-discovery-sdk.sh
-
-test-discovery-sdk:
-	@GOPATH="$(CURDIR)/work/go" GOCACHE="$(CURDIR)/work/go-build-cache" go -C tools/oci-discovery test ./...
