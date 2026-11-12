@@ -4,6 +4,8 @@ Licensed under the Universal Permissive License v 1.0 as shown at http://oss.ora
 -->
 # Project status
 
+Next architecture under design: generated infrastructure and model bundles with separate Terraform states, stable retained-pool identity, one shared DevOps project per platform and independently replaceable model releases. Schemas are generated with editable defaults; artifact run IDs belong only in filenames under fixed model/region/shape folders. This split/publisher is not implemented yet. See docs/platform-model-lifecycles.md and docs/generated-deployment-bundles.md. The source described below still uses a combined deployment root.
+
 The repository has two working Resource Manager stack configurations: live model/GPU discovery, followed by a selected deployment into an existing regional OKE cluster. Deployment now defaults to a read-only OCI preview, with dynamic RMS compartment/cluster controls, derived image/network/NSG details and a discovery-carried CPU budget. GPU inference and DevOps runtime execution have not been validated on allocated hardware.
 
 Discovery takes a Hugging Face URL/ID, revision, context and concurrency. It reads model metadata and the live recipe API, pins upstream source/image evidence and scans READY OCI subscriptions. Only choices with positive physical capacity and quantity-confirmed GPU headroom are selectable; zero/unknown/insufficient observations stay in diagnostics. Untested serving settings are labelled separately from capacity eligibility.
