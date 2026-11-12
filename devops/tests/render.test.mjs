@@ -63,3 +63,11 @@ test('deployment RMS form includes every Terraform handoff variable',()=>{
   const variables=[...readFileSync(`${root}/terraform/stacks/deployment/variables.tf`,'utf8').matchAll(/variable "([^"]+)"/g)].map(m=>m[1]).sort();
   assert.deepEqual(Object.keys(schema.variables).sort(),variables);
 });
+
+test('RMS scope filters are explicitly optional empty arrays',()=>{
+  const schema=parse(readFileSync(`${root}/terraform/stacks/discovery/schema.yaml`,'utf8'));
+  for(const name of ['regions','shape_names']) {
+    assert.equal(schema.variables[name].required,false);
+    assert.deepEqual(schema.variables[name].default,[]);
+  }
+});

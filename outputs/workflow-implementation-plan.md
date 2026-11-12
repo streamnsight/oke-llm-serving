@@ -64,3 +64,10 @@ Consolidation verification: the combined implementation passed 53 Terraform test
 - [x] Phase 5: build/inspect both packages and validate their extracted Terraform roots. Actual RMS UI/job execution remains separate live validation.
 
 Packaging verification: both Make targets produced isolated, integrity-checked ZIPs with state/private files/tests excluded. Both extracted stack roots initialized and passed Terraform validation. Planner tests passed 13 runs, including unsupported Flint architecture with positive capacity/headroom. Flint runtime support remains unimplemented in this stack despite upstream support; its specific image/recipe, hybrid-attention estimate and hardware coverage still need integration.
+
+## Optional RMS scope filters
+- [x] Inspect root defaults and RMS schema; retain all-region/all-shape behavior.
+- [x] Make schema filters explicitly optional with empty defaults; normalize explicit Terraform nulls to defaults.
+- [ ] Test omitted/null values and schema defaults; rebuild the discovery ZIP.
+
+The reported RMS job error has not been inspected. These changes harden the optional-input contract; a literal `var.shapes` error cannot originate from this root, which declares `shape_names`. Actual RMS verification requires the failing job details.

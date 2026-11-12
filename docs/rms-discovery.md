@@ -46,6 +46,8 @@ Example request (substitute your root OCID):
 
 `discovery` includes the model profile, all READY subscriptions, selected regions, per-region inventory and AD capacity reports. Consumers must check model estimate status, inventory status, unmatched quota names, capacity status and timestamps. A region with no visible GPU shapes is **not** treated as proof of physical capacity zero.
 
+`regions` and `shape_names` are optional. Omit them or supply `[]` to scan all READY subscriptions and visible GPU shapes; explicit `null` also uses the empty defaults. In the RMS form they have `required: false` and `default: []`. Empty-string values are not valid collection values: if a saved stack has blank entries, remove those overrides or set each to the literal JSON array `[]`. The input is `shape_names`, not `shapes`. After updating the ZIP, update the existing RMS stack configuration as well; changing local source does not update an already uploaded stack. An error naming a required variable despite these defaults needs the exact job log/configuration checked.
+
 Native Terraform errors fail the job. There is no shell workaround that catches API errors and returns an apparently complete assessment. For troubleshooting, `regions` and `shape_names` accept explicit subsets and `query_resource_availability` can disable headroom calls; outputs record which regions were selected. RMS access needs tenancy subscription/AD visibility, relevant shape/limit/headroom permissions and capacity-report creation permission in root. Authentication/network failure is not a capacity observation.
 
 ### Regional provider constraint

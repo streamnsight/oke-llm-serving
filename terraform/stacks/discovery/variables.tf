@@ -53,11 +53,13 @@ variable "regions" {
   description = "Empty selects every READY subscription. Optional subset for reruns/troubleshooting."
   type        = set(string)
   default     = []
+  nullable    = false
 }
 variable "shape_names" {
   description = "Empty selects all visible GPU shapes."
   type        = set(string)
   default     = []
+  nullable    = false
 }
 variable "compartment_id" {
   description = "Intended deployment compartment for quota headroom; null checks root entitlement only."

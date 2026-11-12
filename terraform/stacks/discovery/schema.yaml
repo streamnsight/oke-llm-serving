@@ -582,12 +582,16 @@ variables:
     description: Quota/headroom scope only; capacity uses tenancy root. Leaving unset checks root entitlement.
   regions:
     type: array
+    required: false
+    default: []
     items:
       type: string
     title: Optional region subset
     description: Empty means all READY subscribed regions.
   shape_names:
     type: array
+    required: false
+    default: []
     items:
       type: string
     title: Optional GPU shape subset
