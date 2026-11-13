@@ -1,7 +1,11 @@
 # Copyright (c) 2020-2022 Oracle and/or its affiliates. All rights reserved.
 # Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
 # Copied into an extracted, actually rendered ZIP by the development checker.
-mock_provider "oci" {}
+mock_provider "oci" {
+  mock_data "oci_identity_tenancy" { defaults = { home_region_key = "ORD" } }
+  mock_data "oci_identity_regions" { defaults = { regions = [{ key = "ORD", name = "us-chicago-1" }] } }
+}
+mock_provider "oci" { alias = "home" }
 variables {
   tenancy_ocid     = "root"
   compartment_ocid = "stack-compartment"

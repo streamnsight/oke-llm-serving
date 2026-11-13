@@ -6,6 +6,8 @@ Licensed under the Universal Permissive License v 1.0 as shown at http://oss.ora
 
 Use `templates/infrastructure` with its own Terraform state. It creates **GPU node infrastructure only**, a shared DevOps project and an explicitly invoked platform bootstrap pipeline. Existing cluster CPU pools run shared controllers. No model, serving image, benchmark or discovery-JSON input is required. The older `deployment` root remains a combined implementation; do not apply both roots to create the same infrastructure. Separate model deployment and undeploy pipelines are deferred.
 
+Regional DevOps/storage/node resources use the selected deployment region. Dynamic-group and IAM-policy writes use a separate provider in the tenancy home region, discovered from OCI tenancy/region data. No home-region input or region mapping file is required; `infrastructure_preview.iam_home_region` shows the result.
+
 ## Preview first
 
 Copy `templates/infrastructure/target.example.json` to an ignored local file. Fill in the tenancy/compartment, existing cluster, selected region, AD, GPU shape and host count from discovery. Keep `platform_name` stable across models and discovery runs. This first pass supports one platform owner per cluster.

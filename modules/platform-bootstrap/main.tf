@@ -2,7 +2,7 @@
 # Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
 terraform {
   required_version = ">= 1.5.0"
-  required_providers { oci = { source = "oracle/oci", version = "~> 9.12" } }
+  required_providers { oci = { source = "oracle/oci", version = "~> 9.12", configuration_aliases = [oci.home] } }
 }
 data "oci_objectstorage_namespace" "target" { compartment_id = var.tenancy_ocid }
 data "oci_core_subnet" "runner" { subnet_id = var.subnet_id }
@@ -107,12 +107,14 @@ resource "oci_devops_deploy_stage" "bootstrap" {
   }
 }
 resource "oci_identity_dynamic_group" "bootstrap" {
+  provider       = oci.home
   compartment_id = var.tenancy_ocid
   name           = "${var.name}-bootstrap"
   description    = "Platform bootstrap pipeline resource principal only."
   matching_rule  = "ALL {resource.id = '${oci_devops_deploy_pipeline.bootstrap.id}'}"
 }
 resource "oci_identity_policy" "bootstrap" {
+  provider       = oci.home
   compartment_id = var.tenancy_ocid
   name           = "${var.name}-bootstrap"
   description    = "OCI access for private platform bootstrap; Kubernetes authorization is explicit."

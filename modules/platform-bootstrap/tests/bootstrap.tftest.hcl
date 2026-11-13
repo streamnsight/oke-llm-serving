@@ -1,6 +1,7 @@
 # Copyright (c) 2020-2022 Oracle and/or its affiliates. All rights reserved.
 # Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
 mock_provider "oci" {}
+mock_provider "oci" { alias = "home" }
 variables {
   tenancy_ocid   = "root"
   compartment_id = "platform-compartment"

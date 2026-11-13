@@ -5,7 +5,14 @@ terraform {
   required_providers { oci = { source = "oracle/oci", version = "~> 9.12" } }
 }
 provider "oci" { region = var.region }
+data "oci_identity_tenancy" "target" { tenancy_id = var.tenancy_ocid }
+data "oci_identity_regions" "available" {}
+provider "oci" {
+  alias  = "home"
+  region = local.home_region
+}
 locals {
+  home_region    = one([for region in data.oci_identity_regions.available.regions : region.name if region.key == data.oci_identity_tenancy.target.home_region_key])
   compartment_id = coalesce(var.compartment_id, var.compartment_ocid, var.tenancy_ocid)
   catalog        = jsondecode(file("${path.module}/../../modules/accelerator-inventory/data/gpus.json"))
   gpu            = try(local.catalog.shapes[var.gpu_shape], null)
@@ -93,6 +100,7 @@ module "allocation" {
 }
 module "bootstrap" {
   depends_on     = [terraform_data.specification]
+  providers      = { oci = oci, oci.home = oci.home }
   source         = "../../modules/platform-bootstrap"
   tenancy_ocid   = var.tenancy_ocid
   compartment_id = local.compartment_id
@@ -105,6 +113,7 @@ module "bootstrap" {
 }
 output "infrastructure_preview" {
   value = merge(local.specification, {
+    iam_home_region         = local.home_region,
     skip_gpu_allocation     = var.skip_gpu_allocation,
     selected_recommendation = local.selected_specification == null ? null : { selection_id = local.selected_specification.selection_id, changed_fields = local.recommendation_changes, status = length(local.recommendation_changes) == 0 ? "original_recommendation; model runtime validation pending" : "expert_modified; original model sizing not validated for these changes" },
     network_selection       = var.rdma_mode == "auto" && try(local.gpu.rdma, false) && !local.requires_rdma ? "Ethernet fallback: Compute Cluster placement is not cataloged for this shape/region; no RDMA transport is claimed." : local.requires_rdma ? "RDMA Compute Cluster placement; fabric validation pending" : "Ethernet managed GPU pool",

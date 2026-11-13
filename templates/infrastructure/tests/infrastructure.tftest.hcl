@@ -1,6 +1,10 @@
 # Copyright (c) 2020-2022 Oracle and/or its affiliates. All rights reserved.
 # Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
-mock_provider "oci" {}
+mock_provider "oci" {
+  mock_data "oci_identity_tenancy" { defaults = { home_region_key = "ORD" } }
+  mock_data "oci_identity_regions" { defaults = { regions = [{ key = "ORD", name = "us-chicago-1" }] } }
+}
+mock_provider "oci" { alias = "home" }
 variables {
   tenancy_ocid        = "root"
   compartment_ocid    = "stack-compartment"
@@ -31,7 +35,7 @@ run "debug_creates_platform_without_gpu_allocation" {
     error_message = "Debug skipping must create the DevOps foundation while allocating no GPU or CPU pools."
   }
   assert {
-    condition     = output.infrastructure_preview.gpu_count_per_host == 4 && output.infrastructure_preview.bootstrap.automatically_started == false && output.infrastructure_preview.cpu_placement == "existing_cluster_cpu_pools"
+    condition     = output.infrastructure_preview.gpu_count_per_host == 4 && output.infrastructure_preview.bootstrap.automatically_started == false && output.infrastructure_preview.cpu_placement == "existing_cluster_cpu_pools" && output.infrastructure_preview.iam_home_region == "us-chicago-1"
     error_message = "Describe actual host GPU count and explicit bootstrap on existing CPU capacity."
   }
 }
