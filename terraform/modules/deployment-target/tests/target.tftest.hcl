@@ -188,3 +188,11 @@ run "RDMA_requires_enhanced_cluster_in_preview" {
     error_message = "Show a missing RDMA cluster prerequisite before creating any resources."
   }
 }
+run "existing_cpu_pools_need_no_cpu_image_discovery" {
+  command = plan
+  variables { resolve_cpu_image = false }
+  assert {
+    condition     = length(module.cpu_image) == 0 && output.target.cpu_image == null && output.target.ready
+    error_message = "Skip CPU image discovery entirely when reusing the existing cluster CPU pools."
+  }
+}

@@ -6,7 +6,7 @@ set -euo pipefail
 [[ $# -eq 1 ]] || { echo 'Usage: package-stack.sh OUTPUT.zip' >&2; exit 2; }
 repo=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 package_stack=${PACKAGE_STACK:-discovery}
-case "$package_stack" in discovery|deployment) ;; *) echo 'PACKAGE_STACK must be discovery or deployment' >&2; exit 2;; esac
+case "$package_stack" in discovery|infrastructure|deployment) ;; *) echo 'PACKAGE_STACK must be discovery, infrastructure or deployment' >&2; exit 2;; esac
 output=$1
 [[ "$output" == /* ]] || output="$PWD/$output"
 staging=$(mktemp -d)

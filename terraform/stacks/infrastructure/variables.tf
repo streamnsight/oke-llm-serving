@@ -1,0 +1,111 @@
+# Copyright (c) 2020-2022 Oracle and/or its affiliates. All rights reserved.
+# Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
+variable "tenancy_ocid" { type = string }
+variable "compartment_ocid" {
+  type    = string
+  default = null
+}
+variable "compartment_id" {
+  type    = string
+  default = null
+}
+variable "region" { type = string }
+variable "cluster_id" { type = string }
+variable "availability_domain" { type = string }
+variable "gpu_shape" { type = string }
+variable "node_count" {
+  description = "Retained GPU hosts, not individual GPUs."
+  type        = number
+  default     = 1
+  validation {
+    condition     = var.node_count >= 1 && floor(var.node_count) == var.node_count
+    error_message = "Use a positive integer host count."
+  }
+}
+variable "platform_name" {
+  description = "Stable pool/platform identity, independent of models and discovery runs."
+  type        = string
+  default     = "llm-platform"
+  validation {
+    condition     = can(regex("^[a-z][a-z0-9-]{0,30}[a-z0-9]$", var.platform_name))
+    error_message = "Use a DNS-safe platform name of 2–32 characters."
+  }
+}
+variable "provision_resources" {
+  type        = bool
+  default     = false
+  description = "Preview by default. Do not disable after allocation: retained pools cannot be destroyed."
+}
+variable "advanced_settings" {
+  type    = bool
+  default = false
+}
+variable "rdma_mode" {
+  description = "Auto follows shape topology. Ethernet explicitly disables RDMA placement."
+  type        = string
+  default     = "auto"
+  validation {
+    condition     = contains(["auto", "ethernet", "rdma"], var.rdma_mode)
+    error_message = "Choose auto, ethernet or rdma."
+  }
+}
+variable "enable_lws" {
+  description = "Install/reuse the shared LeaderWorkerSet controller for multi-node serving."
+  type        = bool
+  default     = true
+}
+variable "os_version" {
+  type    = string
+  default = "8"
+  validation {
+    condition     = contains(["8", "9"], var.os_version)
+    error_message = "Select Oracle Linux 8 or 9."
+  }
+}
+variable "boot_volume_gib" {
+  description = "GPU host boot disk. Increase for the largest planned checkpoint/cache before allocation."
+  type        = number
+  default     = 200
+  validation {
+    condition     = var.boot_volume_gib >= 200 && floor(var.boot_volume_gib) == var.boot_volume_gib
+    error_message = "Use an integer boot disk size of at least 200 GiB."
+  }
+}
+variable "observation_id" {
+  description = "Optional capacity report identifier. Null requests a fresh report on each provisioning plan/apply."
+  type        = string
+  default     = null
+}
+variable "gpu_image_id" {
+  type    = string
+  default = null
+}
+variable "subnet_id" {
+  type    = string
+  default = null
+}
+variable "pod_subnet_id" {
+  type    = string
+  default = null
+}
+variable "devops_subnet_id" {
+  type    = string
+  default = null
+}
+variable "worker_nsg_ids" {
+  type    = list(string)
+  default = null
+}
+variable "pod_nsg_ids" {
+  type    = list(string)
+  default = null
+}
+variable "devops_nsg_ids" {
+  type    = list(string)
+  default = null
+}
+variable "rdma_resource_name" {
+  description = "Optional existing RDMA extended resource; otherwise detect a unique resource on the pool."
+  type        = string
+  default     = null
+}

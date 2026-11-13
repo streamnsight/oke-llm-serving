@@ -40,7 +40,7 @@ override_data {
 run "regular_pool_and_cpu_capacity" {
   command = plan
   assert {
-    condition     = length(oci_core_compute_cluster.gpu) == 0 && oci_containerengine_node_pool.gpu.node_config_details[0].size == 1 && oci_containerengine_node_pool.cpu.node_shape == "VM.Standard.E4.Flex"
+    condition     = length(oci_core_compute_cluster.gpu) == 0 && oci_containerengine_node_pool.gpu.node_config_details[0].size == 1 && oci_containerengine_node_pool.cpu[0].node_shape == "VM.Standard.E4.Flex"
     error_message = "Non-RDMA deployment must create a regular GPU pool and separate CPU capacity."
   }
 }
@@ -154,5 +154,17 @@ run "reports_service_addon_versions_without_installing_a_second_operator" {
   assert {
     condition     = output.allocation.oke_addons[0].name == "NvidiaGpuOperator" && output.allocation.oke_addons[0].installed_version == "25.10.0" && output.allocation.oke_addons[0].state == "ACTIVE"
     error_message = "Use the service's installed add-on version as evidence, without a hardcoded self-managed operator release."
+  }
+}
+run "gpu_only_pool_does_not_require_a_cpu_image_or_subnet" {
+  command = plan
+  variables {
+    create_cpu_pool = false
+    cpu_image_id    = null
+    cpu_subnet_id   = null
+  }
+  assert {
+    condition     = length(oci_containerengine_node_pool.cpu) == 0 && output.allocation.cpu_pool_id == null
+    error_message = "A GPU-only allocation must not create a CPU node pool or require CPU image/network inputs."
   }
 }

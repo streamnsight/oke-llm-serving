@@ -219,3 +219,21 @@ Design refinement: folders are fixed at model/region/shape, with bundle kind, UT
 ## Proposed lifecycle split
 
 The latest design has three independent stack types: discovery, a reusable infrastructure/platform owner, and per-model deployments. Infrastructure owns retained pools, managed add-ons/shared CRDs/controllers and the shared DevOps project/foundation. Model stacks reference that project/pool and own model workloads plus per-model deploy/validate/benchmark/retire pipelines. Use a versioned platform descriptor/readiness contract rather than a full infrastructure state dump. New-allocation eligibility and existing-pool suitability are separate: zero spare OCI capacity must not hide a usable retained pool. See [platform-model-lifecycles.md](../docs/platform-model-lifecycles.md) for ownership, flow, refactoring phases and tests. Current source is still the combined deployment implementation; the split is a proposal, not a completed feature.
+
+## Deferred model undeploy pipeline
+
+Use an independently invoked OCI DevOps Shell pipeline, following the shell-stage pattern in [oke-langfuse](https://github.com/streamnsight/oke-langfuse/tree/main/modules/devops/deployment_stages/shell_stage). Deleting pipeline records does not reverse shell commands. The user has prioritized node pools and shared CRDs first; model/undeploy implementation is deferred.
+
+1. [ ] Add the undeploy pipeline, bundled cleanup script, namespace-scoped RBAC and model ownership labels. Verify it is separate from deploy/validate/benchmark and has no automatic trigger.
+2. [ ] Remove only the model Helm release, owned LWS instances/services and temporary test resources; handle absent releases, partial deployments, old replica counts and unavailable GPUs. Invalidate validation evidence and wait for model pods to disappear; surface cleanup errors. Preserve hosts, shared controllers, namespace/RBAC and data according to Helm retention policies.
+3. [ ] Exercise retry/partial failure/ownership boundaries with local command mocks, native Terraform tests and packaged-stack validation. Document operator sequencing and limitations, commit the feature, and retain live OKE validation as pending. No live undeploy, node changes or pipeline executions.
+
+## Infrastructure-first implementation
+
+Scope: an independent infrastructure state with a stable platform name, selected region/AD/shape/host count and existing cluster. Create GPU infrastructure only; use existing CPU pools for controllers. Model-local cache colocation belongs to the later model phase. No model ID, serving image, recipe, benchmark or large discovery JSON is required. Reuse the allocation/target modules, including retained-pool protections. One platform owner per cluster in this first pass. Default to read-only preview; do not create, resize, cycle or delete GPU hosts during verification.
+
+1. [x] Add an infrastructure root with RMS dynamic cluster/compartment inputs, native GPU image/network resolution, hardware/RDMA checks and a detailed GPU-only pool/bootstrap preview. Test preview has no managed OCI resources, CPU image lookup/pool creation or model dependency.
+2. [x] Add a platform DevOps Shell bootstrap pipeline, shared project/evidence storage and explicit administrator RBAC bootstrap. Check actual GPU/CPU resources, reuse OKE GPU/network add-ons and install or reuse a compatible LeaderWorkerSet controller/CRD. Existing controllers must not be silently adopted/upgraded. Prometheus/KEDA remain outside this first validation pass.
+3. [x] Publish a small platform descriptor with stable pool/project references and a generation-specific readiness object written only by the pipeline. Terraform apply must not automatically start bootstrap or advertise runtime readiness.
+4. [ ] Package the infrastructure root with root-level main.tf/schema.yaml, add CI artifact publication and operator instructions. Validate native tests, mocked bootstrap execution and extracted archives; preserve user files and remove temporary dependencies.
+5. [ ] Validate authenticated RMS preview and platform bootstrap on an explicitly selected target. Allocation/runtime GPU and RDMA fabric validation remain pending; no live provisioning is authorized in this pass.

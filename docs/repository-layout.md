@@ -7,12 +7,14 @@ Licensed under the Universal Permissive License v 1.0 as shown at http://oss.ora
 | Location | Purpose |
 |---|---|
 | `terraform/stacks/discovery` | Model/workload inputs and cross-region assessment |
+| `terraform/stacks/infrastructure` | GPU-only retained pools and a shared-controller bootstrap pipeline; reuses existing CPU pools |
 | `terraform/stacks/deployment` | Selected configuration, retained GPU infrastructure and DevOps resources |
 | `terraform/modules/oci-discovery/scripts` | Runtime OCI CLI/Bash lookup and its JQ library |
 | `terraform/modules/accelerator-inventory/data/gpus.json` | Shared GPU memory, topology and hardware mapping, owned by inventory |
 | `terraform/modules/serving-resolution` | Live recipe JSON source/alias lookup, immutable upstream YAML and engine image assessment |
 | `terraform/modules/devops-serving/scripts` | Runtime deployment runner, Kubernetes renderer and official vLLM benchmark wrapper |
 | `terraform/modules/devops-serving/data/components.json` | Deployment infrastructure versions and image digests |
+| `terraform/modules/platform-bootstrap` | Shared platform DevOps foundation, LWS chart/client defaults, node readiness and bootstrap scripts |
 | `terraform/modules/deployment-target` | Read-only cluster, network/NSG and regional image resolution |
 | `terraform/modules/oke-node-image` | Native OKE image/version/shape selector |
 | `terraform/modules/deployment-handoff` | Byte-budgeted per-selection RMS payloads |

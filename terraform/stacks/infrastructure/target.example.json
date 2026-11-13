@@ -1,0 +1,11 @@
+{
+  "tenancy_ocid": "ocid1.tenancy.oc1..REPLACE",
+  "compartment_id": "ocid1.compartment.oc1..REPLACE",
+  "cluster_id": "ocid1.cluster.oc1.us-ashburn-1.REPLACE",
+  "region": "us-ashburn-1",
+  "availability_domain": "REPLACE:US-ASHBURN-AD-1",
+  "gpu_shape": "BM.GPU.A10.4",
+  "node_count": 1,
+  "platform_name": "llm-platform",
+  "provision_resources": false
+}

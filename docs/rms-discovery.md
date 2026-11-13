@@ -4,11 +4,11 @@ Licensed under the Universal Permissive License v 1.0 as shown at http://oss.ora
 -->
 # Resource Manager discovery
 
-Use two separate stacks: `terraform/stacks/discovery` for assessment and `terraform/stacks/deployment` for a selected allocation. Discovery allocates no GPU/CPU nodes. No Terraform process launches another Terraform process.
+Use `terraform/stacks/discovery` for assessment, then the new GPU-only `terraform/stacks/infrastructure` for retained pools/shared controllers. See [infrastructure bootstrap](infrastructure-bootstrap.md). The earlier combined `terraform/stacks/deployment` remains present while separate model deployment is deferred. Discovery allocates no GPU/CPU nodes. No Terraform process launches another Terraform process.
 
 ## Package and inputs
 
-Run `make package`. Upload `work/packages/oke-llm-discovery.zip` or `oke-llm-deployment.zip` and use the ZIP root (`.`) as working directory. There is no enclosing stack/repository folder:
+Run `make package`. Upload the discovery, infrastructure or earlier combined deployment ZIP from `work/packages/` and use the ZIP root (`.`) as working directory. There is no enclosing stack/repository folder:
 
 ```text
 main.tf

@@ -143,7 +143,12 @@ resource "oci_containerengine_node_pool" "gpu" {
   }
 }
 
+moved {
+  from = oci_containerengine_node_pool.cpu
+  to   = oci_containerengine_node_pool.cpu[0]
+}
 resource "oci_containerengine_node_pool" "cpu" {
+  count              = var.create_cpu_pool ? 1 : 0
   depends_on         = [oci_containerengine_node_pool.gpu]
   compartment_id     = var.compartment_id
   cluster_id         = var.cluster_id
@@ -182,5 +187,5 @@ resource "oci_containerengine_node_pool" "cpu" {
   lifecycle { prevent_destroy = true }
 }
 output "allocation" {
-  value = { oke_addons = try([for addon in data.oci_containerengine_addons.target[0].addons : { name = addon.addon_name, installed_version = addon.current_installed_version, requested_version = addon.version, state = addon.state }], []), gpu_pool_id = oci_containerengine_node_pool.gpu.id, cpu_pool_id = oci_containerengine_node_pool.cpu.id, compute_cluster_id = try(oci_core_compute_cluster.gpu[0].id, null), kubernetes_version = data.oci_containerengine_cluster.target.kubernetes_version, name = var.name, allocation_identity = terraform_data.identity.id, requested_nodes = var.node_count, retained_nodes = local.retained_instances, additional_nodes = local.additional_instances, quota_checks = local.quota_checks, cluster_compartment_id = data.oci_containerengine_cluster.target.compartment_id, capacity = module.capacity.result }
+  value = { oke_addons = try([for addon in data.oci_containerengine_addons.target[0].addons : { name = addon.addon_name, installed_version = addon.current_installed_version, requested_version = addon.version, state = addon.state }], []), gpu_pool_id = oci_containerengine_node_pool.gpu.id, cpu_pool_id = try(oci_containerengine_node_pool.cpu[0].id, null), compute_cluster_id = try(oci_core_compute_cluster.gpu[0].id, null), kubernetes_version = data.oci_containerengine_cluster.target.kubernetes_version, name = var.name, allocation_identity = terraform_data.identity.id, requested_nodes = var.node_count, retained_nodes = local.retained_instances, additional_nodes = local.additional_instances, quota_checks = local.quota_checks, cluster_compartment_id = data.oci_containerengine_cluster.target.compartment_id, capacity = module.capacity.result }
 }

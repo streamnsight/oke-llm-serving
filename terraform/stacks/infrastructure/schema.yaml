@@ -1,0 +1,129 @@
+# Copyright (c) 2020-2022 Oracle and/or its affiliates. All rights reserved.
+# Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
+title: OKE retained GPU infrastructure
+description: Preview a GPU-only pool in an existing cluster. Reuse existing CPU pools and OKE GPU/network add-ons. Provisioning creates a platform bootstrap pipeline but does not run it or deploy models.
+schemaVersion: 1.1.0
+version: "0.1.0"
+variableGroups:
+  - title: Existing cluster and GPU selection
+    variables: [platform_name, compartment_id, cluster_id, availability_domain, gpu_shape, node_count, provision_resources, advanced_settings]
+  - title: Platform and storage overrides
+    visible: advanced_settings
+    variables: [enable_lws, rdma_mode, os_version, boot_volume_gib, gpu_image_id, rdma_resource_name, observation_id]
+  - title: Network overrides (must belong to the cluster VCN)
+    visible: advanced_settings
+    variables: [subnet_id, pod_subnet_id, devops_subnet_id, worker_nsg_ids, pod_nsg_ids, devops_nsg_ids]
+  - title: RMS context
+    visible: false
+    variables: [tenancy_ocid, compartment_ocid, region]
+variables:
+  tenancy_ocid:
+    type: string
+    required: true
+    visible: false
+  compartment_ocid:
+    type: string
+    visible: false
+  region:
+    type: string
+    visible: false
+    required: true
+  platform_name:
+    type: string
+    default: llm-platform
+    title: Stable platform name
+    description: Keep this name independent of a model or discovery run. Use one platform owner per cluster.
+  compartment_id:
+    type: oci:identity:compartment:id
+    default: compartment_ocid
+    required: true
+    title: Infrastructure compartment
+  cluster_id:
+    type: oci:container:cluster:id
+    required: true
+    title: Existing cluster
+    dependsOn:
+      compartmentId: compartment_id
+  availability_domain:
+    type: oci:identity:availabilitydomain:name
+    required: true
+    title: GPU availability domain from discovery
+    dependsOn:
+      compartmentId: compartment_id
+  gpu_shape:
+    type: string
+    required: true
+    title: GPU shape from discovery
+  node_count:
+    type: integer
+    default: 1
+    minimum: 1
+    title: GPU host count (not GPU count)
+  provision_resources:
+    type: boolean
+    default: false
+    title: Create GPU infrastructure and bootstrap pipeline
+    description: Leave disabled for preview. After allocation, do not toggle off or destroy this retained infrastructure state.
+  advanced_settings:
+    type: boolean
+    default: false
+    title: Show optional overrides
+  enable_lws:
+    type: boolean
+    default: true
+    title: Shared LeaderWorkerSet controller
+  rdma_mode:
+    type: enum
+    enum: [auto, ethernet, rdma]
+    default: auto
+    title: RDMA override
+    description: Auto follows the shape topology. Ethernet explicitly disables RDMA placement.
+  os_version:
+    type: enum
+    enum: ["8", "9"]
+    default: "8"
+    title: Oracle Linux major version
+  boot_volume_gib:
+    type: integer
+    default: 200
+    minimum: 200
+    title: GPU host boot volume GiB
+    description: Increase before allocation for large checkpoints and caches. Model disk sizing is deferred to model deployment.
+  gpu_image_id:
+    type: string
+    title: Optional OKE GPU image OCID override
+  rdma_resource_name:
+    type: string
+    title: Optional existing RDMA extended-resource name
+  observation_id:
+    type: string
+    title: Optional capacity report identifier
+    description: Leave unset to request a fresh report at each provisioning attempt.
+  subnet_id:
+    type: string
+    title: GPU worker subnet OCID override
+  pod_subnet_id:
+    type: string
+    title: VCN-native pod subnet OCID override
+  devops_subnet_id:
+    type: string
+    title: DevOps runner subnet OCID override
+    description: Must reach the private OKE API and have HTTPS egress for OCI and Helm release downloads.
+  worker_nsg_ids:
+    type: list
+    default: "[]"
+    valueType: nsg_id
+    title: Worker NSG overrides
+  pod_nsg_ids:
+    type: list
+    default: "[]"
+    valueType: nsg_id
+    title: Pod NSG overrides
+  devops_nsg_ids:
+    type: list
+    default: "[]"
+    valueType: nsg_id
+    title: DevOps NSG overrides
+  nsg_id:
+    type: string
+    visible: false

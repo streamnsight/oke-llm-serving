@@ -8,6 +8,11 @@ variable "availability_domain" { type = string }
 variable "gpu_shape" { type = string }
 variable "gpu_architecture" { type = string }
 variable "cpu_shape" { type = string }
+variable "resolve_cpu_image" {
+  description = "False when the caller reuses existing CPU pools."
+  type        = bool
+  default     = true
+}
 variable "os_version" { type = string }
 variable "requires_rdma" {
   type    = bool
@@ -68,13 +73,13 @@ locals {
     id         = id, vcn_matches = try(data.oci_core_subnet.candidate[id].vcn_id == local.cluster.vcn_id, false),
     ad_matches = role == "devops" || try(coalesce(data.oci_core_subnet.candidate[id].availability_domain, var.availability_domain) == var.availability_domain, false),
     private    = try(data.oci_core_subnet.candidate[id].prohibit_public_ip_on_vnic, false)
-  } if role != "pod" || local.native_cni }
+  } if(role != "pod" || local.native_cni) && (role != "cpu" || var.resolve_cpu_image) }
   issues = compact(concat(
     [var.requires_rdma && local.cluster.type != "ENHANCED_CLUSTER" ? "RDMA managed-node placement requires an enhanced OKE cluster." : ""],
     [for role, sets in local.worker_nsg_sets : "Multiple ${role} worker NSG policies; provide an NSG override." if length(sets) > 1 && var.worker_nsg_ids == null && !(role == "devops" && var.devops_nsg_ids != null)],
     [local.native_cni && length(local.pod_nsg_sets) > 1 && var.pod_nsg_ids == null ? "Multiple pod NSG policies; provide pod_nsg_ids." : ""],
     [for role, check in local.subnet_checks : check.id == null ? "No unambiguous ${role} subnet; select an existing subnet override." : !check.vcn_matches ? "${role} subnet belongs to another VCN." : !check.ad_matches ? "${role} subnet is in another availability domain." : ""],
-    [module.gpu_image.image.id == null ? "No shape-compatible OKE GPU image for the cluster version and OS." : "", module.cpu_image.image.id == null ? "No shape-compatible OKE CPU image for the cluster version and OS." : "", local.cluster.state == "ACTIVE" ? "" : "Cluster must be ACTIVE."]
+    [module.gpu_image.image.id == null ? "No shape-compatible OKE GPU image for the cluster version and OS." : "", var.resolve_cpu_image && try(module.cpu_image[0].image.id == null, false) ? "No shape-compatible OKE CPU image for the cluster version and OS." : "", local.cluster.state == "ACTIVE" ? "" : "Cluster must be ACTIVE."]
   ))
 }
 module "gpu_image" {
@@ -92,6 +97,7 @@ data "oci_core_network_security_group" "selected" {
   network_security_group_id = each.key
 }
 module "cpu_image" {
+  count              = var.resolve_cpu_image ? 1 : 0
   source             = "../oke-node-image"
   cluster_id         = var.cluster_id
   compartment_id     = local.cluster.compartment_id
@@ -105,7 +111,7 @@ output "target" {
   value = {
     cluster_id         = var.cluster_id, cluster_compartment_id = local.cluster.compartment_id, cluster_type = local.cluster.type,
     kubernetes_version = local.cluster.kubernetes_version, vcn_id = local.cluster.vcn_id,
-    gpu_image          = module.gpu_image.image, cpu_image = module.cpu_image.image,
+    gpu_image          = module.gpu_image.image, cpu_image = try(module.cpu_image[0].image, null),
     subnet_id          = local.gpu_subnet, cpu_subnet_id = local.cpu_subnet, devops_subnet_id = local.runner_subnet, pod_subnet_id = local.pod_subnet,
     subnet_choices     = { workers = local.usable_worker_ids, pods = local.usable_pod_ids }, subnet_checks = local.subnet_checks,
     gpu_nsg_ids        = local.worker_nsgs.gpu, cpu_nsg_ids = local.worker_nsgs.cpu, devops_nsg_ids = local.runner_nsgs, pod_nsg_ids = local.pod_nsgs,

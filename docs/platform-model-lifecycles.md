@@ -4,7 +4,7 @@ Licensed under the Universal Permissive License v 1.0 as shown at http://oss.ora
 -->
 # Proposed infrastructure and model lifecycles
 
-Status: design proposal, 2026-11-12. The current implementation still has a combined deployment root. This proposal separates retained GPU infrastructure from model releases; no infrastructure has been created or changed for this design work.
+Status: infrastructure-first implementation, 2026-11-12. A separate GPU-only infrastructure root and shared bootstrap pipeline are now implemented; see [usage and validation boundaries](infrastructure-bootstrap.md). Existing CPU pools host shared controllers. The complete model split and generated-bundle publisher below remain proposed; the older combined root is still present. No live infrastructure was created or changed during this work.
 
 ## Recommended boundaries
 
@@ -13,7 +13,7 @@ Use three stack types with separate Terraform states: discovery, infrastructure/
 | Owner | Responsibilities |
 |---|---|
 | Discovery | Model/recipe/workload assessment, new-capacity or existing-pool suitability, generated bundles, publication objects/PARs and launch URLs |
-| Infrastructure/platform | Existing-cluster binding, retained GPU and CPU pools, supported RDMA Compute Clusters, cluster add-on configuration, shared CRDs/controllers and optional metrics/autoscaling services; shared DevOps project, notification/logging/evidence foundation and platform bootstrap pipelines |
+| Infrastructure/platform | Existing-cluster binding, retained GPU pools, supported RDMA Compute Clusters, cluster add-on configuration, shared CRDs/controllers and optional metrics/autoscaling services; shared DevOps project, notification/logging/evidence foundation and platform bootstrap pipelines. Reuses existing CPU pools. |
 | Model deployment | A model instance's namespace/release, vLLM engine groups, LWS or other orchestration **instances**, router/routes, per-model LMCache services/configuration, metrics/scaling objects and deploy/validate/benchmark/retire pipelines |
 
 Infrastructure allocation identity and node labels must be stable platform/pool identifiers, independent of a model name, model SHA or discovery run ID. The current allocation/control labels and model runner use the same `name`; those bindings must be separated. A model targets an allocation selector supplied by the platform, while its workload labels identify the model instance.
@@ -38,7 +38,7 @@ The ownership distinction applies to controller APIs and their instances:
 
 Check actual chart output for cluster-scoped resources/RBAC and handle them through the platform owner. Namespace-specific model installations must not uninstall shared releases. LMCache keys/data must remain compatible with model revision, dtype and KV layout; sharing infrastructure does not make caches interchangeable between models. Initial autoscaling targets model replicas within retained GPU capacity, not GPU node scale-down.
 
-Infrastructure CPU sizing follows the enabled shared services plus declared workload/benchmark headroom. The current lightweight CPU estimate cannot be reused blindly after adding Prometheus, KEDA, shared caches or several concurrent model jobs. Model deployment reports insufficient CPU/GPU resources rather than modifying infrastructure pools from another state.
+Check existing CPU capacity against enabled shared services and workload/benchmark headroom. This infrastructure stack creates no CPU pool. Adding Prometheus, KEDA, shared caches or concurrent model jobs requires reassessment. Cache/CPU workloads requiring GPU colocation belong to the later model plan. Model deployment reports insufficient resources rather than modifying infrastructure pools from another state.
 
 ## One shared DevOps project
 

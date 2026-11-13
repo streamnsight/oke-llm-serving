@@ -1,0 +1,10 @@
+{
+  "helm_version": "v3.19.2",
+  "lws": {
+    "version": "1.0.0",
+    "chart": "oci://registry.k8s.io/lws/charts/lws",
+    "release": "lws",
+    "namespace": "lws-system"
+  },
+  "sources": ["https://lws.sigs.k8s.io/docs/installation/"]
+}

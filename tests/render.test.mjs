@@ -82,7 +82,7 @@ test('RMS scope filters use optional list controls with typed items',()=>{
 });
 
 test('RMS groups reference defined variable names and connection context is hidden',()=>{
-  for(const stack of ['discovery','deployment']) {
+  for(const stack of ['discovery','deployment','infrastructure']) {
     const schema=parse(readFileSync(`${root}/terraform/stacks/${stack}/schema.yaml`,'utf8'));
     for(const group of schema.variableGroups) for(const name of group.variables) {
       assert.match(name,/^[A-Za-z_][A-Za-z0-9_]*$/);
@@ -94,6 +94,27 @@ test('RMS groups reference defined variable names and connection context is hidd
   assert.equal(schema.variables.region.default,'');
   assert.equal(schema.variables.region.visible,false);
   assert.equal(schema.variableGroups.find(g=>g.variables.includes('region')).visible,false);
+});
+test('infrastructure RMS form exposes GPU hardware without CPU-pool or model inputs',()=>{
+  const schema=parse(readFileSync(`${root}/terraform/stacks/infrastructure/schema.yaml`,'utf8'));
+  const variables=[...readFileSync(`${root}/terraform/stacks/infrastructure/variables.tf`,'utf8').matchAll(/variable "([^"]+)"/g)].map(m=>m[1]).sort();
+  const helpers=new Set(Object.values(schema.variables).map(v=>v.valueType).filter(Boolean));
+  assert.deepEqual(Object.keys(schema.variables).filter(k=>!helpers.has(k)).sort(),variables);
+  for(const absent of ['model','discovery_json','engine_image','cpu_image_id','cpu_node_count']) assert.equal(schema.variables[absent],undefined);
+  assert.equal(schema.variables.provision_resources.default,false);
+  assert.equal(schema.variables.compartment_id.default,'compartment_ocid');
+  assert.equal(schema.variables.cluster_id.type,'oci:container:cluster:id');
+  assert.equal(schema.variables.rdma_mode.default,'auto');
+});
+test('released LWS chart retains GPU exclusion and its default CPU budget',{skip:!process.env.LWS_CHART_FILE},()=>{
+  const affinity={nodeAffinity:{requiredDuringSchedulingIgnoredDuringExecution:{nodeSelectorTerms:[{matchExpressions:[{key:'node.kubernetes.io/instance-type',operator:'Exists'},{key:'node.kubernetes.io/instance-type',operator:'NotIn',values:['BM.GPU.A10.4']}]}]}}};
+  const yaml=execFileSync('helm',['template','lws',process.env.LWS_CHART_FILE,'--include-crds','--set-json',`affinity=${JSON.stringify(affinity)}`],{encoding:'utf8',maxBuffer:16*1024*1024});
+  const documents=parseAllDocuments(yaml).map(d=>{assert.equal(d.errors.length,0);return d.toJSON();}).filter(Boolean);
+  const deployment=documents.find(d=>d.kind==='Deployment');
+  assert.deepEqual(deployment.spec.template.spec.affinity,affinity);
+  assert.equal(deployment.spec.template.spec.containers[0].resources.requests.cpu,1);
+  assert.equal(deployment.spec.template.spec.containers[0].resources.requests.memory,'1Gi');
+  assert.ok(documents.some(d=>d.kind==='CustomResourceDefinition'&&d.metadata.name==='leaderworkersets.leaderworkerset.x-k8s.io'));
 });
 
 test('frozen recipe argv and environment reach both Helm and distributed pods',()=>{

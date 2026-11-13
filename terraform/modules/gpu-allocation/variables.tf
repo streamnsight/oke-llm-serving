@@ -18,7 +18,15 @@ variable "node_count" {
 variable "name" { type = string }
 variable "requires_rdma" { type = bool }
 variable "observation_id" { type = string }
-variable "cpu_image_id" { type = string }
+variable "create_cpu_pool" {
+  description = "False reuses existing cluster CPU pools and creates only GPU infrastructure."
+  type        = bool
+  default     = true
+}
+variable "cpu_image_id" {
+  type    = string
+  default = null
+}
 variable "cpu_shape" {
   type    = string
   default = "VM.Standard.E4.Flex"
@@ -39,7 +47,10 @@ variable "cpu_node_count" {
     error_message = "At least one CPU node is required for controllers/router and validation clients."
   }
 }
-variable "cpu_subnet_id" { type = string }
+variable "cpu_subnet_id" {
+  type    = string
+  default = null
+}
 variable "boot_volume_gib" {
   type    = number
   default = 200
