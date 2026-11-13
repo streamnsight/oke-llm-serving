@@ -24,6 +24,8 @@ The launch URL selects the GPU region and an object-read PAR. The bucket can be 
 
 For an existing link returning GetPackage InvalidParameter(400), changing only that hostname inside its `zipUrl` can avoid the endpoint compatibility issue without re-uploading the ZIP or replacing its PAR. [Oracle's troubleshooting](https://docs.oracle.com/en-us/iaas/Content/ResourceManager/Troubleshoot/deploy-button.htm) first requires a valid, anonymously accessible ZIP; [its quick-create documentation](https://docs.oracle.com/en-us/iaas/Content/ResourceManager/Tasks/create-quick-create-links-stacks.htm) shows the classic endpoint format. A successful download alone does not establish successful RMS import; verify the Console wizard separately.
 
+The Console ZIP-import flow adds a `ZipOrigin` free-form tag. The reported import produced a 288-character value, exceeding [OCI's 256-character tag-value limit](https://docs.oracle.com/en-us/iaas/Content/Tagging/Concepts/taggingoverview.htm). In **Stack information → Tags**, clear both **Tag key** and **Tag value**; removing the only row can be disabled. Check Review has no Tags section before Create. Changing to a defined tag does not change the value limit. This tag is not declared by our Terraform; bundle provenance remains in `bundle-manifest.json`.
+
 ## Rendering and editability
 
 The native archive resource generates ZIPs at Apply. The publisher copies the infrastructure root and its six-module dependency closure, without parent templates, publisher, providers, tests, state or private tfvars. Unsupported binary assets fail rather than being corrupted. Each ZIP has root main.tf/schema.yaml/modules plus:
@@ -51,4 +53,4 @@ PARs grant access to their ZIPs, so restrict access to discovery outputs/state. 
 
 Tests use the real archive provider and actual ZIPs, with OCI storage/PAR operations mocked. Extracted child tests cover defaults, a selected file larger than the RMS input limit, expert overrides, region rejection and no-allocation preview. An archive-only saved-Plan fixture runs Apply in a fresh directory without Plan-generated ZIPs. CI repeats these development checks. No Terraform configuration invokes nested Terraform.
 
-Live upload/PAR download, IAM, authenticated RMS rendering/redirects and the complete workflow across RMS workers still need validation. No live storage/GPU resources were created during implementation. See [the broader bundle design](generated-deployment-bundles.md) for model-only work and remaining integration steps.
+The user's live publication, PAR download and corrected Frankfurt import through Configure variables/Review were observed. No stack creation or GPU allocation was performed by the agent. Infrastructure Apply, bootstrap IAM/connectivity and the complete workflow across RMS workers still need validation. See [the broader bundle design](generated-deployment-bundles.md) for model-only work and remaining integration steps.

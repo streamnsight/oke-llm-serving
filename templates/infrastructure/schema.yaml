@@ -1,7 +1,7 @@
 # Copyright (c) 2020-2022 Oracle and/or its affiliates. All rights reserved.
 # Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
 title: OKE retained GPU infrastructure
-description: Preview a GPU-only pool in an existing cluster. Reuse existing CPU pools and OKE GPU/network add-ons. Provisioning creates a platform bootstrap pipeline but does not run it or deploy models.
+description: Preview a GPU-only pool in an existing cluster. Reuse existing CPU pools and OKE GPU/network add-ons. Provisioning creates a platform bootstrap pipeline but does not run it or deploy models. Clear the Console-added ZipOrigin tag key and value under Stack information before creating the stack.
 schemaVersion: 1.1.0
 version: "0.1.0"
 variableGroups:

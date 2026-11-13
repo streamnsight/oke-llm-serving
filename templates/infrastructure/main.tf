@@ -6,13 +6,18 @@ terraform {
 }
 provider "oci" { region = var.region }
 locals {
-  compartment_id         = coalesce(var.compartment_id, var.compartment_ocid, var.tenancy_ocid)
-  catalog                = jsondecode(file("${path.module}/../../modules/accelerator-inventory/data/gpus.json"))
-  gpu                    = try(local.catalog.shapes[var.gpu_shape], null)
-  requires_rdma          = var.rdma_mode == "auto" ? try(local.gpu.rdma && local.gpu.compute_cluster_supported && contains(local.catalog.compute_cluster_regions, var.region), false) : var.rdma_mode == "rdma"
-  worker_nsg_ids         = try(length(var.worker_nsg_ids) > 0, false) ? var.worker_nsg_ids : null
-  pod_nsg_ids            = try(length(var.pod_nsg_ids) > 0, false) ? var.pod_nsg_ids : null
-  devops_nsg_ids         = try(length(var.devops_nsg_ids) > 0, false) ? var.devops_nsg_ids : null
+  compartment_id = coalesce(var.compartment_id, var.compartment_ocid, var.tenancy_ocid)
+  catalog        = jsondecode(file("${path.module}/../../modules/accelerator-inventory/data/gpus.json"))
+  gpu            = try(local.catalog.shapes[var.gpu_shape], null)
+  requires_rdma  = var.rdma_mode == "auto" ? try(local.gpu.rdma && local.gpu.compute_cluster_supported && contains(local.catalog.compute_cluster_regions, var.region), false) : var.rdma_mode == "rdma"
+  nsg_overrides = {
+    for key, values in { worker = var.worker_nsg_ids, pod = var.pod_nsg_ids, devops = var.devops_nsg_ids } : key => distinct([
+      for value in coalesce(values, []) : trimspace(value) if try(trimspace(value) != "", false)
+    ])
+  }
+  worker_nsg_ids         = length(local.nsg_overrides.worker) > 0 ? local.nsg_overrides.worker : null
+  pod_nsg_ids            = length(local.nsg_overrides.pod) > 0 ? local.nsg_overrides.pod : null
+  devops_nsg_ids         = length(local.nsg_overrides.devops) > 0 ? local.nsg_overrides.devops : null
   cpu_shape              = "VM.Standard.E4.Flex"
   selected_specification = fileexists("${path.module}/inputs/infrastructure-spec.json") ? jsondecode(file("${path.module}/inputs/infrastructure-spec.json")) : null
   recommendation_changes = local.selected_specification == null ? [] : [for key, value in local.selected_specification.recommendation : key if try({

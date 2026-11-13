@@ -15,3 +15,11 @@ The user confirmed the corrected link opens the wizard. The authenticated Consol
 Local regression tests cover a namespaced Chicago endpoint launching a Phoenix stack, preservation of encoded PAR path characters, unchanged classic/other-realm endpoints and output choice counts. The primary button is now explicitly labelled as the recommendation, and the Console schema displays the available-option count beside the all-options JSON.
 
 Publisher tests passed six runs, discovery tests eight, and Node checks 35 (two optional chart checks skipped). The actual downloaded Frankfurt ZIP passed Terraform init/validate as well as ZIP CRC verification. The rebuilt entry package and both embedded roots passed extraction/init/validate. Terraform state/tfvars bytes and the user's staged AGENTS.md were preserved.
+
+## Console tag and empty NSG controls
+
+The next reported error was the Console-generated `ZipOrigin` tag: its value was 288 characters, above OCI's 256-character limit. Repository Terraform declares no such tag. Both key and value were cleared in the user's pending Stack information form; Review then contained no Tags section. Create was not clicked. The GPU pool's separate allocation-ownership tag is retained.
+
+Review also exposed empty NSG controls serialized as `[""]`. Removing the last row immediately recreated another blank row. The infrastructure template now filters blank, whitespace and null entries, preserving inherited NSGs when nothing remains; explicit IDs are trimmed and deduplicated. Native tests cover both blank and mixed inputs. This source correction requires a new ZIP: the existing wizard still references its original immutable object.
+
+Ten infrastructure tests passed. A prefilled Frankfurt replacement was rendered locally from the same model/selection using the real archive provider with OCI mocked. Its ZIP CRC, extracted Terraform validation and three preview/expert-edit/region tests passed, including the blank NSG inputs. The artifact is work/packages/oke-llm-infrastructure-frankfurt-fixed.zip; no new capacity assessment is implied. A tag-free Review screenshot is work/validation/frankfurt-rms-tag-free-review.jpg. The agent did not click Create.

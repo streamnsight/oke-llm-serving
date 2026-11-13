@@ -72,6 +72,30 @@ run "h100_defaults_to_rdma" {
     error_message = "RDMA-capable shapes should default to their supported topology."
   }
 }
+run "blank_rms_rows_preserve_inherited_nsgs" {
+  command = plan
+  variables {
+    worker_nsg_ids = [""]
+    pod_nsg_ids    = [" ", null]
+    devops_nsg_ids = ["", "  "]
+  }
+  assert {
+    condition     = local.worker_nsg_ids == null && local.pod_nsg_ids == null && local.devops_nsg_ids == null
+    error_message = "RMS placeholder rows must not produce lookups for blank NSG IDs."
+  }
+}
+run "actual_nsg_overrides_survive_blank_filtering" {
+  command = plan
+  variables {
+    worker_nsg_ids = ["", " worker-nsg ", null, "worker-nsg"]
+    pod_nsg_ids    = ["pod-nsg", " "]
+    devops_nsg_ids = [" runner-nsg ", ""]
+  }
+  assert {
+    condition     = local.worker_nsg_ids == tolist(["worker-nsg"]) && local.pod_nsg_ids == tolist(["pod-nsg"]) && local.devops_nsg_ids == tolist(["runner-nsg"])
+    error_message = "Preserve, trim and deduplicate explicit NSG choices."
+  }
+}
 run "auto_falls_back_to_ethernet_without_known_compute_cluster_support" {
   command = plan
   variables {
