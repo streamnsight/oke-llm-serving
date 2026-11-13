@@ -244,6 +244,17 @@ Infrastructure verification: 52 native Terraform checks passed (allocation 11, t
 
 Make the source tree mirror the entry ZIP: root discovery Terraform/schema, reusable modules/, and child roots under templates/infrastructure and templates/deployment. The latter remains explicitly the older combined implementation, not a completed model-only stack. Keep independent Terraform states and standalone developer build targets. Embed both child roots in the discovery package and publish only that entry ZIP from CI. Template embedding does not implement per-option generation/publication.
 
-1. [ ] Move discovery to the repository root, reusable modules/examples to root directories, and downstream roots under templates/. Preserve local state, tfvars, caches and private outputs; verify state/input file bytes are unchanged.
-2. [ ] Update module sources, development tests, CI test discovery, package construction and single-artifact publication. Keep child Terraform files out of the entry root and validate each embedded child from its own directory. Exclude development/private files from every layer.
-3. [ ] Update current instructions and path references; run moved native suites, script/schema checks and extracted ZIP validation. Commit without the user's staged AGENTS.md. No cloud provisioning, pipeline runs or node changes.
+1. [x] Move discovery to the repository root, reusable modules/examples to root directories, and downstream roots under templates/. Preserve local state, tfvars, caches and private outputs; verify state/input file bytes are unchanged.
+2. [x] Update module sources, development tests, CI test discovery, package construction and single-artifact publication. Keep child Terraform files out of the entry root and validate each embedded child from its own directory. Exclude development/private files from every layer.
+3. [x] Update current instructions and path references; run moved native suites, script/schema checks and extracted ZIP validation. Commit without the user's staged AGENTS.md. No cloud provisioning, pipeline runs or node changes.
+
+Layout verification: all 16 native suites passed (139 assertions); script/schema checks passed 35 with two optional local-chart checks skipped. The discovery ZIP and both embedded roots initialized and validated independently. State, backup and tfvars SHA256 hashes were unchanged; four local cache symlinks were repaired after the move. Automatic option rendering, Object Storage and PAR publication remain a separate implementation phase below.
+
+## Infrastructure option publisher
+
+Publish configured infrastructure ZIPs only for confirmed options. Use native archive resources at Apply, native OCI bucket/object/PAR resources, generated editable schema/HCL defaults and a bundled selected specification. No scripts run Terraform and no cloud resources are allocated during local verification. The legacy combined deployment is embedded for development but is not published as a model-only stack.
+
+1. [ ] Add Apply-time infrastructure template rendering, selected specification/manifest, safe dependency closure and matching editable schema/HCL defaults. Guard the deployment region against the bundled recommendation and disclose expert edits.
+2. [ ] Add private artifact storage, object-read PARs with expiry, fixed model/region/shape folders and timestamp/run/option IDs in ZIP filenames. Discovery outputs launch links; refreshing artifacts does not own GPU infrastructure. Document replacement/expiry semantics.
+3. [ ] Wire confirmed discovery choices and RMS publication settings; test empty/excluded choices, generated ZIP contents/defaults, wrong-region guards, native archive creation and separate saved Plan/Apply filesystems with OCI mocked.
+4. [ ] Repackage and validate the entry and generated child roots. Record actual versus mocked evidence; commit without running OCI allocation or DevOps pipelines. Live authenticated upload/PAR/RMS form validation remains pending.
