@@ -4,7 +4,7 @@ Licensed under the Universal Permissive License v 1.0 as shown at http://oss.ora
 -->
 # Proposed discovery-to-deployment bundles
 
-Status: researched proposal, 2026-11-12. This flow is not implemented yet. The existing inline JSON exporter has not established a usable RMS create-stack flow; a byte count alone is insufficient validation. The recommended replacement is generated infrastructure/model ZIPs with separate lifecycles. See [platform and model ownership](platform-model-lifecycles.md) for the three-stack design.
+Status: infrastructure publication implemented locally, 2026-11-12. Discovery now embeds templates and renders infrastructure ZIPs with editable defaults, private OCI artifact resources and object-read PAR launch URLs. Actual ZIP/preview/region checks pass; cloud upload/PAR and authenticated RMS validation are pending. See [implemented behavior and limits](infrastructure-publication.md). The model-only split/publication and existing-platform reuse flow below remain proposed. The older combined deployment is not published as a model-only stack.
 
 ## User flow
 

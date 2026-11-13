@@ -1,0 +1,69 @@
+# Copyright (c) 2020-2022 Oracle and/or its affiliates. All rights reserved.
+# Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
+# OCI is mocked; the archive provider really renders the configured child ZIP.
+mock_provider "oci" {
+  mock_data "oci_objectstorage_namespace" { defaults = { namespace = "fixture" } }
+  mock_resource "oci_objectstorage_preauthrequest" {
+    defaults = { full_path = "https://objectstorage.us-ashburn-1.oraclecloud.com/p/fake-token/n/fixture/b/artifacts/o/stack.zip" }
+  }
+}
+variables {
+  tenancy_ocid   = "root"
+  compartment_id = "artifacts"
+  region         = "us-ashburn-1"
+  model          = { repository = "org/model", revision = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", checkpoint_download_bytes = 107374182400 }
+  template_dir   = "../../templates/infrastructure"
+  modules_dir    = ".."
+  options = { selected = {
+    region = "us-phoenix-1", availability_domain = "AD-1", gpu_shape = "BM.GPU.A10.4", node_count = 1,
+    availability = "available_at_scan", capacity_observed_at = "2026-11-12T18:00:00Z", configuration_status = "suggested_untested", expert_evidence = join("", [for i in range(900) : "0123456789"])
+  } }
+}
+run "plan_does_not_require_a_generated_archive" {
+  command = plan
+  variables {
+    options = { plan_only = { region = "us-phoenix-1", availability_domain = "AD-1", gpu_shape = "BM.GPU.A10.4", node_count = 1, availability = "available_at_scan" } }
+  }
+  assert {
+    condition     = !fileexists("${path.root}/.generated/infrastructure-plan_only.zip")
+    error_message = "ZIP generation must happen at Apply, not in the Plan worker."
+  }
+}
+run "apply_renders_zip_and_creates_scoped_links" {
+  command = apply
+  assert {
+    condition     = fileexists(archive_file.infrastructure["selected"].output_path) && archive_file.infrastructure["selected"].output_size > 10000
+    error_message = "The real archive provider must create a nonempty child stack at Apply."
+  }
+  assert {
+    condition     = oci_objectstorage_bucket.artifacts[0].access_type == "NoPublicAccess" && oci_objectstorage_preauthrequest.infrastructure["selected"].access_type == "ObjectRead" && oci_objectstorage_preauthrequest.infrastructure["selected"].object_name == oci_objectstorage_object.infrastructure["selected"].object
+    error_message = "PARs must read one specific object in a private bucket."
+  }
+  assert {
+    condition     = startswith(output.deployment_options["selected"].object_name, "models/org--model/us-phoenix-1/BM.GPU.A10.4/infrastructure-") && length(split("/", output.deployment_options["selected"].object_name)) == 5 && endswith(output.deployment_options["selected"].object_name, "-selected.zip") && output.deployment_options["selected"].expires_at == timeadd(local.published_at, "24h") && strcontains(output.deployment_options["selected"].launch_url, "region=us-phoenix-1&zipUrl=https%3A%2F%2F")
+    error_message = "Use fixed folders, filename-only run identity, a bounded PAR lifetime and an encoded region-specific Console link."
+  }
+  assert {
+    condition     = jsondecode(local.files["selected"]["recommendations_override.tf.json"]).variable.boot_volume_gib.default == 300 && yamldecode(local.files["selected"]["schema.yaml"]).variables.node_count.default == 1 && !contains(keys(local.files["selected"]), "terraform.tfvars.json") && !contains(keys(jsondecode(local.files["selected"]["recommendations_override.tf.json"]).variable), "region") && length(local.files["selected"]["inputs/infrastructure-spec.json"]) > 8192
+    error_message = "Keep recommendations editable, size disk from checkpoint bytes and preserve the actual RMS region input."
+  }
+  assert {
+    condition     = alltrue([for name in keys(local.files["selected"]) : !startswith(name, "templates/") && !startswith(name, "modules/infrastructure-publisher/") && !strcontains(name, "/.terraform/") && !strcontains(name, "/tests/")])
+    error_message = "Child ZIPs must exclude parents, publisher, tests, provider caches and private state."
+  }
+}
+run "empty_options_create_no_storage" {
+  command = plan
+  variables { options = {} }
+  assert {
+    condition     = length(oci_objectstorage_bucket.artifacts) == 0 && length(archive_file.infrastructure) == 0 && length(output.deployment_options) == 0
+    error_message = "No confirmed options must create no publication resources."
+  }
+}
+run "reject_unconfirmed_options" {
+  command = plan
+  variables {
+    options = { unavailable = { region = "us-phoenix-1", availability_domain = "AD-1", gpu_shape = "BM.GPU.A10.4", node_count = 1, availability = "unconfirmed" } }
+  }
+  expect_failures = [var.options]
+}

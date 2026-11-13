@@ -19,7 +19,7 @@ terraform apply /path/to/discovery.tfplan
 terraform output -json deployment_inputs > work/deployment-inputs.tfvars.json
 ```
 
-Run `make package` to build `work/packages/oke-llm-discovery.zip` from committed HEAD. Source and entry ZIP have the same layout: discovery at root, reusable `modules/`, and downstream roots under `templates/infrastructure/` and `templates/deployment/`. `make check-packages` validates discovery and both embedded roots. GitHub Actions publishes only the discovery ZIP. Standalone infrastructure/deployment package targets remain available for development. Template rendering/upload/PAR publication is a separate pending feature. See [RMS packaging](docs/rms-discovery.md).
+Run `make package` to build `work/packages/oke-llm-discovery.zip` from committed HEAD. Source and entry ZIP share discovery at root, reusable `modules/`, and downstream roots under `templates/`. `make check-packages` validates discovery and both embedded roots. CI publishes only this entry ZIP. On discovery Apply, confirmed choices produce configured infrastructure ZIPs in private Object Storage and expiring region-specific RMS launch URLs. Model-only deployment remains deferred; the older combined template is not published as a model stack. See [bundle publication](docs/infrastructure-publication.md).
 
 If linking RMS directly to the Git repository instead of uploading a packaged ZIP, set the working directory to `.`. Its `schema.yaml` describes the user inputs. See [RMS setup, scope and limitations](docs/rms-discovery.md).
 
@@ -29,7 +29,7 @@ Discovery creates reports, not GPU allocations. Counts represent available insta
 
 ## Deploy GPU infrastructure first
 
-Use [templates/infrastructure](templates/infrastructure) and [the infrastructure/bootstrap instructions](docs/infrastructure-bootstrap.md). It previews and optionally provisions a GPU-only pool, reuses existing CPU pools and OKE GPU/network support, and creates a shared-controller bootstrap pipeline. No model or large discovery JSON is needed. Run `make package-infrastructure` for its RMS ZIP. Preview is the default; live allocation/bootstrap validation remains pending.
+After discovery Apply, open `recommended_launch_url` or choose a link in `deployment_options`. The generated ZIP prefills the hardware/storage recommendation; select an existing cluster in that region. [The infrastructure template](templates/infrastructure) defaults to preview, creates GPU pools only when explicitly enabled, and reuses existing CPU pools. No large discovery JSON is entered. See [bootstrap instructions](docs/infrastructure-bootstrap.md). `make package-infrastructure` remains a standalone developer build. Live RMS/upload/bootstrap validation is pending.
 
 ## Earlier combined deployment path
 

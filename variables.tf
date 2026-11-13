@@ -62,3 +62,22 @@ variable "only_shapes_with_limits" {
   type        = bool
   default     = false
 }
+variable "compartment_ocid" {
+  description = "Resource Manager stack compartment, automatically supplied by RMS."
+  type        = string
+  default     = null
+}
+variable "publish_infrastructure_bundles" {
+  description = "On Apply, publish configured GPU infrastructure ZIPs and expiring launch URLs for confirmed options. Allocates no GPU hosts."
+  type        = bool
+  default     = true
+}
+variable "artifact_compartment_id" {
+  description = "Optional artifact-storage compartment override. Defaults to the RMS stack compartment."
+  type        = string
+  default     = null
+}
+variable "par_lifetime_hours" {
+  type    = number
+  default = 24
+}

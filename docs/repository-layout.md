@@ -4,7 +4,7 @@ Licensed under the Universal Permissive License v 1.0 as shown at http://oss.ora
 -->
 # Repository layout and asset ownership
 
-Discovery is the repository root and the single released entry ZIP. Reusable modules and downstream templates have the same paths in source and package. The combined deployment template is retained explicitly while the model-only split is pending. Embedding does not itself render/upload per-option stacks or issue PAR URLs.
+Discovery is the repository root and the single released entry ZIP. Reusable modules and downstream templates have the same paths in source and package. The infrastructure publisher renders/uploads confirmed options and defines object-read PAR launch links. The combined deployment template is retained for development while the model-only split is pending. Live OCI publication/RMS validation remains pending.
 
 | Location | Purpose |
 |---|---|
@@ -17,6 +17,7 @@ Discovery is the repository root and the single released entry ZIP. Reusable mod
 | `modules/devops-serving/scripts` | Runtime deployment runner, Kubernetes renderer and official vLLM benchmark wrapper |
 | `modules/devops-serving/data/components.json` | Deployment infrastructure versions and image digests |
 | `modules/platform-bootstrap` | Shared platform DevOps foundation, LWS chart/client defaults, node readiness and bootstrap scripts |
+| `modules/infrastructure-publisher` | Native Apply-time infrastructure ZIPs, private bucket/objects, expiring PARs and launch URLs |
 | `modules/deployment-target` | Read-only cluster, network/NSG and regional image resolution |
 | `modules/oke-node-image` | Native OKE image/version/shape selector |
 | `modules/deployment-handoff` | Byte-budgeted per-selection RMS payloads |

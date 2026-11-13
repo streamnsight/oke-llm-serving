@@ -3,6 +3,8 @@
 terraform {
   required_version = ">= 1.5.0"
   required_providers {
+    archive = { source = "hashicorp/archive", version = "~> 2.8" }
+    oci     = { source = "oracle/oci", version = "~> 9.12" }
     external = {
       source  = "hashicorp/external"
       version = "~> 2.3"
@@ -66,7 +68,7 @@ locals {
     subscribed_regions    = sort(tolist(local.subscribed_regions))
     assessed_regions      = sort(tolist(local.selected_regions))
     regions               = local.regional_results
-    next_step             = "Pass deployment_inputs JSON to the deployment stack; select an assessment choice and target infrastructure there. Image, feature and expert overrides are deployment inputs."
+    next_step             = "Apply discovery to publish confirmed infrastructure ZIPs; open a deployment_options launch URL, select an existing cluster and review its preview. Model deployment remains a separate pending phase."
   }
 
 }
@@ -121,7 +123,7 @@ output "assessment" {
 }
 
 output "recommendations" {
-  description = "Readable GPU/region choices. For RMS, copy the chosen deployment_handoffs entry's inline_json."
+  description = "Readable GPU/region choices; deployment_options contains configured infrastructure launch links after Apply."
   value = {
     recommended_selection_id = try(module.planner.assessment.recommended_selection_id, null)
     ranking                  = "Only capacity/headroom-confirmed options; fewer allocated host GPUs, then smaller TP. No cost/throughput prediction."

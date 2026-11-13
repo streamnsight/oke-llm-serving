@@ -17,7 +17,7 @@ terraform -chdir=templates/infrastructure plan -var-file="$PWD/work/infrastructu
 
 `provision_resources=false` is the default. Plan reads the cluster/network and compatible OKE GPU images; it creates no node pools, Compute Clusters, capacity-report resources or DevOps resources. Inspect `infrastructure_preview`. No CPU image is required or queried. Existing worker/pod subnets and NSGs are reused when unambiguous; overrides must remain in the cluster VCN. Empty RMS NSG lists preserve inherited policies rather than clearing them. Routing, DNS, security rules and HTTPS egress still require environment validation.
 
-For RMS, run `make package-infrastructure` after committing changes and upload `work/packages/oke-llm-infrastructure.zip`, with working directory `.`. The normal form asks for a stable name, compartment (defaults to the stack compartment), existing cluster, GPU AD/shape/host count and provisioning switch. RMS supplies the region. Image, RDMA, disk and network settings are advanced controls. No large JSON variable is involved. Generated per-option ZIPs/launch links remain future work; enter the hardware choice from discovery for now.
+For RMS, use a launch URL from discovery's `deployment_options` after Apply; see [publication](infrastructure-publication.md). Hardware/storage defaults are already populated. Select an existing cluster and review preview; the compartment defaults to the stack compartment and RMS supplies its actual region. Image, RDMA, disk and network settings are advanced controls. No large JSON variable is involved. `make package-infrastructure` still builds an unconfigured standalone developer ZIP that requires entering the discovery hardware choice manually.
 
 ## Provisioning boundary
 

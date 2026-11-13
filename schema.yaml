@@ -4,15 +4,45 @@ title: OKE LLM discovery
 description: Inspect a public Hugging Face model and assess GPU shapes, entitlement and host capacity across READY subscribed regions. Creates no GPU instances.
 schemaVersion: 1.1.0
 version: "0.1.0"
+outputs:
+  recommended_launch_url:
+    type: link
+    title: Recommended GPU infrastructure
+    displayText: Create infrastructure stack
+  deployment_options:
+    type: json
+    title: All confirmed infrastructure launch options
+primaryOutputButton: ${recommended_launch_url}
 variableGroups:
   - title: Model and serving assumptions
     variables: [model, revision, context_length, concurrency]
   - title: Capacity observation
     variables: [observation_id, compartment_id, regions, shape_names, query_resource_availability, only_shapes_with_limits]
+  - title: Infrastructure launch bundles
+    variables: [publish_infrastructure_bundles, artifact_compartment_id, par_lifetime_hours]
   - title: OCI context
     visible: false
-    variables: [tenancy_ocid, region]
+    variables: [tenancy_ocid, compartment_ocid, region]
 variables:
+  compartment_ocid:
+    type: string
+    visible: false
+  publish_infrastructure_bundles:
+    type: boolean
+    default: true
+    title: Publish configured infrastructure ZIPs
+    description: Apply creates private Object Storage artifacts and expiring launch links. No GPU hosts are allocated.
+  artifact_compartment_id:
+    type: oci:identity:compartment:id
+    required: false
+    title: Optional artifact compartment override
+    description: Defaults to this RMS stack's compartment.
+  par_lifetime_hours:
+    type: integer
+    default: 24
+    minimum: 1
+    maximum: 168
+    title: Launch ZIP link lifetime (hours)
   tenancy_ocid:
     type: string
     title: Tenancy OCID

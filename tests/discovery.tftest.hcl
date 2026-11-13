@@ -2,6 +2,8 @@
 # Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
 mock_provider "external" {}
 mock_provider "http" {}
+mock_provider "oci" {}
+mock_provider "archive" {}
 variables {
   tenancy_ocid = "test-root"
   region = "us-chicago-1"

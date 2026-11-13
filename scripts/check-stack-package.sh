@@ -18,6 +18,7 @@ done
 for obsolete in terraform catalogs scripts devops; do
   [[ ! -e "$staging/$obsolete" ]] || { echo "Package contains obsolete root directory: $obsolete" >&2; exit 1; }
 done
+[[ -f "$staging/modules/infrastructure-publisher/main.tf" ]] || { echo 'Missing infrastructure publisher' >&2; exit 1; }
 if find "$staging" \( -name .terraform -o -name node_modules -o -name .git -o -name work -o -name tests -o -name '*.tfstate*' -o -name '*.tfplan' -o -name '*.tfvars' -o -name '*.tfvars.json' \) -print | grep -q .; then
   echo 'Package contains development/private artifacts' >&2; exit 1
 fi

@@ -6,14 +6,19 @@ terraform {
 }
 provider "oci" { region = var.region }
 locals {
-  compartment_id = coalesce(var.compartment_id, var.compartment_ocid, var.tenancy_ocid)
-  catalog        = jsondecode(file("${path.module}/../../modules/accelerator-inventory/data/gpus.json"))
-  gpu            = try(local.catalog.shapes[var.gpu_shape], null)
-  requires_rdma  = var.rdma_mode == "auto" ? try(local.gpu.rdma && local.gpu.compute_cluster_supported && contains(local.catalog.compute_cluster_regions, var.region), false) : var.rdma_mode == "rdma"
-  worker_nsg_ids = try(length(var.worker_nsg_ids) > 0, false) ? var.worker_nsg_ids : null
-  pod_nsg_ids    = try(length(var.pod_nsg_ids) > 0, false) ? var.pod_nsg_ids : null
-  devops_nsg_ids = try(length(var.devops_nsg_ids) > 0, false) ? var.devops_nsg_ids : null
-  cpu_shape      = "VM.Standard.E4.Flex"
+  compartment_id         = coalesce(var.compartment_id, var.compartment_ocid, var.tenancy_ocid)
+  catalog                = jsondecode(file("${path.module}/../../modules/accelerator-inventory/data/gpus.json"))
+  gpu                    = try(local.catalog.shapes[var.gpu_shape], null)
+  requires_rdma          = var.rdma_mode == "auto" ? try(local.gpu.rdma && local.gpu.compute_cluster_supported && contains(local.catalog.compute_cluster_regions, var.region), false) : var.rdma_mode == "rdma"
+  worker_nsg_ids         = try(length(var.worker_nsg_ids) > 0, false) ? var.worker_nsg_ids : null
+  pod_nsg_ids            = try(length(var.pod_nsg_ids) > 0, false) ? var.pod_nsg_ids : null
+  devops_nsg_ids         = try(length(var.devops_nsg_ids) > 0, false) ? var.devops_nsg_ids : null
+  cpu_shape              = "VM.Standard.E4.Flex"
+  selected_specification = fileexists("${path.module}/inputs/infrastructure-spec.json") ? jsondecode(file("${path.module}/inputs/infrastructure-spec.json")) : null
+  recommendation_changes = local.selected_specification == null ? [] : [for key, value in local.selected_specification.recommendation : key if try({
+    availability_domain = var.availability_domain, gpu_shape = var.gpu_shape, node_count = var.node_count,
+    boot_volume_gib     = var.boot_volume_gib, provision_resources = var.provision_resources
+  }[key] != value, false) && key != "provision_resources"]
   specification = {
     schema_version              = "1.0", platform_name = var.platform_name, region = var.region, cluster_id = var.cluster_id,
     availability_domain         = var.availability_domain, gpu_shape = var.gpu_shape, gpu_count_per_host = try(local.gpu.gpus, 0), node_count = var.node_count,
@@ -41,6 +46,10 @@ module "target" {
 resource "terraform_data" "specification" {
   input = local.specification
   lifecycle {
+    precondition {
+      condition     = local.selected_specification == null ? true : var.region == local.selected_specification.region
+      error_message = "This ZIP targets another region. Open its generated RMS launch URL in the recommended region."
+    }
     precondition {
       condition     = try(local.gpu.compute_capability != null && local.gpu.gpus > 0, false)
       error_message = "This first platform bootstrap supports cataloged NVIDIA GPU shapes only."
@@ -91,12 +100,13 @@ module "bootstrap" {
 }
 output "infrastructure_preview" {
   value = merge(local.specification, {
-    provision_resources = var.provision_resources,
-    network_selection   = var.rdma_mode == "auto" && try(local.gpu.rdma, false) && !local.requires_rdma ? "Ethernet fallback: Compute Cluster placement is not cataloged for this shape/region; no RDMA transport is claimed." : local.requires_rdma ? "RDMA Compute Cluster placement; fabric validation pending" : "Ethernet managed GPU pool",
-    gpu_selector        = "oke-llm/allocation=${var.platform_name}",
-    cpu_budget          = { placement = "existing_cluster_cpu_pools", creates_cpu_pool = false, lws_requests = { cpu = "1", memory = "1Gi" }, capacity = "check existing CPU nodes; actual scheduling validated by controller rollout" },
-    bootstrap           = { type = "OCI DevOps SHELL", automatically_started = false, gpu_network_support = "reuse OKE-managed capabilities; verify actual allocatable resources", shared_controller = var.enable_lws ? "LeaderWorkerSet" : "none", model_workloads = "none" },
-    runtime_readiness   = "not_checked_by_terraform", gpu_kernel_cuda_rdma_validation = "requires_live_nodes_and_later_model_tests"
+    provision_resources     = var.provision_resources,
+    selected_recommendation = local.selected_specification == null ? null : { selection_id = local.selected_specification.selection_id, changed_fields = local.recommendation_changes, status = length(local.recommendation_changes) == 0 ? "original_recommendation; model runtime validation pending" : "expert_modified; original model sizing not validated for these changes" },
+    network_selection       = var.rdma_mode == "auto" && try(local.gpu.rdma, false) && !local.requires_rdma ? "Ethernet fallback: Compute Cluster placement is not cataloged for this shape/region; no RDMA transport is claimed." : local.requires_rdma ? "RDMA Compute Cluster placement; fabric validation pending" : "Ethernet managed GPU pool",
+    gpu_selector            = "oke-llm/allocation=${var.platform_name}",
+    cpu_budget              = { placement = "existing_cluster_cpu_pools", creates_cpu_pool = false, lws_requests = { cpu = "1", memory = "1Gi" }, capacity = "check existing CPU nodes; actual scheduling validated by controller rollout" },
+    bootstrap               = { type = "OCI DevOps SHELL", automatically_started = false, gpu_network_support = "reuse OKE-managed capabilities; verify actual allocatable resources", shared_controller = var.enable_lws ? "LeaderWorkerSet" : "none", model_workloads = "none" },
+    runtime_readiness       = "not_checked_by_terraform", gpu_kernel_cuda_rdma_validation = "requires_live_nodes_and_later_model_tests"
   })
 }
 output "allocation" { value = try(module.allocation[0].allocation, null) }
