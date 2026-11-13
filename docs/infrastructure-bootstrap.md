@@ -25,6 +25,28 @@ Only after reviewing preview, enable `provision_resources=true` and run a new Pl
 
 No CPU pool is created. Later model-local CPU services that need GPU colocation belong to the model deployment design. The 200 GiB boot-disk default is a baseline: increase it **before allocating hosts** for larger checkpoints/caches. It does not certify arbitrary model disk fit.
 
+New pools set `node_metadata = { areLegacyImdsEndpointsDisabled = "true" }`. This is OKE launch metadata, not a free-form or defined tag. OKE uses it to disable IMDSv1 for new worker instances, including in tenancies that reject launches enabling legacy IMDS. The value is a string because node metadata is a map of strings. The shared allocation module's optional CPU pool also uses this default; infrastructure still creates GPU pools only.
+
+### Existing CPU pool blocked by the tenancy IMDS rule
+
+An error mentioning `instanceOptions.areLegacyImdsEndpointsDisabled: false` and `imds/imds-disable-v1` means the pool's launch configuration must disable IMDSv1. [Oracle documents updating node metadata through the CLI](https://docs.oracle.com/en-us/iaas/Content/ContEng/Tasks/contengconfiguringimds.htm). Preserve existing entries such as cloud-init user data when changing the metadata map:
+
+```sh
+pool_ocid="<existing CPU node pool OCID>"
+imds_metadata_file=$(mktemp)
+oci ce node-pool get --profile DEFAULT --region eu-frankfurt-1 \
+  --node-pool-id "$pool_ocid" --query data |
+  jq '(."node-metadata" // {}) + {"areLegacyImdsEndpointsDisabled":"true"}' \
+  > "$imds_metadata_file"
+
+oci ce node-pool update --profile DEFAULT --region eu-frankfurt-1 \
+  --node-pool-id "$pool_ocid" \
+  --node-metadata "file://$imds_metadata_file"
+rm -f "$imds_metadata_file"
+```
+
+This changes future node launches and can allow a pool's pending nodes to be created. It does not retrofit existing instances or require destroying/recreating the pool. If Terraform manages that existing pool, record the same `node_metadata` setting in its owning configuration. The Compute Console's **Instance metadata service → Edit → Version 2 only** control edits an individual instance; use the pool setting for future OKE workers. The repository change does not modify an existing external CPU pool until its owner applies an update.
+
 Do not rename an allocated platform, switch it back to preview or test teardown on scarce GPUs. Retained-pool safeguards remain enabled. `prevent_destroy` blocks Terraform pool destruction; it does not prevent every in-place update, upgrade or service-side cycling operation. No live GPU nodes were allocated, resized, cycled or deleted during this implementation.
 
 ## Bootstrap shared components

@@ -80,6 +80,7 @@ resource "oci_containerengine_node_pool" "gpu" {
   name               = var.name
   kubernetes_version = data.oci_containerengine_cluster.target.kubernetes_version
   node_shape         = var.gpu_shape
+  node_metadata      = { areLegacyImdsEndpointsDisabled = "true" }
   freeform_tags      = { "oke-llm-allocation" = terraform_data.identity.id }
   node_source_details {
     source_type             = "IMAGE"
@@ -155,6 +156,7 @@ resource "oci_containerengine_node_pool" "cpu" {
   name               = "${var.name}-control"
   kubernetes_version = data.oci_containerengine_cluster.target.kubernetes_version
   node_shape         = var.cpu_shape
+  node_metadata      = { areLegacyImdsEndpointsDisabled = "true" }
   node_shape_config {
     ocpus         = var.cpu_ocpus
     memory_in_gbs = var.cpu_memory_gib

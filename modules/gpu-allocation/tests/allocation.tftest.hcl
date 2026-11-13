@@ -43,6 +43,10 @@ run "regular_pool_and_cpu_capacity" {
     condition     = length(oci_core_compute_cluster.gpu) == 0 && oci_containerengine_node_pool.gpu.node_config_details[0].size == 1 && oci_containerengine_node_pool.cpu[0].node_shape == "VM.Standard.E4.Flex"
     error_message = "Non-RDMA deployment must create a regular GPU pool and separate CPU capacity."
   }
+  assert {
+    condition     = oci_containerengine_node_pool.gpu.node_metadata["areLegacyImdsEndpointsDisabled"] == "true" && oci_containerengine_node_pool.cpu[0].node_metadata["areLegacyImdsEndpointsDisabled"] == "true"
+    error_message = "Both GPU and optional CPU node launches must disable IMDSv1 so IMDSv2-only tenancies accept them."
+  }
 }
 run "capacity_unknown_blocks_allocation" {
   command = plan

@@ -284,3 +284,11 @@ Corrected local bundle: work/packages/oke-llm-infrastructure-frankfurt-fixed.zip
 3. [x] Test real-length PAR tokens, long model IDs, unchanged archive contents and rejection of overlength package URLs. Validate extracted ZIPs and packaging, document the residual Console-added tag accurately, and commit without the user's staged AGENTS.md.
 
 Eight publisher runs and eight root discovery runs passed with OCI mocked. The actual generated child ZIP passed extraction, Terraform validation, three preview/override/region tests and saved-Plan/fresh-Apply archive verification. The entry package and both embedded template roots passed extraction/init/validate. State, backup and tfvars hashes and the user's staged AGENTS.md were preserved. No cloud artifact was republished; existing URLs remain unchanged, and live validation of a newly published short link remains pending.
+
+## IMDSv2-only node launch defaults
+
+1. [x] Verify Oracle's existing-pool update interface. OKE reserves node_metadata.areLegacyImdsEndpointsDisabled = "true" to disable IMDSv1 on future nodes; the tenancy's IMDSv1 restriction is not a tag.
+2. [x] Set the documented string metadata value on GPU pools and the shared module's optional CPU pool. Assert both launch configurations comply with IMDSv2-only tenancies; retain preview/allocation safeguards.
+3. [x] Document a metadata-preserving CLI update for the existing CPU pool and the distinction from editing individual Compute instances. Validate/package the source change without updating live pools, cycling nodes or triggering pending CPU launches.
+
+All 11 allocation test runs passed with OCI mocked, including both metadata defaults. Infrastructure and combined deployment roots passed Terraform validation. The entry package is rebuilt from the feature commit and checked for ZIP integrity and both node-pool defaults. Real Terraform state, backup and tfvars hashes and staged AGENTS.md are preserved. No live node-pool update was executed; the external CPU pool requires its owner to apply the documented change.
