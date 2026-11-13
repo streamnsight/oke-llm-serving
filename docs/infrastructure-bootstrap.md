@@ -63,6 +63,8 @@ terraform -chdir=templates/infrastructure output -json platform
 
 Run the returned `bootstrap_pipeline_id` in OCI DevOps. It follows the [oke-langfuse Shell stage pattern](https://github.com/streamnsight/oke-langfuse/tree/main/modules/devops/deployment_stages/shell_stage): inline command spec, pipeline resource-principal authentication and private-endpoint kubeconfig. Its subnet must reach OKE, OCI, Kubernetes binary downloads and Helm registries. Administrator permissions belong to this shared bootstrap identity; later model identities require separate scopes. Serialize bootstrap runs for the same platform.
 
+The pipeline policy includes both `compute-container-instances` and `compute-containers`, as required by [Oracle's Shell-stage IAM policy](https://docs.oracle.com/en-us/iaas/Content/devops/using/devops_iampolicies.htm), plus network, command-artifact, logging and platform-bucket access. Creating the pipeline does not itself grant Kubernetes RBAC: apply the generated binding as a cluster administrator before bootstrap installs CRDs.
+
 The pipeline:
 
 1. Downloads checksum-verified kubectl and Helm clients.

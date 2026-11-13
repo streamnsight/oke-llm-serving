@@ -122,6 +122,7 @@ resource "oci_identity_policy" "bootstrap" {
     "Allow dynamic-group id ${oci_identity_dynamic_group.bootstrap.id} to use cluster-family in compartment id ${var.config.target.cluster_compartment_id}",
     "Allow dynamic-group id ${oci_identity_dynamic_group.bootstrap.id} to read devops-family in compartment id ${var.compartment_id}",
     "Allow dynamic-group id ${oci_identity_dynamic_group.bootstrap.id} to manage compute-container-instances in compartment id ${var.compartment_id}",
+    "Allow dynamic-group id ${oci_identity_dynamic_group.bootstrap.id} to manage compute-containers in compartment id ${var.compartment_id}",
     "Allow dynamic-group id ${oci_identity_dynamic_group.bootstrap.id} to use virtual-network-family in compartment id ${data.oci_core_subnet.runner.compartment_id}",
     "Allow dynamic-group id ${oci_identity_dynamic_group.bootstrap.id} to use log-content in compartment id ${var.compartment_id}",
     "Allow dynamic-group id ${oci_identity_dynamic_group.bootstrap.id} to manage objects in compartment id ${var.compartment_id} where target.bucket.name = '${oci_objectstorage_bucket.platform.name}'"

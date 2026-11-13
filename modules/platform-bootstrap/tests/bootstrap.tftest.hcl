@@ -31,4 +31,8 @@ run "platform_has_explicit_shell_bootstrap_and_separate_readiness" {
     condition     = oci_objectstorage_bucket.platform.access_type == "NoPublicAccess" && !contains(keys(output.platform.allocation), "cpu_pool_id")
     error_message = "The platform descriptor must stay private and refer only to GPU infrastructure."
   }
+  assert {
+    condition     = anytrue([for rule in oci_identity_policy.bootstrap.statements : strcontains(rule, "to manage compute-containers in compartment id platform-compartment")]) && anytrue([for rule in oci_identity_policy.bootstrap.statements : strcontains(rule, "to manage compute-container-instances in compartment id platform-compartment")])
+    error_message = "A DevOps Shell stage requires both container-instance and container permissions."
+  }
 }
