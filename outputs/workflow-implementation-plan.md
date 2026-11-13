@@ -263,6 +263,8 @@ Publisher verification: four publisher runs passed using the real archive provid
 
 ## Live RMS launch import correction
 
-1. [ ] Reproduce the reported Frankfurt GetPackage failure without creating a stack. Check the existing PAR over both its native customer endpoint and the documented classic Object Storage endpoint; validate ZIP integrity and identical bytes.
-2. [ ] If confirmed, normalize the new commercial customer endpoint only for RMS links, preserving the PAR path and artifact region. Keep existing classic/noncommercial endpoints unchanged. Clarify the recommended button versus all available choices.
-3. [ ] Add endpoint regression coverage, validate affected native/schema/package checks and browser import through variable configuration. Preserve staged AGENTS.md and state; do not create stacks or allocate/modify GPU hosts. Record any remaining live validation limits.
+1. [x] Reproduce the reported Frankfurt GetPackage failure without creating a stack. Check the existing PAR over both its native customer endpoint and the documented classic Object Storage endpoint; validate ZIP integrity and identical bytes.
+2. [x] Normalize the new commercial customer endpoint only for RMS links, preserving the PAR path and artifact region. Keep existing classic/noncommercial endpoints unchanged. Clarify the recommended button versus all available choices.
+3. [x] Add endpoint regression coverage, validate affected native/schema/package checks and browser import through variable configuration. Preserve staged AGENTS.md and state; do not create stacks or allocate/modify GPU hosts. Record any remaining live validation limits.
+
+Live correction verified: both endpoints returned the same 34,519-byte ZIP, which passed CRC and Terraform validation. The user confirmed the classic link works, and its actual Configure variables form was inspected with the expected Frankfurt AD-2/A10/one-host/204 GiB fields. Six publisher and eight discovery runs passed, as did 35 script/schema checks (two optional chart skips) and extracted-root package validation. No stack creation, GPU allocation, Object Storage change or PAR rotation was performed. Source change is committed on fix/rms-launch-endpoints; only model/node runtime validation remains outside this import fix.
