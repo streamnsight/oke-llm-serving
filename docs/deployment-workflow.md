@@ -12,10 +12,10 @@ The source now contains both Terraform stacks. Model profiling uses HCL/HTTP; dy
 
 ## Discover and choose
 
-Run `terraform/stacks/discovery` locally, or upload the discovery ZIP to OCI Resource Manager with working directory `.`. Enter a public Hugging Face URL/ID. Supply context and concurrency. Image selection and serving overrides are deployment concerns; discovery uses stated automatic memory assumptions. Recipe source identity is obtained live and model revisions are pinned during discovery.
+Run `.` locally, or upload the discovery ZIP to OCI Resource Manager with working directory `.`. Enter a public Hugging Face URL/ID. Supply context and concurrency. Image selection and serving overrides are deployment concerns; discovery uses stated automatic memory assumptions. Recipe source identity is obtained live and model revisions are pinned during discovery.
 
 ```sh
-terraform -chdir=terraform/stacks/discovery output -json deployment_inputs > work/deployment-inputs.tfvars.json
+terraform output -json deployment_inputs > work/deployment-inputs.tfvars.json
 jq '.discovery.assessment | {status, recommended_selection_id, suggestions}' work/deployment-inputs.tfvars.json
 ```
 
@@ -25,12 +25,12 @@ A candidate is eligible for an allocation attempt, not certified at runtime. Quo
 
 ## Pass the assessment into deployment
 
-Copy `terraform/stacks/deployment/target.example.json` to an ignored local file and select the existing cluster and assessment ID. The stack resolves regional OKE images, known worker/pod subnets and NSGs, CPU sizing and boot storage. Its default preview creates no OCI resources. All target resources must be in the selected region. See [preview defaults and the RMS size-safe handoff](deployment-preview.md).
+Copy `templates/deployment/target.example.json` to an ignored local file and select the existing cluster and assessment ID. The stack resolves regional OKE images, known worker/pod subnets and NSGs, CPU sizing and boot storage. Its default preview creates no OCI resources. All target resources must be in the selected region. See [preview defaults and the RMS size-safe handoff](deployment-preview.md).
 
 ```sh
-terraform -chdir=terraform/stacks/deployment init
-terraform -chdir=terraform/stacks/deployment plan -var-file="$PWD/work/deployment-inputs.tfvars.json" -var-file="$PWD/work/target.json" -out="$PWD/work/deployment.tfplan"
-terraform -chdir=terraform/stacks/deployment apply "$PWD/work/deployment.tfplan"
+terraform -chdir=templates/deployment init
+terraform -chdir=templates/deployment plan -var-file="$PWD/work/deployment-inputs.tfvars.json" -var-file="$PWD/work/target.json" -out="$PWD/work/deployment.tfplan"
+terraform -chdir=templates/deployment apply "$PWD/work/deployment.tfplan"
 ```
 
 Add `selection_id` to target.json (candidate or sizing-option ID). Model identity, workload assumptions, assessed image and known topology are loaded from the JSON automatically. For an undetermined option, supply expert topology and per-rank memory in deployment. For RMS, upload the deployment ZIP to a second stack in the selected region with working directory `.`, paste the chosen `deployment_handoffs[ID].inline_json` into **Discovery JSON**, and use the dynamic cluster picker. The compartment defaults to the stack compartment. If the payload is too large, use native authenticated Object Storage input. Do not paste the full report into an RMS variable. The deployment form describes the handoff fields; discovery cannot dynamically change the form of another stack. Re-run discovery when requirements change. Change `observation_id` before a new allocation attempt to refresh the deployment module’s native capacity report; discovery itself now reads fresh CLI reports during Plan.
@@ -44,7 +44,7 @@ Pools use `prevent_destroy`, unique allocation ownership, and a guard against re
 The application creates a DevOps project, private versioned evidence bucket, logs, IAM policies and three pipelines. Before the first run, an existing cluster administrator must apply the emitted Kubernetes RBAC manifest:
 
 ```sh
-terraform -chdir=terraform/stacks/deployment output -json bootstrap_rbac > work/bootstrap-rbac.json
+terraform -chdir=templates/deployment output -json bootstrap_rbac > work/bootstrap-rbac.json
 kubectl apply -f work/bootstrap-rbac.json
 ```
 

@@ -4,15 +4,15 @@ Licensed under the Universal Permissive License v 1.0 as shown at http://oss.ora
 -->
 # GPU infrastructure and shared controllers
 
-Use `terraform/stacks/infrastructure` with its own Terraform state. It creates **GPU node infrastructure only**, a shared DevOps project and an explicitly invoked platform bootstrap pipeline. Existing cluster CPU pools run shared controllers. No model, serving image, benchmark or discovery-JSON input is required. The older `deployment` root remains a combined implementation; do not apply both roots to create the same infrastructure. Separate model deployment and undeploy pipelines are deferred.
+Use `templates/infrastructure` with its own Terraform state. It creates **GPU node infrastructure only**, a shared DevOps project and an explicitly invoked platform bootstrap pipeline. Existing cluster CPU pools run shared controllers. No model, serving image, benchmark or discovery-JSON input is required. The older `deployment` root remains a combined implementation; do not apply both roots to create the same infrastructure. Separate model deployment and undeploy pipelines are deferred.
 
 ## Preview first
 
-Copy `terraform/stacks/infrastructure/target.example.json` to an ignored local file. Fill in the tenancy/compartment, existing cluster, selected region, AD, GPU shape and host count from discovery. Keep `platform_name` stable across models and discovery runs. This first pass supports one platform owner per cluster.
+Copy `templates/infrastructure/target.example.json` to an ignored local file. Fill in the tenancy/compartment, existing cluster, selected region, AD, GPU shape and host count from discovery. Keep `platform_name` stable across models and discovery runs. This first pass supports one platform owner per cluster.
 
 ```sh
-terraform -chdir=terraform/stacks/infrastructure init
-terraform -chdir=terraform/stacks/infrastructure plan -var-file="$PWD/work/infrastructure-target.json"
+terraform -chdir=templates/infrastructure init
+terraform -chdir=templates/infrastructure plan -var-file="$PWD/work/infrastructure-target.json"
 ```
 
 `provision_resources=false` is the default. Plan reads the cluster/network and compatible OKE GPU images; it creates no node pools, Compute Clusters, capacity-report resources or DevOps resources. Inspect `infrastructure_preview`. No CPU image is required or queried. Existing worker/pod subnets and NSGs are reused when unambiguous; overrides must remain in the cluster VCN. Empty RMS NSG lists preserve inherited policies rather than clearing them. Routing, DNS, security rules and HTTPS egress still require environment validation.
@@ -32,9 +32,9 @@ Do not rename an allocated platform, switch it back to preview or test teardown 
 Terraform creates pipeline records but does not execute them. First, an existing cluster administrator applies the explicit bootstrap binding:
 
 ```sh
-terraform -chdir=terraform/stacks/infrastructure output -json bootstrap_rbac > work/platform-bootstrap-rbac.json
+terraform -chdir=templates/infrastructure output -json bootstrap_rbac > work/platform-bootstrap-rbac.json
 kubectl apply -f work/platform-bootstrap-rbac.json
-terraform -chdir=terraform/stacks/infrastructure output -json platform
+terraform -chdir=templates/infrastructure output -json platform
 ```
 
 Run the returned `bootstrap_pipeline_id` in OCI DevOps. It follows the [oke-langfuse Shell stage pattern](https://github.com/streamnsight/oke-langfuse/tree/main/modules/devops/deployment_stages/shell_stage): inline command spec, pipeline resource-principal authentication and private-endpoint kubeconfig. Its subnet must reach OKE, OCI, Kubernetes binary downloads and Helm registries. Administrator permissions belong to this shared bootstrap identity; later model identities require separate scopes. Serialize bootstrap runs for the same platform.

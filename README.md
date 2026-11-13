@@ -9,19 +9,19 @@ Deploy open-weight models onto GPUs in an existing OKE cluster through a model-f
 
 ## Start here
 
-The first stack is implemented at [terraform/stacks/discovery](terraform/stacks/discovery). Supply a public Hugging Face model URL, context length and concurrency. It returns a model profile, GPU shapes, limit/headroom observations and AD-scoped host capacity across READY subscribed regions.
+The repository root is the discovery stack: [main.tf](main.tf) and [schema.yaml](schema.yaml). Supply a public Hugging Face model URL, context length and concurrency. It returns a model profile, GPU shapes, limit/headroom observations and AD-scoped host capacity across READY subscribed regions.
 
 ```sh
 mkdir -p work
-terraform -chdir=terraform/stacks/discovery init
-terraform -chdir=terraform/stacks/discovery plan -var-file=/path/to/request.tfvars.json -out=/path/to/discovery.tfplan
-terraform -chdir=terraform/stacks/discovery apply /path/to/discovery.tfplan
-terraform -chdir=terraform/stacks/discovery output -json deployment_inputs > work/deployment-inputs.tfvars.json
+terraform init
+terraform plan -var-file=/path/to/request.tfvars.json -out=/path/to/discovery.tfplan
+terraform apply /path/to/discovery.tfplan
+terraform output -json deployment_inputs > work/deployment-inputs.tfvars.json
 ```
 
-For RMS packages, run `make package` from the repository root. This writes discovery, infrastructure and the older combined deployment ZIPs to `work/packages/`; use the ZIP root (`.`) as the working directory. Each ZIP has `main.tf`, `schema.yaml` and `modules/` at its root. Packages use committed HEAD. `make check-packages` extracts and Terraform-validates all ZIPs. The **Package RMS stacks** GitHub workflow publishes all three ZIPs as downloadable Actions artifacts on pushes/merges to `main`. See [RMS packaging and JSON export](docs/rms-discovery.md).
+Run `make package` to build `work/packages/oke-llm-discovery.zip` from committed HEAD. Source and entry ZIP have the same layout: discovery at root, reusable `modules/`, and downstream roots under `templates/infrastructure/` and `templates/deployment/`. `make check-packages` validates discovery and both embedded roots. GitHub Actions publishes only the discovery ZIP. Standalone infrastructure/deployment package targets remain available for development. Template rendering/upload/PAR publication is a separate pending feature. See [RMS packaging](docs/rms-discovery.md).
 
-If linking RMS directly to the Git repository instead of uploading a packaged ZIP, set the working directory to `terraform/stacks/discovery`. Its `schema.yaml` describes the user inputs. See [RMS setup, scope and limitations](docs/rms-discovery.md).
+If linking RMS directly to the Git repository instead of uploading a packaged ZIP, set the working directory to `.`. Its `schema.yaml` describes the user inputs. See [RMS setup, scope and limitations](docs/rms-discovery.md).
 
 Hugging Face profiling and recipe/variant lookup use live HTTP data and HCL; no static model/engine catalog or catalog build tool is required. OCI regional discovery uses Bash, OCI CLI and jq through `hashicorp/external`, dynamically scanning subscribed regions without provider aliases. These tools must be installed on the execution host (OCI CLI was verified on the tested RMS host). There is no Go build, custom Python script or nested Terraform invocation. Deployment admission/allocation remains native `oracle/oci`.
 
@@ -29,11 +29,11 @@ Discovery creates reports, not GPU allocations. Counts represent available insta
 
 ## Deploy GPU infrastructure first
 
-Use [terraform/stacks/infrastructure](terraform/stacks/infrastructure) and [the infrastructure/bootstrap instructions](docs/infrastructure-bootstrap.md). It previews and optionally provisions a GPU-only pool, reuses existing CPU pools and OKE GPU/network support, and creates a shared-controller bootstrap pipeline. No model or large discovery JSON is needed. Run `make package-infrastructure` for its RMS ZIP. Preview is the default; live allocation/bootstrap validation remains pending.
+Use [templates/infrastructure](templates/infrastructure) and [the infrastructure/bootstrap instructions](docs/infrastructure-bootstrap.md). It previews and optionally provisions a GPU-only pool, reuses existing CPU pools and OKE GPU/network support, and creates a shared-controller bootstrap pipeline. No model or large discovery JSON is needed. Run `make package-infrastructure` for its RMS ZIP. Preview is the default; live allocation/bootstrap validation remains pending.
 
 ## Earlier combined deployment path
 
-The deployment stack at `terraform/stacks/deployment` defaults to a read-only OCI preview. In RMS, paste one `deployment_handoffs[ID].inline_json` and select an existing OKE cluster; the compartment defaults to the stack's compartment. OKE images, existing subnets/NSGs, CPU sizing and storage defaults are resolved automatically. The full `deployment_inputs` report remains usable locally or through authenticated Object Storage; it exceeds RMS's 8192-byte variable limit for typical reports. See [preview and handoff instructions](docs/deployment-preview.md).
+The deployment stack at `templates/deployment` defaults to a read-only OCI preview. In RMS, paste one `deployment_handoffs[ID].inline_json` and select an existing OKE cluster; the compartment defaults to the stack's compartment. OKE images, existing subnets/NSGs, CPU sizing and storage defaults are resolved automatically. The full `deployment_inputs` report remains usable locally or through authenticated Object Storage; it exceeds RMS's 8192-byte variable limit for typical reports. See [preview and handoff instructions](docs/deployment-preview.md).
 
 Review `deployment_preview` before enabling `provision_resources`. Provisioning creates retained GPU/CPU pools, supported RDMA Compute Cluster placement when required, and OCI DevOps deploy, validation and benchmark pipelines. No GPU resources are allocated or released by the default preview. Overrides are optional advanced controls.
 

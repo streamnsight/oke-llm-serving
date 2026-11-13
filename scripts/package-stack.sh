@@ -12,11 +12,18 @@ output=$1
 staging=$(mktemp -d)
 trap 'rm -rf "$staging"' EXIT
 git -C "$repo" archive HEAD | tar -x -C "$staging"
-# Each archive is a standalone Terraform root. Repository paths stay unchanged.
+# Discovery is the repository root. Child templates remain independent roots.
 package="$staging/package"
 mkdir -p "$package"
-cp -R "$staging/terraform/stacks/$package_stack/." "$package/"
-cp -R "$staging/terraform/modules" "$package/modules"
+source_root=$staging
+if [[ "$package_stack" != discovery ]]; then source_root="$staging/templates/$package_stack"; fi
+for file in "$source_root/"*.tf "$source_root/"*.tf.json; do
+  if [[ -f "$file" ]]; then cp "$file" "$package/"; fi
+done
+cp "$source_root/schema.yaml" "$source_root/.terraform.lock.hcl" "$package/"
+if [[ -f "$source_root/target.example.json" ]]; then cp "$source_root/target.example.json" "$package/"; fi
+cp -R "$staging/modules" "$package/modules"
+if [[ "$package_stack" == discovery ]]; then cp -R "$staging/templates" "$package/templates"; fi
 for asset in outputs docs; do cp -R "$staging/$asset" "$package/$asset"; done
 cp "$staging/README.md" "$staging/LICENSE.txt" "$staging/SECURITY.md" "$package/"
 # Only committed source is staged. Remove development tests before relocation.
@@ -25,7 +32,7 @@ for file in "$package/"*.tf; do
   sed -e 's|"../../modules/|"./modules/|g' -e 's|${path.module}/../../modules/|${path.module}/modules/|g' "$file" > "$file.relocated"
   mv "$file.relocated" "$file"
 done
-jq -n --arg selected "$package_stack" --arg commit "$(git -C "$repo" rev-parse HEAD)" '{stack:$selected,source_commit:$commit,working_directory:"."}' > "$package/package-manifest.json"
+jq -n --arg selected "$package_stack" --arg commit "$(git -C "$repo" rev-parse HEAD)" '{stack:$selected,source_commit:$commit,working_directory:".",templates:(if $selected=="discovery" then ["infrastructure","deployment"] else [] end)}' > "$package/package-manifest.json"
 (cd "$package" && zip -qr "$staging/stack.zip" .)
 mkdir -p "$(dirname "$output")"
 mv "$staging/stack.zip" "$output"

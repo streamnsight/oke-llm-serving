@@ -21,7 +21,7 @@ jobs:
         id: tests
         shell: bash
         run: |
-          directories=$(find terraform/modules terraform/stacks -type f -path '*/tests/*.tftest.hcl' -printf '%h\n' | sed 's|/tests$||' | sort -u | jq -R -s -c 'split("\n") | map(select(length > 0))')
+          directories=$(find modules templates ./tests -type f -path '*/tests/*.tftest.hcl' -printf '%h\n' | sed 's|/tests$||' | sort -u | jq -R -s -c 'split("\n") | map(select(length > 0))')
           echo "directories=$directories" >> "$GITHUB_OUTPUT"
   terraform:
     name: Terraform (${{ matrix.directory }})

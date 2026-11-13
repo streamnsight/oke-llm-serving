@@ -5,16 +5,16 @@ Licensed under the Universal Permissive License v 1.0 as shown at http://oss.ora
 
 # Native Terraform model profile
 
-`terraform/modules/model-profile` reads the Hugging Face Hub API and the resolved revision's `config.json` using `hashicorp/http`. Terraform expressions calculate the memory estimate. There is no external program, Bash, Python, OCI SDK or precomputed-profile requirement.
+`modules/model-profile` reads the Hugging Face Hub API and the resolved revision's `config.json` using `hashicorp/http`. Terraform expressions calculate the memory estimate. There is no external program, Bash, Python, OCI SDK or precomputed-profile requirement.
 
 ## Inputs and execution
 
-Use `terraform/stacks/discovery` for the combined RMS workflow, or `terraform/examples/model-profile` for model-only inspection:
+Use `.` for the combined RMS workflow, or `examples/model-profile` for model-only inspection:
 
 ```sh
-terraform -chdir=terraform/examples/model-profile init
-terraform -chdir=terraform/examples/model-profile apply
-terraform -chdir=terraform/examples/model-profile output -json profile
+terraform -chdir=examples/model-profile init
+terraform -chdir=examples/model-profile apply
+terraform -chdir=examples/model-profile output -json profile
 ```
 
 The module accepts `model` (owner/model or a repository URL), `revision`, `context_length`, `concurrency`, `kv_dtype`, `runtime_gib` and `margin`. Context includes both prompt and generation. Defaults are main, 4096 tokens, one sequence, bfloat16 compute/KV, 2 GiB runtime allowance and 20% additional margin. Pin the returned `model.resolved_revision` for deployment.
@@ -42,8 +42,8 @@ The aggregate recommendation is `(weights + KV + runtime allowance) × (1 + marg
 RMS must reach Hugging Face over HTTPS and install the HTTP provider from the Terraform Registry. No shell/runtime bootstrap is needed. The implementation is tested locally with native Terraform mocks and public-model lookup; actual RMS job validation remains pending.
 
 ```sh
-terraform -chdir=terraform/modules/model-profile init -backend=false
-terraform -chdir=terraform/modules/model-profile test
+terraform -chdir=modules/model-profile init -backend=false
+terraform -chdir=modules/model-profile test
 ```
 
 References: [Hub API](https://huggingface.co/docs/hub/en/api), [ModelInfo metadata](https://huggingface.co/docs/huggingface_hub/package_reference/hf_api#huggingface_hub.hf_api.ModelInfo), [HTTP provider](https://registry.terraform.io/providers/hashicorp/http/latest/docs/data-sources/http), [RMS provider sourcing](https://docs.oracle.com/en-us/iaas/Content/ResourceManager/Concepts/providers.htm).

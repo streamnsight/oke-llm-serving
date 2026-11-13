@@ -4,11 +4,11 @@ Licensed under the Universal Permissive License v 1.0 as shown at http://oss.ora
 -->
 # Resource Manager discovery
 
-Use `terraform/stacks/discovery` for assessment, then the new GPU-only `terraform/stacks/infrastructure` for retained pools/shared controllers. See [infrastructure bootstrap](infrastructure-bootstrap.md). The earlier combined `terraform/stacks/deployment` remains present while separate model deployment is deferred. Discovery allocates no GPU/CPU nodes. No Terraform process launches another Terraform process.
+Use `.` for assessment, then the new GPU-only `templates/infrastructure` for retained pools/shared controllers. See [infrastructure bootstrap](infrastructure-bootstrap.md). The earlier combined `templates/deployment` remains present while separate model deployment is deferred. Discovery allocates no GPU/CPU nodes. No Terraform process launches another Terraform process.
 
 ## Package and inputs
 
-Run `make package`. Upload the discovery, infrastructure or earlier combined deployment ZIP from `work/packages/` and use the ZIP root (`.`) as working directory. There is no enclosing stack/repository folder:
+Run `make package`. Upload `work/packages/oke-llm-discovery.zip` and use the ZIP root (`.`) as working directory. Source and package share this structure:
 
 ```text
 main.tf
@@ -20,13 +20,16 @@ modules/
   accelerator-inventory/data/gpus.json
   devops-serving/scripts/
   devops-serving/data/components.json
+templates/
+  infrastructure/
+  deployment/
 ```
 
-Packaging relocates local module sources to `./modules/...` and updates module-relative catalog/DevOps paths in the staged copy. The repository development layout stays unchanged. For an existing RMS stack, replace its old `terraform/stacks/...` working-directory setting with `.` when uploading the new ZIP. If linking directly to the Git repository instead, continue using `terraform/stacks/discovery` or `terraform/stacks/deployment`.
+Discovery uses `./modules/...`; embedded child roots use `../../modules/...`. Terraform does not recursively apply nested roots. Standalone developer packages flatten their chosen template to ZIP root and relocate its sources to `./modules/...`. There is no recursive template embedding. Existing RMS configurations using an older stack subdirectory must switch to `.` when importing the discovery configuration. Direct Git discovery also uses `.`.
 
-Run `make check-packages` to build, extract, initialize and validate both delivered archives. This check runs without OCI credentials or capacity queries. Only committed source is packaged; state, local inputs, caches, private work files and development tests are excluded.
+Run `make check-packages` to build/extract the entry archive and initialize/validate all three roots independently. This runs without OCI credentials or capacity queries. Only committed source is packaged; state, local inputs, caches, private work files and development tests are excluded at every level. `make package-infrastructure` and `make package-deployment` remain standalone developer targets.
 
-The [Package RMS stacks workflow](../.github/workflows/package-stacks.yaml) runs on pushes to `main` (including merges), or manually through Actions. It checks both packages before publishing `oke-llm-discovery.zip` and `oke-llm-deployment.zip` as separate downloadable run artifacts. Download the selected ZIP from **Actions → Package RMS stacks → successful run → Artifacts**, then upload that file directly to RMS. The upload uses [single-file artifact mode](https://github.com/actions/upload-artifact#upload-an-individual-file-unzipped), so there is no additional archive wrapper. Artifact expiry follows the repository's Actions retention setting. This is run-artifact publication, not a GitHub Release.
+The [packaging workflow](../.github/workflows/package-stacks.yaml) runs on main pushes/merges or manual dispatch. It validates all roots and publishes only `oke-llm-discovery.zip`. Download it from **Actions → Package discovery entry stack → successful run → Artifacts**. Single-file artifact mode avoids an extra ZIP wrapper. Artifact expiry follows repository settings. This publishes an Actions artifact, not a GitHub Release or OCI deployment option.
 
 Discovery takes a public Hugging Face URL or `owner/model`, revision, context length and concurrency. The form deliberately uses a text field: RMS does not provide a general dependent namespace/model selector for arbitrary static catalogs. Model and variant metadata are resolved live; no model dropdown, static model index or catalog refresh is used.
 
@@ -36,7 +39,7 @@ RMS Terraform receives collection overrides as expressions. An empty string (`""
 
 ## Dynamic CLI lookup
 
-Hugging Face profiling remains HTTP-provider/HCL based. Regional discovery uses `hashicorp/external` to run `terraform/modules/oci-discovery/scripts/discover-oci.sh` with Bash, OCI CLI and jq. It dynamically enumerates READY subscriptions, queries regional inventory/limits/headroom and requests AD capacity reports. No regional provider aliases, Go binaries, custom Python scripts or nested Terraform process are used. Native regional modules remain available for deployment allocation/admission and examples.
+Hugging Face profiling remains HTTP-provider/HCL based. Regional discovery uses `hashicorp/external` to run `modules/oci-discovery/scripts/discover-oci.sh` with Bash, OCI CLI and jq. It dynamically enumerates READY subscriptions, queries regional inventory/limits/headroom and requests AD capacity reports. No regional provider aliases, Go binaries, custom Python scripts or nested Terraform process are used. Native regional modules remain available for deployment allocation/admission and examples.
 
 The helper honors `TF_VAR_auth` / `OCI_AUTH` for APIKey, InstancePrincipal and ResourcePrincipal. Local runs preserve CLI config/profile/environment defaults. RMS supplies InstancePrincipal plus delegated caller settings: `use_obo_token`, `obo_token_path` and `obo_token`, with `TF_VAR_`, `OCI_` or bare names. These map to CLI `instance_obo_user` auth. The helper creates a private temporary CLI config referring to the token file; if only token content is supplied, it creates a private temporary token file as well. Temporary files are deleted on exit. No token enters Terraform outputs or argv. No broader IAM permissions or local API keys are required.
 

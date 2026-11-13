@@ -24,4 +24,16 @@ fi
 jq -e '.working_directory=="." and (.stack=="discovery" or .stack=="infrastructure" or .stack=="deployment") and (.source_commit|test("^[a-f0-9]{40}$"))' "$staging/package-manifest.json" >/dev/null
 terraform -chdir="$staging" init -backend=false -input=false -no-color
 terraform -chdir="$staging" validate -no-color
+if [[ $(jq -r .stack "$staging/package-manifest.json") == discovery ]]; then
+  jq -e '.templates==["infrastructure","deployment"]' "$staging/package-manifest.json" >/dev/null
+  for template in infrastructure deployment; do
+    for required in main.tf variables.tf schema.yaml .terraform.lock.hcl; do
+      [[ -f "$staging/templates/$template/$required" ]] || { echo "Missing embedded template: $template/$required" >&2; exit 1; }
+    done
+    terraform -chdir="$staging/templates/$template" init -backend=false -input=false -no-color
+    terraform -chdir="$staging/templates/$template" validate -no-color
+  done
+elif [[ -d "$staging/templates" ]]; then
+  echo 'A standalone child package must not embed its parent or sibling templates.' >&2; exit 1
+fi
 echo "Validated root-level package: $archive"

@@ -28,7 +28,7 @@ locals {
   }
 }
 module "oci_discovery" {
-  source = "../../modules/oci-discovery"
+  source = "./modules/oci-discovery"
   query  = local.discovery_query
 }
 
@@ -42,7 +42,7 @@ locals {
 }
 
 module "model_profile" {
-  source         = "../../modules/model-profile"
+  source         = "./modules/model-profile"
   model          = local.effective_model
   revision       = local.effective_revision
   context_length = var.context_length
@@ -50,7 +50,7 @@ module "model_profile" {
 }
 
 module "serving_resolution" {
-  source              = "../../modules/serving-resolution"
+  source              = "./modules/serving-resolution"
   profile             = module.model_profile.profile
   assess_alternatives = true
 }
@@ -97,9 +97,9 @@ output "deployment_inputs" {
   } }
 }
 
-module "control_plane" { source = "../../modules/control-plane-sizing" }
+module "control_plane" { source = "./modules/control-plane-sizing" }
 module "handoff" {
-  source                = "../../modules/deployment-handoff"
+  source                = "./modules/deployment-handoff"
   profile               = module.model_profile.profile
   assessment            = merge(module.planner.assessment, { control_plane = module.control_plane.requirements })
   serving_configuration = module.serving_resolution.resolution
@@ -108,7 +108,7 @@ module "handoff" {
 output "deployment_handoffs" { value = module.handoff.handoffs }
 
 module "planner" {
-  source             = "../../modules/deployment-planner"
+  source             = "./modules/deployment-planner"
   recipe_api_enabled = true
   profile            = module.model_profile.profile
   regions            = local.regional_results

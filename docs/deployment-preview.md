@@ -40,7 +40,7 @@ Oracle limits [each RMS variable to 8192 bytes](https://docs.oracle.com/en-us/ia
 For local state:
 
 ```sh
-terraform -chdir=terraform/stacks/discovery output -json deployment_handoffs > work/handoffs.json
+terraform output -json deployment_handoffs > work/handoffs.json
 jq -jr '.["CHOICE_ID"].inline_json' work/handoffs.json > work/choice.json
 ```
 

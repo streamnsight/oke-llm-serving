@@ -6,7 +6,7 @@ Licensed under the Universal Permissive License v 1.0 as shown at http://oss.ora
 
 Discovery reads the selected model's live vLLM Recipes JSON endpoint, including checkpoint aliases. The response identifies the upstream recipe repository, path and source SHA. The resolver reads that YAML at the supplied immutable source; if the JSON endpoint is absent it tries the model's canonical vLLM recipe path. There is no static model or engine catalog, catalog build step, or executable model-card prose.
 
-`terraform/modules/serving-resolution` uses only HTTP-provider data and HCL (`yamldecode`, JSON and expressions). It extracts the matching checkpoint variant, base and variant arguments/environment, default-hardware overrides, selected optional features, upstream hardware labels and strategy evidence. It does not install packages or execute launch commands from the guide. Missing recipes, ambiguous variants, unresolved templates, custom-image requirements and conflicting managed flags are returned as issues requiring expert configuration. HTTP access/rate-limit failures fail the lookup rather than pretending a recipe is absent.
+`modules/serving-resolution` uses only HTTP-provider data and HCL (`yamldecode`, JSON and expressions). It extracts the matching checkpoint variant, base and variant arguments/environment, default-hardware overrides, selected optional features, upstream hardware labels and strategy evidence. It does not install packages or execute launch commands from the guide. Missing recipes, ambiguous variants, unresolved templates, custom-image requirements and conflicting managed flags are returned as issues requiring expert configuration. HTTP access/rate-limit failures fail the lookup rather than pretending a recipe is absent.
 
 ## Discovery assesses; deployment chooses
 
@@ -28,7 +28,7 @@ The recorded feature definitions supply the `glm47` reasoning/tool parsers and r
 
 ```sh
 mkdir -p work
-terraform -chdir=terraform/stacks/discovery output -json deployment_inputs \
+terraform output -json deployment_inputs \
   > work/deployment-inputs.tfvars.json
 ```
 
@@ -37,7 +37,7 @@ This produces one object: `{"discovery": {...}}`. It contains the model profile,
 For local Terraform, pass that file unchanged alongside target infrastructure and deployment choices:
 
 ```sh
-terraform -chdir=terraform/stacks/deployment plan \
+terraform -chdir=templates/deployment plan \
   -var-file="$PWD/work/deployment-inputs.tfvars.json" \
   -var-file="$PWD/work/target.json"
 ```
@@ -58,7 +58,7 @@ For BF16 Flint, structured GQA full/sliding layer metadata permits a full-contex
 
 ## Expert handoff
 
-Start with `terraform/stacks/deployment/target.example.json`. For an undetermined option, add:
+Start with `templates/deployment/target.example.json`. For an undetermined option, add:
 
 ```json
 {

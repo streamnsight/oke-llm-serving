@@ -7,7 +7,7 @@ Licensed under the Universal Permissive License v 1.0 as shown at http://oss.ora
 
 Proposal date November 11 2026
 
-Current implementation update: the agreed first user-facing stack is now `terraform/stacks/discovery`, using native HTTP/OCI providers and HCL for model profiling and subscribed-region capacity. All Python/Bash model analyzers, external wrappers and precomputed-profile paths were removed. The second user-facing stack will allocate the selected region/OKE/shape/node quantity and create DevOps resources. Historical alternatives below describing interpreter-based discovery or a required bootstrap stack are superseded by this two-stack flow. See [current workflow](../docs/rms-discovery.md) and [implementation checklist](project-status.md).
+Current implementation update: the agreed first user-facing stack is now `.`, using native HTTP/OCI providers and HCL for model profiling and subscribed-region capacity. All Python/Bash model analyzers, external wrappers and precomputed-profile paths were removed. The second user-facing stack will allocate the selected region/OKE/shape/node quantity and create DevOps resources. Historical alternatives below describing interpreter-based discovery or a required bootstrap stack are superseded by this two-stack flow. See [current workflow](../docs/rms-discovery.md) and [implementation checklist](project-status.md).
 
 ## Purpose and product direction
 

@@ -35,12 +35,12 @@ module "inventory" {
 
 ## Running the example
 
-Use terraform/examples/oci-discovery. Set tenancy_ocid and region through your local uncommitted variable file or Resource Manager inputs. Resource Manager prepopulates those named variables in its Console workflow.
+Use examples/oci-discovery. Set tenancy_ocid and region through your local uncommitted variable file or Resource Manager inputs. Resource Manager prepopulates those named variables in its Console workflow.
 
 ```sh
-terraform -chdir=terraform/examples/oci-discovery init
-terraform -chdir=terraform/examples/oci-discovery plan -var-file=/path/to/discovery.tfvars.json
-terraform -chdir=terraform/examples/oci-discovery apply -var-file=/path/to/discovery.tfvars.json
+terraform -chdir=examples/oci-discovery init
+terraform -chdir=examples/oci-discovery plan -var-file=/path/to/discovery.tfvars.json
+terraform -chdir=examples/oci-discovery apply -var-file=/path/to/discovery.tfvars.json
 ```
 
 Only data sources run unless availability_domain is set. Supplying that AD enables creation of a capacity report and a local Terraform bookkeeping resource. Neither allocates instances, reservations, Compute Clusters or node pools.
@@ -49,7 +49,7 @@ The provider is constrained to OCI 7.x and the tested example lock file pins 7.3
 
 ## Inventory scope and output
 
-The inventory result schema is 2.0. One inventory module scans one provider region. The combined root at terraform/stacks/discovery supplies checked-in provider aliases and activates READY subscriptions within one job. Its optional regions input filters the subscriptions. Terraform does not dynamically instantiate provider configurations from subscription data.
+The inventory result schema is 2.0. One inventory module scans one provider region. The combined root at . supplies checked-in provider aliases and activates READY subscriptions within one job. Its optional regions input filters the subscriptions. Terraform does not dynamically instantiate provider configurations from subscription data.
 
 Within the region, shapes are listed for every AD. shape_names filters GPU shapes; an empty set retains all visible GPU shapes. image_id optionally filters for image-compatible shapes. Returned fields include GPU count/description, host_memory_gb, OCPUs, local disk capacity and RDMA ports/bandwidth. GPU VRAM and NVLink topology remain null until catalog enrichment is implemented. A visible shape is not itself proof of OKE compatibility or launch capacity.
 
@@ -91,19 +91,19 @@ Before allocating hardware, request a fresh report again. A report is not a rese
 
 OCI discovery requires no Python or Bash runtime beyond the Terraform provider execution environment. Hugging Face analysis is different: binary-header parsing, architecture interpretation, estimates and tests remain in Python. A shell rewrite would require its own HTTP/JSON/binary tooling and would not provide an unconditional reliability guarantee.
 
-For RMS, use the combined native stack at terraform/stacks/discovery. Hugging Face model lookup also uses native Terraform HTTP data sources and HCL. No precomputed profile or external runtime is needed. See [RMS workflow](rms-discovery.md) and [model profile documentation](model-profile.md).
+For RMS, use the combined native stack at .. Hugging Face model lookup also uses native Terraform HTTP data sources and HCL. No precomputed profile or external runtime is needed. See [RMS workflow](rms-discovery.md) and [model profile documentation](model-profile.md).
 
 ## Verification
 
 Run Terraform native-provider tests:
 
 ```sh
-terraform -chdir=terraform/modules/accelerator-inventory init -backend=false
-terraform -chdir=terraform/modules/accelerator-inventory test
-terraform -chdir=terraform/modules/capacity-assessment init -backend=false
-terraform -chdir=terraform/modules/capacity-assessment test
-terraform -chdir=terraform/modules/model-profile init -backend=false
-terraform -chdir=terraform/modules/model-profile test
+terraform -chdir=modules/accelerator-inventory init -backend=false
+terraform -chdir=modules/accelerator-inventory test
+terraform -chdir=modules/capacity-assessment init -backend=false
+terraform -chdir=modules/capacity-assessment test
+terraform -chdir=modules/model-profile init -backend=false
+terraform -chdir=modules/model-profile test
 ```
 
 Terraform's mock-provider tests require Terraform 1.7+; modules themselves require 1.5+. See the [validation record](../outputs/oci-discovery-validation.md) for live checks. Actual RMS execution, additional authentication modes and target-child-compartment checks remain to be validated there.
