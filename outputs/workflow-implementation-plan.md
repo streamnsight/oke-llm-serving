@@ -276,3 +276,11 @@ Live correction verified: both endpoints returned the same 34,519-byte ZIP, whic
 3. [x] Document the Console-specific tag cleanup in the guide/schema, retain provenance in the manifest, and render a corrected prefilled Frankfurt ZIP with OCI mocked. ZIP CRC and extracted Terraform validation passed; 35 script/schema checks passed (two optional chart skips). Preserve user form choices and leave final stack creation to the user. The old live wizard still references its original immutable ZIP.
 
 Corrected local bundle: work/packages/oke-llm-infrastructure-frankfurt-fixed.zip. No discovery refresh, capacity reservation or cloud mutation was performed. The tag-free Review screenshot is work/validation/frankfurt-rms-tag-free-review.jpg. Entry-package validation is repeated after committing the source so its embedded template includes the fix.
+
+## Durable RMS origin-tag compatibility
+
+1. [x] Inspect the newly launched wizard. It recreated ZipOrigin from its 285-character package URL and failed with Invalid tags; clearing the earlier wizard did not prevent this. Clear the current unsaved form without submitting Create.
+2. [x] Keep the descriptive model/region/shape archive, publish an identical short-path launch copy, and scope the existing ObjectRead PAR to that copy. Enforce the 256-character limit on the final decoded package URL. No new user inputs or cloud writes during development.
+3. [x] Test real-length PAR tokens, long model IDs, unchanged archive contents and rejection of overlength package URLs. Validate extracted ZIPs and packaging, document the residual Console-added tag accurately, and commit without the user's staged AGENTS.md.
+
+Eight publisher runs and eight root discovery runs passed with OCI mocked. The actual generated child ZIP passed extraction, Terraform validation, three preview/override/region tests and saved-Plan/fresh-Apply archive verification. The entry package and both embedded template roots passed extraction/init/validate. State, backup and tfvars hashes and the user's staged AGENTS.md were preserved. No cloud artifact was republished; existing URLs remain unchanged, and live validation of a newly published short link remains pending.

@@ -48,6 +48,9 @@ locals {
   run_id       = local.enabled ? substr(replace(terraform_data.publication[0].id, "-", ""), 0, 12) : ""
   filenames    = { for id, option in var.options : id => "infrastructure-${formatdate("YYYYMMDD'T'hhmmss'Z'", local.published_at)}-${local.run_id}-${id}.zip" }
   object_names = { for id, option in var.options : id => "models/${local.model_folder}/${option.region}/${replace(option.gpu_shape, "/[^A-Za-z0-9_.-]/", "-")}/${local.filenames[id]}" }
+  # Console copies zipUrl into ZipOrigin (maximum 256 characters). Keep the
+  # browsable archive path and use a bounded filename for its launch copy.
+  launch_object_names = { for id, option in var.options : id => "rms/${local.run_id}-${substr(sha256(id), 0, 16)}.zip" }
   files = { for id, option in var.options : id => merge(local.template_files, local.module_files, {
     "schema.yaml"                      = "${local.header}${yamlencode(merge(local.schema, { variables = { for key, value in local.schema.variables : key => merge(value, try({ default = local.defaults[id][key] }, {})) } }))}",
     "recommendations_override.tf.json" = jsonencode({ variable = { for key, value in local.defaults[id] : key => { default = value } } }),
@@ -99,10 +102,19 @@ resource "oci_objectstorage_preauthrequest" "infrastructure" {
   for_each     = var.options
   namespace    = data.oci_objectstorage_namespace.artifacts[0].namespace
   bucket       = oci_objectstorage_bucket.artifacts[0].name
-  object_name  = oci_objectstorage_object.infrastructure[each.key].object
+  object_name  = oci_objectstorage_object.launch[each.key].object
   name         = local.filenames[each.key]
   access_type  = "ObjectRead"
   time_expires = timeadd(local.published_at, "${var.par_lifetime_hours}h")
+}
+resource "oci_objectstorage_object" "launch" {
+  for_each     = var.options
+  namespace    = data.oci_objectstorage_namespace.artifacts[0].namespace
+  bucket       = oci_objectstorage_bucket.artifacts[0].name
+  object       = local.launch_object_names[each.key]
+  source       = archive_file.infrastructure[each.key].output_sha256 != "" ? archive_file.infrastructure[each.key].output_path : null
+  content_type = "application/zip"
+  metadata     = oci_objectstorage_object.infrastructure[each.key].metadata
 }
 locals {
   # RMS's package importer accepts the documented classic Object Storage URL.
@@ -115,11 +127,15 @@ locals {
   ) }
 }
 output "deployment_options" {
+  precondition {
+    condition     = alltrue([for url in values(local.rms_par_urls) : length(url) <= 256])
+    error_message = "RMS copies zipUrl into its ZipOrigin tag, which is limited to 256 characters. A generated package URL exceeds that limit; download the ZIP and upload it directly instead."
+  }
   value = { for id, option in var.options : id => {
     kind                 = "infrastructure", region = option.region, artifact_region = var.region, availability_domain = option.availability_domain,
     gpu_shape            = option.gpu_shape, node_count = option.node_count, availability = option.availability,
     capacity_observed_at = try(option.capacity_observed_at, null), configuration_status = try(option.configuration_status, "requires_validation"),
-    object_name          = local.object_names[id], published_at = local.published_at, expires_at = oci_objectstorage_preauthrequest.infrastructure[id].time_expires,
+    object_name          = local.object_names[id], launch_object_name = local.launch_object_names[id], published_at = local.published_at, expires_at = oci_objectstorage_preauthrequest.infrastructure[id].time_expires,
     zip_sha256           = archive_file.infrastructure[id].output_sha256, download_url = local.rms_par_urls[id],
     launch_url           = "https://cloud.oracle.com/resourcemanager/stacks/create?region=${urlencode(option.region)}&zipUrl=${urlencode(local.rms_par_urls[id])}",
     remaining_input      = "Select an existing cluster; review preview before explicitly enabling GPU provisioning."

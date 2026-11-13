@@ -4,7 +4,7 @@
 mock_provider "oci" {
   mock_data "oci_objectstorage_namespace" { defaults = { namespace = "fixture" } }
   mock_resource "oci_objectstorage_preauthrequest" {
-    defaults = { full_path = "https://objectstorage.us-ashburn-1.oraclecloud.com/p/fake-token/n/fixture/b/artifacts/o/stack.zip" }
+    defaults = { full_path = "https://objectstorage.us-ashburn-1.oraclecloud.com/p/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/n/fixture12345/b/oke-llm-bundles-0123456789abcdef/o/rms/0123456789ab-0123456789abcdef.zip" }
   }
 }
 mock_provider "oci" {
@@ -29,7 +29,7 @@ variables {
   template_dir   = "../../templates/infrastructure"
   modules_dir    = ".."
   options = { selected = {
-    region = "us-phoenix-1", availability_domain = "AD-1", gpu_shape = "BM.GPU.A10.4", node_count = 1,
+    region       = "us-phoenix-1", availability_domain = "AD-1", gpu_shape = "BM.GPU.A10.4", node_count = 1,
     availability = "available_at_scan", capacity_observed_at = "2026-11-12T18:00:00Z", configuration_status = "suggested_untested", expert_evidence = join("", [for i in range(900) : "0123456789"])
   } }
 }
@@ -50,8 +50,12 @@ run "apply_renders_zip_and_creates_scoped_links" {
     error_message = "The real archive provider must create a nonempty child stack at Apply."
   }
   assert {
-    condition     = oci_objectstorage_bucket.artifacts[0].access_type == "NoPublicAccess" && oci_objectstorage_preauthrequest.infrastructure["selected"].access_type == "ObjectRead" && oci_objectstorage_preauthrequest.infrastructure["selected"].object_name == oci_objectstorage_object.infrastructure["selected"].object
+    condition     = oci_objectstorage_bucket.artifacts[0].access_type == "NoPublicAccess" && oci_objectstorage_preauthrequest.infrastructure["selected"].access_type == "ObjectRead" && oci_objectstorage_preauthrequest.infrastructure["selected"].object_name == oci_objectstorage_object.launch["selected"].object
     error_message = "PARs must read one specific object in a private bucket."
+  }
+  assert {
+    condition     = oci_objectstorage_object.launch["selected"].source == oci_objectstorage_object.infrastructure["selected"].source && oci_objectstorage_object.launch["selected"].metadata["zip-sha256"] == archive_file.infrastructure["selected"].output_sha256 && startswith(output.deployment_options.selected.launch_object_name, "rms/") && length(output.deployment_options.selected.launch_object_name) == 37 && length(output.deployment_options.selected.download_url) <= 256
+    error_message = "The short launch copy must contain the identical ZIP, with a package URL fitting the Console origin tag."
   }
   assert {
     condition     = startswith(output.deployment_options["selected"].object_name, "models/org--model/us-phoenix-1/BM.GPU.A10.4/infrastructure-") && length(split("/", output.deployment_options["selected"].object_name)) == 5 && endswith(output.deployment_options["selected"].object_name, "-selected.zip") && output.deployment_options["selected"].expires_at == timeadd(local.published_at, "24h") && strcontains(output.deployment_options["selected"].launch_url, "region=us-phoenix-1&zipUrl=https%3A%2F%2F")
@@ -66,11 +70,22 @@ run "apply_renders_zip_and_creates_scoped_links" {
     error_message = "Child ZIPs must exclude parents, publisher, tests, provider caches and private state."
   }
 }
-run "customer_endpoint_uses_the_classic_storage_host_for_rms" {
+run "long_model_archive_path_does_not_lengthen_the_launch_url" {
   command = apply
+  variables {
+    model   = { repository = "organization/a-model-with-a-long-name-and-quantization-revision-for-a-realistic-archive-path", revision = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", checkpoint_download_bytes = 1000 }
+    options = { long_model = { region = "eu-frankfurt-1", availability_domain = "AD-2", gpu_shape = "BM.GPU4.8", node_count = 1, availability = "available_at_scan" } }
+  }
+  assert {
+    condition     = length("${split("/o/", local.rms_par_urls.long_model)[0]}/o/${local.object_names.long_model}") > 256 && length(output.deployment_options.long_model.download_url) <= 256 && length(output.deployment_options.long_model.launch_object_name) == 37
+    error_message = "Real-length PAR tokens plus descriptive paths reproduce the old failure; the short launch path must avoid it regardless of model name."
+  }
+}
+run "customer_endpoint_uses_the_classic_storage_host_for_rms" {
+  command   = apply
   providers = { oci = oci.customer }
   variables {
-    region = "us-chicago-1"
+    region  = "us-chicago-1"
     options = { customer = { region = "us-phoenix-1", availability_domain = "AD-1", gpu_shape = "BM.GPU.A10.4", node_count = 1, availability = "available_at_scan" } }
   }
   assert {
@@ -79,7 +94,7 @@ run "customer_endpoint_uses_the_classic_storage_host_for_rms" {
   }
 }
 run "existing_classic_and_noncommercial_hosts_are_unchanged" {
-  command = apply
+  command   = apply
   providers = { oci = oci.other_realm }
   variables {
     options = { other_realm = { region = "us-phoenix-1", availability_domain = "AD-1", gpu_shape = "BM.GPU.A10.4", node_count = 1, availability = "available_at_scan" } }
@@ -93,7 +108,7 @@ run "empty_options_create_no_storage" {
   command = plan
   variables { options = {} }
   assert {
-    condition     = length(oci_objectstorage_bucket.artifacts) == 0 && length(archive_file.infrastructure) == 0 && length(output.deployment_options) == 0
+    condition     = length(oci_objectstorage_bucket.artifacts) == 0 && length(oci_objectstorage_object.launch) == 0 && length(archive_file.infrastructure) == 0 && length(output.deployment_options) == 0
     error_message = "No confirmed options must create no publication resources."
   }
 }
@@ -103,4 +118,15 @@ run "reject_unconfirmed_options" {
     options = { unavailable = { region = "us-phoenix-1", availability_domain = "AD-1", gpu_shape = "BM.GPU.A10.4", node_count = 1, availability = "unconfirmed" } }
   }
   expect_failures = [var.options]
+}
+run "reject_package_urls_that_would_create_invalid_origin_tags" {
+  command = apply
+  variables {
+    options = { too_long = { region = "us-phoenix-1", availability_domain = "AD-1", gpu_shape = "BM.GPU.A10.4", node_count = 1, availability = "available_at_scan" } }
+  }
+  override_resource {
+    target = oci_objectstorage_preauthrequest.infrastructure["too_long"]
+    values = { full_path = "https://example.com/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.zip" }
+  }
+  expect_failures = [output.deployment_options]
 }
