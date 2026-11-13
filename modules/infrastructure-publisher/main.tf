@@ -104,14 +104,24 @@ resource "oci_objectstorage_preauthrequest" "infrastructure" {
   access_type  = "ObjectRead"
   time_expires = timeadd(local.published_at, "${var.par_lifetime_hours}h")
 }
+locals {
+  # RMS's package importer accepts the documented classic Object Storage URL.
+  # Recent SDKs return namespaced customer endpoints instead. Change only that
+  # commercial hostname; retain the storage region and complete PAR path.
+  rms_par_urls = { for id, par in oci_objectstorage_preauthrequest.infrastructure : id => replace(
+    par.full_path,
+    "/^https://[^./]+\\.objectstorage\\.([a-z0-9-]+)\\.oci\\.customer-oci\\.com//",
+    "https://objectstorage.$1.oraclecloud.com/"
+  ) }
+}
 output "deployment_options" {
   value = { for id, option in var.options : id => {
     kind                 = "infrastructure", region = option.region, artifact_region = var.region, availability_domain = option.availability_domain,
     gpu_shape            = option.gpu_shape, node_count = option.node_count, availability = option.availability,
     capacity_observed_at = try(option.capacity_observed_at, null), configuration_status = try(option.configuration_status, "requires_validation"),
     object_name          = local.object_names[id], published_at = local.published_at, expires_at = oci_objectstorage_preauthrequest.infrastructure[id].time_expires,
-    zip_sha256           = archive_file.infrastructure[id].output_sha256, download_url = oci_objectstorage_preauthrequest.infrastructure[id].full_path,
-    launch_url           = "https://cloud.oracle.com/resourcemanager/stacks/create?region=${urlencode(option.region)}&zipUrl=${urlencode(oci_objectstorage_preauthrequest.infrastructure[id].full_path)}",
+    zip_sha256           = archive_file.infrastructure[id].output_sha256, download_url = local.rms_par_urls[id],
+    launch_url           = "https://cloud.oracle.com/resourcemanager/stacks/create?region=${urlencode(option.region)}&zipUrl=${urlencode(local.rms_par_urls[id])}",
     remaining_input      = "Select an existing cluster; review preview before explicitly enabling GPU provisioning."
   } }
 }

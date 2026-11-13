@@ -32,3 +32,7 @@ output "recommended_launch_url" {
   description = "Open the recommended infrastructure stack in the selected region, then select an existing cluster and review preview."
   value       = try(module.infrastructure_publication[0].deployment_options[module.planner.assessment.recommended_selection_id].launch_url, null)
 }
+output "deployment_option_count" {
+  description = "Number of confirmed infrastructure choices in deployment_options. The primary button opens only the recommendation."
+  value       = length(try(module.infrastructure_publication[0].deployment_options, {}))
+}

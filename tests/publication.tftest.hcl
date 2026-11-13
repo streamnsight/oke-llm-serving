@@ -43,7 +43,7 @@ override_module {
 run "discovery_publishes_only_confirmed_choices" {
   command = apply
   assert {
-    condition     = toset(keys(output.deployment_options)) == toset(["selected"]) && strcontains(output.recommended_launch_url, "region=us-phoenix-1&zipUrl=") && module.infrastructure_publication[0].deployment_options.selected.artifact_region == "us-ashburn-1"
+    condition     = output.deployment_option_count == 1 && toset(keys(output.deployment_options)) == toset(["selected"]) && strcontains(output.recommended_launch_url, "region=us-phoenix-1&zipUrl=") && module.infrastructure_publication[0].deployment_options.selected.artifact_region == "us-ashburn-1"
     error_message = "Publish confirmed choices only, retaining the distinction between storage region and deployment region."
   }
 }
@@ -51,7 +51,7 @@ run "publication_can_be_disabled_for_discovery_only" {
   command = plan
   variables { publish_infrastructure_bundles = false }
   assert {
-    condition     = length(module.infrastructure_publication) == 0 && length(output.deployment_options) == 0 && output.recommended_launch_url == null
+    condition     = length(module.infrastructure_publication) == 0 && length(output.deployment_options) == 0 && output.deployment_option_count == 0 && output.recommended_launch_url == null
     error_message = "Discovery-only mode must have no publisher resources or launch links."
   }
 }

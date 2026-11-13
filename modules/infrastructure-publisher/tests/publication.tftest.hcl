@@ -7,6 +7,20 @@ mock_provider "oci" {
     defaults = { full_path = "https://objectstorage.us-ashburn-1.oraclecloud.com/p/fake-token/n/fixture/b/artifacts/o/stack.zip" }
   }
 }
+mock_provider "oci" {
+  alias = "customer"
+  mock_data "oci_objectstorage_namespace" { defaults = { namespace = "fixture" } }
+  mock_resource "oci_objectstorage_preauthrequest" {
+    defaults = { full_path = "https://fixture.objectstorage.us-chicago-1.oci.customer-oci.com/p/fake%2Ftoken/n/fixture/b/artifacts/o/folder/stack.zip" }
+  }
+}
+mock_provider "oci" {
+  alias = "other_realm"
+  mock_data "oci_objectstorage_namespace" { defaults = { namespace = "fixture" } }
+  mock_resource "oci_objectstorage_preauthrequest" {
+    defaults = { full_path = "https://objectstorage.us-langley-1.oraclegovcloud.com/p/fake/n/fixture/b/artifacts/o/stack.zip" }
+  }
+}
 variables {
   tenancy_ocid   = "root"
   compartment_id = "artifacts"
@@ -50,6 +64,29 @@ run "apply_renders_zip_and_creates_scoped_links" {
   assert {
     condition     = alltrue([for name in keys(local.files["selected"]) : !startswith(name, "templates/") && !startswith(name, "modules/infrastructure-publisher/") && !strcontains(name, "/.terraform/") && !strcontains(name, "/tests/")])
     error_message = "Child ZIPs must exclude parents, publisher, tests, provider caches and private state."
+  }
+}
+run "customer_endpoint_uses_the_classic_storage_host_for_rms" {
+  command = apply
+  providers = { oci = oci.customer }
+  variables {
+    region = "us-chicago-1"
+    options = { customer = { region = "us-phoenix-1", availability_domain = "AD-1", gpu_shape = "BM.GPU.A10.4", node_count = 1, availability = "available_at_scan" } }
+  }
+  assert {
+    condition     = output.deployment_options.customer.download_url == "https://objectstorage.us-chicago-1.oraclecloud.com/p/fake%2Ftoken/n/fixture/b/artifacts/o/folder/stack.zip" && strcontains(output.deployment_options.customer.launch_url, "region=us-phoenix-1&zipUrl=https%3A%2F%2Fobjectstorage.us-chicago-1.oraclecloud.com%2Fp%2Ffake%252Ftoken")
+    error_message = "Normalize only the SDK customer hostname, preserving the PAR path, escaping, storage region and target region."
+  }
+}
+run "existing_classic_and_noncommercial_hosts_are_unchanged" {
+  command = apply
+  providers = { oci = oci.other_realm }
+  variables {
+    options = { other_realm = { region = "us-phoenix-1", availability_domain = "AD-1", gpu_shape = "BM.GPU.A10.4", node_count = 1, availability = "available_at_scan" } }
+  }
+  assert {
+    condition     = output.deployment_options.other_realm.download_url == "https://objectstorage.us-langley-1.oraclegovcloud.com/p/fake/n/fixture/b/artifacts/o/stack.zip"
+    error_message = "Do not rewrite existing classic or other-realm service endpoints."
   }
 }
 run "empty_options_create_no_storage" {

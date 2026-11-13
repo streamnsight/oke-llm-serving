@@ -10,7 +10,7 @@ Discovery is the repository root. `make package` builds one entry ZIP containing
 
 ## Run and choose
 
-Run discovery Plan and Apply in RMS. After Apply, Application Information offers a recommended infrastructure link and a `deployment_options` JSON map of published choices. Entries include region/AD, shape/host count, capacity observation time, configuration status, ZIP SHA256, expiry, download URL and create-stack URL. Zero/unknown-capacity choices remain diagnostics. A launch link does not reserve hosts or provision infrastructure.
+Run discovery Plan and Apply in RMS. The primary button opens **only the recommended option**, not a selector. `deployment_option_count` shows how many choices are available. To select another region/AD/shape, open that entry's `launch_url` in the `deployment_options` JSON map. Entries include host count, capacity observation time, configuration status, ZIP SHA256, expiry and download URL. Zero/unknown-capacity choices remain diagnostics. A launch link does not reserve hosts or provision infrastructure.
 
 ```sh
 terraform init
@@ -20,7 +20,9 @@ terraform output -json deployment_options > work/deployment-options.json
 terraform output -raw recommended_launch_url
 ```
 
-The launch URL selects the GPU region and an object-read PAR. The bucket can be in another region. Its native full PAR URL is encoded as the Console query value. Open a chosen link, select an existing cluster and review preview. Only explicitly enabling `provision_resources` allocates hosts. The generated stack rejects a region different from its bundled specification.
+The launch URL selects the GPU region and an object-read PAR. The bucket can be in another region. The publisher normalizes newer commercial `namespace.objectstorage.REGION.oci.customer-oci.com` URLs to the classic `objectstorage.REGION.oraclecloud.com` endpoint documented for RMS quick-create links, then URL-encodes the complete PAR. Storage region and PAR path remain unchanged; other endpoint formats pass through. Open a chosen link, select an existing cluster and review preview. Only explicitly enabling `provision_resources` allocates hosts. The generated stack rejects a region different from its bundled specification.
+
+For an existing link returning GetPackage InvalidParameter(400), changing only that hostname inside its `zipUrl` can avoid the endpoint compatibility issue without re-uploading the ZIP or replacing its PAR. [Oracle's troubleshooting](https://docs.oracle.com/en-us/iaas/Content/ResourceManager/Troubleshoot/deploy-button.htm) first requires a valid, anonymously accessible ZIP; [its quick-create documentation](https://docs.oracle.com/en-us/iaas/Content/ResourceManager/Tasks/create-quick-create-links-stacks.htm) shows the classic endpoint format. A successful download alone does not establish successful RMS import; verify the Console wizard separately.
 
 ## Rendering and editability
 

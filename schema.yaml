@@ -7,11 +7,14 @@ version: "0.1.0"
 outputs:
   recommended_launch_url:
     type: link
-    title: Recommended GPU infrastructure
-    displayText: Create infrastructure stack
+    title: Recommended option only
+    displayText: Deploy recommended option
+  deployment_option_count:
+    type: number
+    title: Available infrastructure options
   deployment_options:
     type: json
-    title: All confirmed infrastructure launch options
+    title: All regions and GPU options (choose any launch_url)
 primaryOutputButton: ${recommended_launch_url}
 variableGroups:
   - title: Model and serving assumptions
