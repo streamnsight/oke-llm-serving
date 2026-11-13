@@ -10,6 +10,7 @@ variables {
   gpu_shape           = "BM.GPU.A10.4"
   node_count          = 1
   platform_name       = "platform-fixture"
+  skip_gpu_allocation = true
 }
 override_module {
   target = module.target
@@ -23,11 +24,11 @@ override_module {
   target  = module.allocation
   outputs = { allocation = { gpu_pool_id = "gpu-pool", cpu_pool_id = null, compute_cluster_id = null, allocation_identity = "allocation" } }
 }
-run "preview_has_no_allocation_bootstrap_or_model_dependency" {
-  command = plan
+run "debug_creates_platform_without_gpu_allocation" {
+  command = apply
   assert {
-    condition     = length(module.allocation) == 0 && length(module.bootstrap) == 0 && local.compartment_id == "stack-compartment" && output.infrastructure_preview.cpu_budget.creates_cpu_pool == false
-    error_message = "Default preview must not instantiate OCI resource modules or require a CPU image/model configuration."
+    condition     = length(module.allocation) == 0 && output.platform.project_id != null && output.platform.allocation.gpu_pool_id == null && output.platform.validation_scope == "cpu_components_only" && local.compartment_id == "stack-compartment" && output.infrastructure_preview.cpu_budget.creates_cpu_pool == false
+    error_message = "Debug skipping must create the DevOps foundation while allocating no GPU or CPU pools."
   }
   assert {
     condition     = output.infrastructure_preview.gpu_count_per_host == 4 && output.infrastructure_preview.bootstrap.automatically_started == false && output.infrastructure_preview.cpu_placement == "existing_cluster_cpu_pools"
@@ -36,7 +37,7 @@ run "preview_has_no_allocation_bootstrap_or_model_dependency" {
 }
 run "provisioning_uses_platform_identity_and_never_asserts_ready" {
   command = apply
-  variables { provision_resources = true }
+  variables { skip_gpu_allocation = false }
   assert {
     condition     = output.platform.platform_name == "platform-fixture" && output.platform.allocation.gpu_pool_id == "gpu-pool" && output.platform.cpu_placement == "existing_cluster_cpu_pools" && output.platform.runtime_readiness != "ready"
     error_message = "Publish stable pool/project references without claiming pipeline runtime validation."

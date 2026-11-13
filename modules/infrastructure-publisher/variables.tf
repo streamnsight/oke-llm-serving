@@ -18,6 +18,11 @@ variable "options" {
 }
 variable "template_dir" { type = string }
 variable "modules_dir" { type = string }
+variable "skip_gpu_allocation" {
+  type        = bool
+  default     = false
+  description = "Temporary debug default propagated into generated infrastructure ZIPs. Platform resources and CPU controllers are still provisioned."
+}
 variable "par_lifetime_hours" {
   type    = number
   default = 24

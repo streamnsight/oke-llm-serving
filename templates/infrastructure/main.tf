@@ -22,14 +22,14 @@ locals {
   selected_specification = fileexists("${path.module}/inputs/infrastructure-spec.json") ? jsondecode(file("${path.module}/inputs/infrastructure-spec.json")) : null
   recommendation_changes = local.selected_specification == null ? [] : [for key, value in local.selected_specification.recommendation : key if try({
     availability_domain = var.availability_domain, gpu_shape = var.gpu_shape, node_count = var.node_count,
-    boot_volume_gib     = var.boot_volume_gib, provision_resources = var.provision_resources
-  }[key] != value, false) && key != "provision_resources"]
+    boot_volume_gib     = var.boot_volume_gib, skip_gpu_allocation = var.skip_gpu_allocation
+  }[key] != value, false) && key != "skip_gpu_allocation"]
   specification = {
     schema_version              = "1.0", platform_name = var.platform_name, region = var.region, cluster_id = var.cluster_id,
     availability_domain         = var.availability_domain, gpu_shape = var.gpu_shape, gpu_count_per_host = try(local.gpu.gpus, 0), node_count = var.node_count,
     gpu_memory_bytes_per_device = try(local.gpu.memory_bytes_per_gpu, null),
     requires_rdma               = local.requires_rdma, rdma_resource_name = var.rdma_resource_name, enable_lws = var.enable_lws,
-    cpu_placement               = "existing_cluster_cpu_pools", gpu_shapes = keys(local.catalog.shapes),
+    cpu_placement               = "existing_cluster_cpu_pools", gpu_shapes = keys(local.catalog.shapes), gpu_allocation_enabled = !var.skip_gpu_allocation,
     boot_volume_gib             = var.boot_volume_gib, target = module.target.target
   }
 }
@@ -61,7 +61,7 @@ resource "terraform_data" "specification" {
     }
     precondition {
       condition     = module.target.target.ready
-      error_message = "Resolve the image/network issues shown by the target lookup before proceeding."
+      error_message = "Target lookup failed: ${join("; ", module.target.target.issues)}"
     }
     precondition {
       condition     = !local.requires_rdma || try(local.gpu.compute_cluster_supported && contains(local.catalog.compute_cluster_regions, var.region), false)
@@ -70,7 +70,7 @@ resource "terraform_data" "specification" {
   }
 }
 module "allocation" {
-  count               = var.provision_resources ? 1 : 0
+  count               = var.skip_gpu_allocation ? 0 : 1
   source              = "../../modules/gpu-allocation"
   tenancy_ocid        = var.tenancy_ocid
   compartment_id      = local.compartment_id
@@ -92,7 +92,7 @@ module "allocation" {
   specification_id    = terraform_data.specification.id
 }
 module "bootstrap" {
-  count          = var.provision_resources ? 1 : 0
+  depends_on     = [terraform_data.specification]
   source         = "../../modules/platform-bootstrap"
   tenancy_ocid   = var.tenancy_ocid
   compartment_id = local.compartment_id
@@ -100,12 +100,12 @@ module "bootstrap" {
   subnet_id      = module.target.target.devops_subnet_id
   nsg_ids        = module.target.target.devops_nsg_ids
   config = merge(local.specification, {
-    allocation = { for k in ["gpu_pool_id", "compute_cluster_id", "allocation_identity"] : k => module.allocation[0].allocation[k] }
+    allocation = { for k in ["gpu_pool_id", "compute_cluster_id", "allocation_identity"] : k => var.skip_gpu_allocation ? null : module.allocation[0].allocation[k] }
   })
 }
 output "infrastructure_preview" {
   value = merge(local.specification, {
-    provision_resources     = var.provision_resources,
+    skip_gpu_allocation     = var.skip_gpu_allocation,
     selected_recommendation = local.selected_specification == null ? null : { selection_id = local.selected_specification.selection_id, changed_fields = local.recommendation_changes, status = length(local.recommendation_changes) == 0 ? "original_recommendation; model runtime validation pending" : "expert_modified; original model sizing not validated for these changes" },
     network_selection       = var.rdma_mode == "auto" && try(local.gpu.rdma, false) && !local.requires_rdma ? "Ethernet fallback: Compute Cluster placement is not cataloged for this shape/region; no RDMA transport is claimed." : local.requires_rdma ? "RDMA Compute Cluster placement; fabric validation pending" : "Ethernet managed GPU pool",
     gpu_selector            = "oke-llm/allocation=${var.platform_name}",
@@ -115,5 +115,5 @@ output "infrastructure_preview" {
   })
 }
 output "allocation" { value = try(module.allocation[0].allocation, null) }
-output "platform" { value = try(module.bootstrap[0].platform, null) }
-output "bootstrap_rbac" { value = try(module.bootstrap[0].bootstrap_rbac, null) }
+output "platform" { value = module.bootstrap.platform }
+output "bootstrap_rbac" { value = module.bootstrap.bootstrap_rbac }

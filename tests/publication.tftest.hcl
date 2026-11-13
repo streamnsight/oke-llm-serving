@@ -55,3 +55,11 @@ run "publication_can_be_disabled_for_discovery_only" {
     error_message = "Discovery-only mode must have no publisher resources or launch links."
   }
 }
+run "debug_gpu_gate_reaches_the_publisher" {
+  command = apply
+  variables { skip_gpu_allocation = true }
+  assert {
+    condition     = output.deployment_options.selected.skip_gpu_allocation
+    error_message = "Discovery's debug setting must reach the actual published option."
+  }
+}

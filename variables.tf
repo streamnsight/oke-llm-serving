@@ -81,3 +81,8 @@ variable "par_lifetime_hours" {
   type    = number
   default = 24
 }
+variable "skip_gpu_allocation" {
+  type        = bool
+  default     = false
+  description = "Temporary debug default for generated infrastructure stacks: skip GPU allocation while creating DevOps and CPU platform components."
+}

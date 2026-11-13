@@ -136,6 +136,7 @@ output "platform" {
   value = {
     schema_version    = "1.0", platform_name = var.name, generation = local.generation, region = var.config.region, cluster_id = var.config.cluster_id,
     allocation        = var.config.allocation, gpu_shape = var.config.gpu_shape, node_count = var.config.node_count, gpu_count_per_host = var.config.gpu_count_per_host,
+    validation_scope  = try(var.config.gpu_allocation_enabled, true) ? "platform_and_gpu_capacity" : "cpu_components_only",
     gpu_selector      = "oke-llm/allocation=${var.name}", cpu_placement = "existing_cluster_cpu_pools",
     project_id        = oci_devops_project.platform.id, bootstrap_pipeline_id = oci_devops_deploy_pipeline.bootstrap.id,
     specification_uri = "oci://${var.config.region}/${data.oci_objectstorage_namespace.target.namespace}/${oci_objectstorage_bucket.platform.name}/${oci_objectstorage_object.specification.object}",

@@ -22,11 +22,16 @@ variableGroups:
   - title: Capacity observation
     variables: [observation_id, compartment_id, regions, shape_names, query_resource_availability, only_shapes_with_limits]
   - title: Infrastructure launch bundles
-    variables: [publish_infrastructure_bundles, artifact_compartment_id, par_lifetime_hours]
+    variables: [publish_infrastructure_bundles, artifact_compartment_id, par_lifetime_hours, skip_gpu_allocation]
   - title: OCI context
     visible: false
     variables: [tenancy_ocid, compartment_ocid, region]
 variables:
+  skip_gpu_allocation:
+    type: boolean
+    default: false
+    title: Debug only — skip GPU allocation in generated stacks
+    description: Generated stacks still create DevOps resources and can install shared CPU controllers. Normal deployments allocate GPUs; discovery itself never allocates GPUs.
   compartment_ocid:
     type: string
     visible: false

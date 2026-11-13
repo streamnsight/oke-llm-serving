@@ -106,7 +106,9 @@ test('infrastructure RMS form exposes GPU hardware without CPU-pool or model inp
   const helpers=new Set(Object.values(schema.variables).map(v=>v.valueType).filter(Boolean));
   assert.deepEqual(Object.keys(schema.variables).filter(k=>!helpers.has(k)).sort(),variables);
   for(const absent of ['model','discovery_json','engine_image','cpu_image_id','cpu_node_count']) assert.equal(schema.variables[absent],undefined);
-  assert.equal(schema.variables.provision_resources.default,false);
+  assert.equal(schema.variables.skip_gpu_allocation.default,false);
+  assert.equal(schema.variables.provision_resources,undefined);
+  for(const name of ['infrastructure_preview','platform','bootstrap_rbac','allocation']) assert.equal(schema.outputs[name].type,'json');
   assert.equal(schema.variables.compartment_id.default,'compartment_ocid');
   assert.equal(schema.variables.cluster_id.type,'oci:container:cluster:id');
   assert.equal(schema.variables.rdma_mode.default,'auto');

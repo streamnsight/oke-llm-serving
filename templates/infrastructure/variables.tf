@@ -31,10 +31,10 @@ variable "platform_name" {
     error_message = "Use a DNS-safe platform name of 2–32 characters."
   }
 }
-variable "provision_resources" {
+variable "skip_gpu_allocation" {
   type        = bool
   default     = false
-  description = "Preview by default. Do not disable after allocation: retained pools cannot be destroyed."
+  description = "Temporary debug switch: create platform resources and install CPU controllers without allocating GPU hosts. Never enable after GPU allocation."
 }
 variable "advanced_settings" {
   type    = bool

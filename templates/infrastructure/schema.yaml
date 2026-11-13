@@ -1,12 +1,25 @@
 # Copyright (c) 2020-2022 Oracle and/or its affiliates. All rights reserved.
 # Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
 title: OKE retained GPU infrastructure
-description: Preview a GPU-only pool in an existing cluster. Reuse existing CPU pools and OKE GPU/network add-ons. Provisioning creates a platform bootstrap pipeline but does not run it or deploy models.
+description: Apply creates DevOps platform resources and GPU infrastructure in an existing cluster. The temporary debug switch skips GPU allocation only. Run the bootstrap pipeline to install shared CPU controllers. No models are deployed.
 schemaVersion: 1.1.0
 version: "0.1.0"
+outputs:
+  infrastructure_preview:
+    type: json
+    title: Selected infrastructure and debug scope
+  platform:
+    type: json
+    title: DevOps project, bootstrap pipeline and readiness location
+  bootstrap_rbac:
+    type: json
+    title: Cluster administrator binding for the bootstrap pipeline
+  allocation:
+    type: json
+    title: Retained GPU allocation (absent when debug skipping is enabled)
 variableGroups:
   - title: Existing cluster and GPU selection
-    variables: [platform_name, compartment_id, cluster_id, availability_domain, gpu_shape, node_count, provision_resources, advanced_settings]
+    variables: [platform_name, compartment_id, cluster_id, availability_domain, gpu_shape, node_count, skip_gpu_allocation, advanced_settings]
   - title: Platform and storage overrides
     visible: advanced_settings
     variables: [enable_lws, rdma_mode, os_version, boot_volume_gib, gpu_image_id, rdma_resource_name, observation_id]
@@ -59,11 +72,11 @@ variables:
     default: 1
     minimum: 1
     title: GPU host count (not GPU count)
-  provision_resources:
+  skip_gpu_allocation:
     type: boolean
     default: false
-    title: Create GPU infrastructure and bootstrap pipeline
-    description: Leave disabled for preview. After allocation, do not toggle off or destroy this retained infrastructure state.
+    title: Debug only — skip GPU allocation
+    description: DevOps and shared CPU components are still created. Normally leave off. Never enable after GPU allocation; retained pools cannot be destroyed.
   advanced_settings:
     type: boolean
     default: false

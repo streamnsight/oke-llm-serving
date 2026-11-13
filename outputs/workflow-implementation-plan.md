@@ -292,3 +292,12 @@ Eight publisher runs and eight root discovery runs passed with OCI mocked. The a
 3. [x] Document a metadata-preserving CLI update for the existing CPU pool and the distinction from editing individual Compute instances. Validate/package the source change without updating live pools, cycling nodes or triggering pending CPU launches.
 
 All 11 allocation test runs passed with OCI mocked, including both metadata defaults. Infrastructure and combined deployment roots passed Terraform validation. The entry package is rebuilt from the feature commit and checked for ZIP integrity and both node-pool defaults. Real Terraform state, backup and tfvars hashes and staged AGENTS.md are preserved. No live node-pool update was executed; the external CPU pool requires its owner to apply the documented change.
+
+## GPU-only debug gate and live CPU platform bootstrap
+
+1. [x] Replace the infrastructure-wide provision flag with temporary skip_gpu_allocation (normal default false). Always create platform resources on Apply, propagate the debug choice through discovery/publisher/schema/packages, and expose RMS outputs. Do not allocate GPUs during this validation.
+2. [x] Run bootstrap with CPU-only readiness when debugging. Keep normal GPU/RDMA checks, generation evidence and controller ownership safeguards. Record skipped GPU validation explicitly; never report model readiness.
+3. [ ] Test both modes and generated ZIP defaults, validate/package source, and update the existing RMS stack in debug mode. Inspect a saved plan to confirm no GPU node pools, Compute Clusters or capacity reservations before Apply.
+4. [ ] Provision platform resources, establish the narrowly scoped pipeline's cluster authorization, run the DevOps pipeline, verify LWS CRD/controller/admission and persisted evidence, and record exact live limitations. Preserve staged AGENTS.md and existing GPU allocations.
+
+Local checks passed: 10 infrastructure runs, nine publisher runs, nine discovery runs, one platform-module run, four extracted-child runs and a saved-Plan/fresh-Apply archive check; 38 script/schema tests passed with two optional chart skips. The released LWS chart was fetched and its version is v1.0.0; controller reuse now accepts its v-prefixed chart spelling without upgrading. The user's OBC kubeconfig context is used for the test cluster, without changing the global current context.

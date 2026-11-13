@@ -16,11 +16,23 @@ override_module {
     gpu_nsg_ids = [], pod_nsg_ids = [], devops_nsg_ids = [], oke_addons = []
   } }
 }
-run "rendered_defaults_produce_a_gpu_only_preview" {
+override_module {
+  target = module.allocation
+  outputs = { allocation = { gpu_pool_id = "gpu-pool", compute_cluster_id = null, allocation_identity = "allocation" } }
+}
+run "rendered_normal_defaults_plan_gpu_allocation_and_platform" {
   command = plan
   assert {
-    condition     = var.node_count == 1 && var.boot_volume_gib == 300 && var.gpu_shape == "BM.GPU.A10.4" && length(module.allocation) == 0 && length(module.bootstrap) == 0 && local.selected_specification.selection_id == "selected"
-    error_message = "The rendered ZIP must be prefilled and preview-only without a large JSON variable."
+    condition     = var.node_count == 1 && var.boot_volume_gib == 300 && var.gpu_shape == "BM.GPU.A10.4" && length(module.allocation) == 1 && !var.skip_gpu_allocation && module.bootstrap.platform.validation_scope == "platform_and_gpu_capacity" && local.selected_specification.selection_id == "selected"
+    error_message = "Normal generated defaults must plan GPU allocation and platform resources without a large JSON variable."
+  }
+}
+run "debug_still_plans_platform_resources_without_gpu_hosts" {
+  command = plan
+  variables { skip_gpu_allocation = true }
+  assert {
+    condition = length(module.allocation) == 0 && module.bootstrap.platform.allocation.gpu_pool_id == null && module.bootstrap.platform.validation_scope == "cpu_components_only"
+    error_message = "The debug override must affect GPU allocation only."
   }
 }
 run "expert_values_override_recommendations_and_are_disclosed" {

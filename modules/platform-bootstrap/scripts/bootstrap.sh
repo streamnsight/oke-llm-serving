@@ -21,7 +21,7 @@ archive() {
   trap - EXIT
   jq -n --arg generation "$generation" --arg platform "$platform" --arg checked_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --arg deployment_id "${OCI_DEPLOYMENT_ID:-}" --argjson code "$code" \
     --slurpfile checks node-readiness.json --slurpfile controllers controllers.json \
-    '{generation:$generation,platform_name:$platform,checked_at:$checked_at,deployment_id:$deployment_id,status:(if $code==0 then "ready" else "failed" end),exit_code:$code,node_checks:$checks[0],controllers:$controllers[0],model_runtime_validation:"not_run",rdma_fabric_validation:"not_run"}' > readiness.json
+    '{generation:$generation,platform_name:$platform,checked_at:$checked_at,deployment_id:$deployment_id,status:(if $code==0 then "ready" else "failed" end),exit_code:$code,validation_scope:$checks[0].validation_scope,node_checks:$checks[0],controllers:$controllers[0],model_runtime_validation:"not_run",rdma_fabric_validation:"not_run"}' > readiness.json
   # Retain per-run evidence; only the pipeline owns the generation readiness key.
   local run_id=${OCI_DEPLOYMENT_ID:-$(date -u +%Y%m%dT%H%M%SZ)}
   for file in readiness.json gpu-nodes.json cpu-nodes.json helm-releases.json lws-admission.json; do
@@ -55,7 +55,11 @@ oci ce cluster create-kubeconfig --cluster-id "$(jq -er .cluster_id config.json)
 export KUBECONFIG="$run_dir/kubeconfig"
 ready=false
 for attempt in $(seq 1 120); do
-  kubectl get nodes -l "oke-llm/allocation=$platform" -o json > gpu-nodes.json
+  if [[ $(jq -r '.gpu_allocation_enabled != false' config.json) == true ]]; then
+    kubectl get nodes -l "oke-llm/allocation=$platform" -o json > gpu-nodes.json
+  else
+    printf '{"items":[]}\n' > gpu-nodes.json
+  fi
   kubectl get nodes -o json > cpu-nodes.json
   jq -n --slurpfile c config.json --slurpfile gpu gpu-nodes.json --slurpfile cpu cpu-nodes.json '{config:$c[0],gpu_nodes:$gpu[0],cpu_nodes:$cpu[0]}' | jq -f readiness.jq > node-readiness.json
   if jq -e .ready node-readiness.json >/dev/null; then ready=true; break; fi
@@ -84,7 +88,7 @@ if [[ $(jq -r .enable_lws config.json) == true ]]; then
         namespace=$(jq -er .namespace existing-release.json)
       fi
     fi
-    jq -e --arg release "$release" --arg namespace "$namespace" --arg chart "lws-$version" 'any(.[]; .name==$release and .namespace==$namespace and .chart==$chart and .status=="deployed")' helm-releases.json >/dev/null || {
+    jq -e --arg release "$release" --arg namespace "$namespace" --arg version "${version#v}" 'any(.[]; .name==$release and .namespace==$namespace and (.chart==("lws-"+$version) or .chart==("lws-v"+$version)) and .status=="deployed")' helm-releases.json >/dev/null || {
       echo 'Existing LWS installation is not the expected healthy chart version. Review its ownership/version; no adoption or upgrade was attempted.' >&2; exit 1;
     }
     action=reused

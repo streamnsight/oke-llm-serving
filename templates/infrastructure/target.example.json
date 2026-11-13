@@ -7,5 +7,5 @@
   "gpu_shape": "BM.GPU.A10.4",
   "node_count": 1,
   "platform_name": "llm-platform",
-  "provision_resources": false
+  "skip_gpu_allocation": true
 }

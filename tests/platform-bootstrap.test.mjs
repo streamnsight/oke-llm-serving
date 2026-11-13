@@ -29,6 +29,13 @@ test('platform readiness requires the full host GPU count and resolves RDMA expl
   const ambiguous={...rdmaGpu,status:{...rdmaGpu.status,allocatable:{...rdmaGpu.status.allocatable,'rdma/second':'1'}}};
   assert.equal(readiness({config:{...config,requires_rdma:true},gpu_nodes:{items:[ambiguous]}}).fatal,true);
 });
+test('debug skips GPU and RDMA readiness while still requiring schedulable CPU capacity',()=>{
+  const changes={config:{...config,gpu_allocation_enabled:false,requires_rdma:true},gpu_nodes:{items:[]},cpu_nodes:{items:[cpu]}};
+  const result=readiness(changes);
+  assert.equal(result.ready,true); assert.equal(result.validation_scope,'cpu_components_only'); assert.equal(result.gpu_validation,'skipped_debug');
+  assert.equal(result.fatal,false); assert.deepEqual(result.reasons,[]);
+  assert.equal(readiness({...changes,cpu_nodes:{items:[]}}).ready,false);
+});
 
 // External commands are simulated; the real Bash runner, jq evaluation, binary
 // checksums, archive extraction and evidence handling run together locally.
@@ -56,7 +63,7 @@ if(tool==='curl') {
  else if(args[0]==='upgrade') {state.installed=true;}
  else throw Error('unexpected Helm action');
 } else if(tool==='kubectl') {
- if(args[0]==='get'&&args[1]==='nodes') out({items:args.includes('-l')?[state.gpu]:[state.gpu,state.cpu]});
+ if(args[0]==='get'&&args[1]==='nodes') out({items:(args.includes('-l')?[state.gpu]:[state.gpu,state.cpu]).filter(Boolean)});
  else if(args[0]==='get'&&args[1]==='crd') {if(state.crd) out(state.crd);}
  else if(args[0]==='get'&&args[1]==='deployments') out({items:[{metadata:{name:'lws-controller-manager'}}]});
  else if(args[0]==='wait') {}
@@ -66,7 +73,7 @@ if(tool==='curl') {
 } else if(tool==='sleep') {} else throw Error('unexpected tool');
 save();
 `;
-function runBootstrap(initial={}) {
+function runBootstrap(initial={},configuration=config) {
   const dir=mkdtempSync(`${tmpdir()}/oke-platform-run-`);
   try {
     mkdirSync(`${dir}/bin`); mkdirSync(`${dir}/linux-amd64`);
@@ -74,7 +81,7 @@ function runBootstrap(initial={}) {
     writeFileSync(`${dir}/linux-amd64/helm`,readFileSync(`${dir}/bin/helm`),{mode:0o755});
     execFileSync('tar',['-czf',`${dir}/helm.tgz`,'-C',dir,'linux-amd64']);
     writeFileSync(`${dir}/state.json`,JSON.stringify({calls:[],uploads:[],releases:[],crd:null,gpu,cpu,...initial}));
-    const result=spawnSync('bash',[`${modulePath}/scripts/bootstrap.sh`],{env:{...process.env,PATH:`${dir}/bin:${process.env.PATH}`,MOCK_DIR:dir,OCI_DEPLOYMENT_ID:'mock-run',CONFIG_B64:Buffer.from(JSON.stringify(config)).toString('base64'),READINESS_B64:readFileSync(`${modulePath}/scripts/readiness.jq`).toString('base64')},encoding:'utf8',timeout:20000});
+    const result=spawnSync('bash',[`${modulePath}/scripts/bootstrap.sh`],{env:{...process.env,PATH:`${dir}/bin:${process.env.PATH}`,MOCK_DIR:dir,OCI_DEPLOYMENT_ID:'mock-run',CONFIG_B64:Buffer.from(JSON.stringify(configuration)).toString('base64'),READINESS_B64:readFileSync(`${modulePath}/scripts/readiness.jq`).toString('base64')},encoding:'utf8',timeout:20000});
     const state=JSON.parse(readFileSync(`${dir}/state.json`));
     return {...result,state,marker:JSON.parse(state.uploads.filter(x=>x.name.endsWith('/readiness.json')).at(-1).body)};
   } finally {rmSync(dir,{recursive:true,force:true});}
@@ -90,8 +97,21 @@ test('bootstrap installs only a shared controller and writes generation readines
   assert.equal(result.state.calls.filter(x=>x.tool==='oci'&&x.args[0]==='ce').length,1,'only kubeconfig creation may use OCI CE');
   assert.equal(result.marker.model_runtime_validation,'not_run');
 });
+test('debug pipeline installs LWS with no GPU nodes and labels evidence as CPU-only',()=>{
+  const result=runBootstrap({gpu:null},{...config,gpu_allocation_enabled:false,requires_rdma:true});
+  assert.equal(result.status,0,result.stderr); assert.equal(result.marker.status,'ready');
+  assert.equal(result.marker.validation_scope,'cpu_components_only');
+  assert.equal(result.marker.node_checks.gpu_validation,'skipped_debug');
+  assert.equal(result.marker.controllers.lws.action,'installed');
+  assert.equal(result.state.calls.filter(x=>x.tool==='kubectl'&&x.args.includes('-l')&&x.args.includes('nodes')).length,0);
+});
 test('ordinary Helm crds without ownership annotations reuse a unique existing release',()=>{
   const result=runBootstrap({crd:{metadata:{annotations:{}}},releases:[{name:'existing-lws',namespace:'existing-system',chart:'lws-1.0.0',status:'deployed'}]});
+  assert.equal(result.status,0,result.stderr); assert.equal(result.marker.controllers.lws.action,'reused');
+  assert.equal(result.state.calls.filter(x=>x.tool==='helm'&&x.args[0]==='upgrade').length,0);
+});
+test('released LWS chart version with a v prefix is reused without an upgrade',()=>{
+  const result=runBootstrap({crd:{metadata:{annotations:{}}},releases:[{name:'existing-lws',namespace:'existing-system',chart:'lws-v1.0.0',status:'deployed'}]});
   assert.equal(result.status,0,result.stderr); assert.equal(result.marker.controllers.lws.action,'reused');
   assert.equal(result.state.calls.filter(x=>x.tool==='helm'&&x.args[0]==='upgrade').length,0);
 });
