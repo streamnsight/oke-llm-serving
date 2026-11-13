@@ -73,7 +73,7 @@ if(tool==='curl') {
 } else if(tool==='sleep') {} else throw Error('unexpected tool');
 save();
 `;
-function runBootstrap(initial={},configuration=config) {
+function runBootstrap(initial={},configuration=config,deploymentId='mock-run') {
   const dir=mkdtempSync(`${tmpdir()}/oke-platform-run-`);
   try {
     mkdirSync(`${dir}/bin`); mkdirSync(`${dir}/linux-amd64`);
@@ -81,7 +81,7 @@ function runBootstrap(initial={},configuration=config) {
     writeFileSync(`${dir}/linux-amd64/helm`,readFileSync(`${dir}/bin/helm`),{mode:0o755});
     execFileSync('tar',['-czf',`${dir}/helm.tgz`,'-C',dir,'linux-amd64']);
     writeFileSync(`${dir}/state.json`,JSON.stringify({calls:[],uploads:[],releases:[],crd:null,gpu,cpu,...initial}));
-    const result=spawnSync('bash',[`${modulePath}/scripts/bootstrap.sh`],{env:{...process.env,PATH:`${dir}/bin:${process.env.PATH}`,MOCK_DIR:dir,OCI_DEPLOYMENT_ID:'mock-run',CONFIG_B64:Buffer.from(JSON.stringify(configuration)).toString('base64'),READINESS_B64:readFileSync(`${modulePath}/scripts/readiness.jq`).toString('base64')},encoding:'utf8',timeout:20000});
+    const result=spawnSync('bash',[`${modulePath}/scripts/bootstrap.sh`],{env:{...process.env,PATH:`${dir}/bin:${process.env.PATH}`,MOCK_DIR:dir,OCI_DEPLOYMENT_ID:deploymentId,CONFIG_B64:Buffer.from(JSON.stringify(configuration)).toString('base64'),READINESS_B64:readFileSync(`${modulePath}/scripts/readiness.jq`).toString('base64')},encoding:'utf8',timeout:20000});
     const state=JSON.parse(readFileSync(`${dir}/state.json`));
     return {...result,state,marker:JSON.parse(state.uploads.filter(x=>x.name.endsWith('/readiness.json')).at(-1).body)};
   } finally {rmSync(dir,{recursive:true,force:true});}
@@ -104,6 +104,12 @@ test('debug pipeline installs LWS with no GPU nodes and labels evidence as CPU-o
   assert.equal(result.marker.node_checks.gpu_validation,'skipped_debug');
   assert.equal(result.marker.controllers.lws.action,'installed');
   assert.equal(result.state.calls.filter(x=>x.tool==='kubectl'&&x.args.includes('-l')&&x.args.includes('nodes')).length,0);
+});
+test('Shell runtimes without a deployment ID keep timestamped per-run evidence',()=>{
+  const result=runBootstrap({},config,'');
+  assert.equal(result.status,0,result.stderr); assert.equal(result.marker.status,'ready');
+  assert.ok(result.state.uploads.some(x=>/\/runs\/\d{8}T\d{6}Z\/readiness\.json$/.test(x.name)));
+  assert.ok(result.state.uploads.every(x=>!x.name.includes('/runs//')));
 });
 test('ordinary Helm crds without ownership annotations reuse a unique existing release',()=>{
   const result=runBootstrap({crd:{metadata:{annotations:{}}},releases:[{name:'existing-lws',namespace:'existing-system',chart:'lws-1.0.0',status:'deployed'}]});
