@@ -36,7 +36,11 @@ override_module {
 }
 override_data {
   target = data.oci_containerengine_addons.target[0]
-  values = { addons = [] }
+  # Existing service-managed prerequisites; tests never install an add-on.
+  values = { addons = [
+    { addon_name = "NvidiaDevicePlugin", current_installed_version = "fixture-device-plugin", version = "fixture-device-plugin", state = "ACTIVE", configurations = [] },
+    { addon_name = "NvidiaNetworkOperator", current_installed_version = "fixture-network-operator", version = "fixture-network-operator", state = "ACTIVE", configurations = [] }
+  ] }
 }
 run "regular_pool_and_cpu_capacity" {
   command = plan
@@ -104,6 +108,130 @@ override_module {
   target  = module.inventory
   outputs = { result = { limits = [{ name = "gpu-a10-count", description = "GPUs for test instances", scope_type = "AD", availability_domain = "AD-1", resource_availability = { available = 100, fractional_availability = null, status = "observed" } }] } }
 }
+run "missing_native_gpu_addon_blocks_before_pool_allocation" {
+  command = plan
+  override_data {
+    target = data.oci_containerengine_addons.target[0]
+    values = { addons = [] }
+  }
+  expect_failures = [oci_containerengine_node_pool.gpu]
+  assert {
+    condition     = !output.addon_prerequisites.ready && output.addon_prerequisites.status == "blocked_native_addon_prerequisites" && strcontains(output.addon_prerequisites.blocking_reasons[0], "Enable or repair the OKE NVIDIA GPU Plugin")
+    error_message = "An enhanced cluster with no native GPU device-plugin integration must fail before allocating a GPU pool, with an actionable service-managed remedy."
+  }
+}
+
+run "inactive_gpu_addon_is_not_a_functioning_prerequisite" {
+  command = plan
+  override_data {
+    target = data.oci_containerengine_addons.target[0]
+    values = { addons = [{ addon_name = "NvidiaDevicePlugin", state = "NEEDS_ATTENTION", current_installed_version = "fixture", configurations = [] }] }
+  }
+  expect_failures = [oci_containerengine_node_pool.gpu]
+  assert {
+    condition     = output.addon_prerequisites.gpu.status == "missing_or_unusable_native_device_plugin"
+    error_message = "A reported but unhealthy service add-on must not satisfy the native GPU prerequisite."
+  }
+}
+
+run "gpu_operator_with_explicitly_disabled_device_plugin_is_insufficient" {
+  command = plan
+  override_data {
+    target = data.oci_containerengine_addons.target[0]
+    values = { addons = [{ addon_name = "NvidiaGpuOperator", state = "ACTIVE", current_installed_version = "fixture", configurations = [{ key = "devicePlugin.enabled", value = "false" }] }] }
+  }
+  expect_failures = [oci_containerengine_node_pool.gpu]
+  assert {
+    condition     = output.addon_prerequisites.gpu.observed_addons[0].device_plugin_explicitly_disabled
+    error_message = "ACTIVE GPU Operator alone cannot supply device allocation when devicePlugin.enabled is explicitly false."
+  }
+}
+
+run "gpu_operator_can_reuse_another_active_device_plugin" {
+  command = plan
+  override_data {
+    target = data.oci_containerengine_addons.target[0]
+    values = { addons = [
+      { addon_name = "NvidiaGpuOperator", state = "ACTIVE", current_installed_version = "fixture", configurations = [{ key = "devicePlugin.enabled", value = "false" }, { key = "dcgmExporter.enabled", value = "true" }, { key = "dcgmExporter.serviceMonitor.enabled", value = "false" }] },
+      { addon_name = "NvidiaDevicePlugin", state = "ACTIVE", current_installed_version = "fixture", configurations = [] }
+    ] }
+  }
+  assert {
+    condition     = output.addon_prerequisites.ready && output.addon_prerequisites.status == "native_addons_active_runtime_unverified" && output.addon_prerequisites.gpu_metrics.operator_configuration[0].exporter_enabled && !output.addon_prerequisites.gpu_metrics.operator_configuration[0].service_monitor_enabled && output.addon_prerequisites.gpu_metrics.status == "exporter_endpoint_and_prometheus_scraping_not_verified"
+    error_message = "An independent active plugin is sufficient; exporter configuration must remain distinct from validated Prometheus scraping."
+  }
+}
+
+run "null_device_plugin_setting_uses_the_documented_enabled_default" {
+  command = plan
+  override_data {
+    target = data.oci_containerengine_addons.target[0]
+    values = { addons = [{ addon_name = "NvidiaGpuOperator", state = "ACTIVE", current_installed_version = "fixture", configurations = [{ key = "devicePlugin.enabled", value = false ? "" : null }] }] }
+  }
+  assert {
+    condition     = output.addon_prerequisites.ready && !output.addon_prerequisites.gpu.observed_addons[0].device_plugin_explicitly_disabled && output.allocation.addon_prerequisites.status == "native_addons_active_runtime_unverified"
+    error_message = "An unset device-plugin configuration is different from explicitly disabling it."
+  }
+}
+
+run "rdma_missing_network_operator_blocks_both_retained_resources" {
+  command = plan
+  variables {
+    requires_rdma = true
+    gpu_shape     = "BM.GPU4.8"
+  }
+  override_data {
+    target = data.oci_containerengine_node_pool_option.target
+    values = { shapes = ["BM.GPU4.8"] }
+  }
+  override_data {
+    target = data.oci_core_shapes.target
+    values = { shapes = [{ name = "BM.GPU4.8", gpus = 8, rdma_ports = 8, quota_names = ["gpu-a10-count"] }] }
+  }
+  override_data {
+    target = data.oci_containerengine_addons.target[0]
+    values = { addons = [{ addon_name = "NvidiaDevicePlugin", state = "ACTIVE", current_installed_version = "fixture", configurations = [] }] }
+  }
+  # Its failure also blocks the dependent node pool before pool evaluation.
+  expect_failures = [oci_core_compute_cluster.gpu]
+  assert {
+    condition     = !output.addon_prerequisites.ready && output.addon_prerequisites.rdma.network_addon_status == "missing_or_inactive" && strcontains(output.addon_prerequisites.blocking_reasons[0], "managed pod-RDMA path") && strcontains(output.addon_prerequisites.rdma.host_agent_configuration, "Oracle Cloud Agent")
+    error_message = "Absent native pod-network prerequisites must block both Compute Cluster and GPU allocation; automatic host RDMA agents do not prove Kubernetes device exposure."
+  }
+}
+
+run "active_network_operator_does_not_prove_pod_rdma_or_gpudirect" {
+  command = plan
+  variables {
+    requires_rdma = true
+    gpu_shape     = "BM.GPU4.8"
+  }
+  override_data {
+    target = data.oci_containerengine_node_pool_option.target
+    values = { shapes = ["BM.GPU4.8"] }
+  }
+  override_data {
+    target = data.oci_core_shapes.target
+    values = { shapes = [{ name = "BM.GPU4.8", gpus = 8, rdma_ports = 8, quota_names = ["gpu-a10-count"] }] }
+  }
+  assert {
+    condition     = output.addon_prerequisites.ready && output.addon_prerequisites.rdma.network_addon_status == "active_configuration_unverified" && output.addon_prerequisites.rdma.pod_device_exposure == "unverified_until_gpu_nodes_advertise_selected_extended_rdma_resource" && output.addon_prerequisites.rdma.observed_addons[0].sriov_enabled == null && output.addon_prerequisites.management == "reuse_only_no_addon_creation_or_configuration_changes"
+    error_message = "Service ACTIVE is prerequisite evidence only; missing SR-IOV configuration and actual pod-device/fabric operation remain unverified."
+  }
+}
+
+run "basic_cluster_device_plugins_are_unknown_not_proven_absent" {
+  command = plan
+  override_data {
+    target = data.oci_containerengine_cluster.target
+    values = { state = "ACTIVE", type = "BASIC_CLUSTER", kubernetes_version = "v1.34.1" }
+  }
+  assert {
+    condition     = output.addon_prerequisites.ready && output.addon_prerequisites.status == "unverified_basic_cluster" && output.addon_prerequisites.gpu.status == "not_assessed" && length(output.addon_prerequisites.gpu.observed_addons) == 0 && strcontains(output.addon_prerequisites.diagnostics[0], "availability is unknown")
+    error_message = "Not querying enhanced-cluster add-ons on a basic cluster must not be presented as proof that a manually managed device plugin is missing or usable."
+  }
+}
+
 # Seed only the built-in ownership resource, so retained-pool plan checks
 # have a state identity without creating prevent_destroy-protected resources.
 run "seed_allocation_identity" {

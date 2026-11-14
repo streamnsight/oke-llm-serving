@@ -64,7 +64,13 @@ resource "oci_core_compute_cluster" "gpu" {
   compartment_id      = var.compartment_id
   availability_domain = var.availability_domain
   display_name        = var.name
-  lifecycle { prevent_destroy = true }
+  lifecycle {
+    prevent_destroy = true
+    precondition {
+      condition     = local.addon_prerequisites.ready
+      error_message = join(" ", local.addon_prerequisites.blocking_reasons)
+    }
+  }
 }
 resource "oci_identity_policy" "compute_cluster" {
   provider       = oci.home
@@ -132,6 +138,10 @@ resource "oci_containerengine_node_pool" "gpu" {
   lifecycle {
     prevent_destroy      = true
     replace_triggered_by = [terraform_data.identity]
+    precondition {
+      condition     = local.addon_prerequisites.ready
+      error_message = join(" ", local.addon_prerequisites.blocking_reasons)
+    }
     precondition {
       condition = terraform_data.bindings.output == {
         cluster_id         = var.cluster_id, availability_domain = var.availability_domain,
@@ -219,5 +229,5 @@ resource "oci_containerengine_node_pool" "cpu" {
   lifecycle { prevent_destroy = true }
 }
 output "allocation" {
-  value = { oke_addons = try([for addon in data.oci_containerengine_addons.target[0].addons : { name = addon.addon_name, installed_version = addon.current_installed_version, requested_version = addon.version, state = addon.state }], []), gpu_pool_id = oci_containerengine_node_pool.gpu.id, cpu_pool_id = try(oci_containerengine_node_pool.cpu[0].id, null), compute_cluster_id = try(oci_core_compute_cluster.gpu[0].id, null), kubernetes_version = data.oci_containerengine_cluster.target.kubernetes_version, name = var.name, allocation_identity = terraform_data.identity.id, requested_nodes = var.node_count, retained_nodes = local.retained_instances, additional_nodes = local.additional_instances, quota_checks = local.quota_checks, cluster_compartment_id = data.oci_containerengine_cluster.target.compartment_id, capacity = module.capacity.result }
+  value = { addon_prerequisites = local.addon_prerequisites, oke_addons = try([for addon in data.oci_containerengine_addons.target[0].addons : { name = addon.addon_name, installed_version = addon.current_installed_version, requested_version = addon.version, state = addon.state }], []), gpu_pool_id = oci_containerengine_node_pool.gpu.id, cpu_pool_id = try(oci_containerengine_node_pool.cpu[0].id, null), compute_cluster_id = try(oci_core_compute_cluster.gpu[0].id, null), kubernetes_version = data.oci_containerengine_cluster.target.kubernetes_version, name = var.name, allocation_identity = terraform_data.identity.id, requested_nodes = var.node_count, retained_nodes = local.retained_instances, additional_nodes = local.additional_instances, quota_checks = local.quota_checks, cluster_compartment_id = data.oci_containerengine_cluster.target.compartment_id, capacity = module.capacity.result }
 }
