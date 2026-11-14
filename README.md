@@ -52,7 +52,7 @@ Undeploy removes only the owned model release and its model-specific resources. 
 
 ## Current validation limits
 
-The shared CPU component flow was validated live: LWS reuse, parallel Prometheus/KEDA installation, fresh readiness, and KEDA uninstall/reinstall retaining its six CRDs. The model-only workflow is being validated for Terraform, chart/script behavior, packaging and RMS pipeline creation with GPU allocation disabled. Actual GPU placement, CUDA/NCCL/RDMA, inference, cache hits and performance require later GPU testing.
+The shared CPU component flow was validated live: LWS reuse, parallel Prometheus/KEDA installation, fresh readiness, and KEDA uninstall/reinstall retaining its six CRDs. Discovery HTML publication and the cluster-only model stack passed live RMS Plan/Apply; the independent model project has four ACTIVE pipelines and six ACTIVE stages. No GPU resources or automatic executions were created. Actual GPU placement, CUDA/NCCL/RDMA, inference, cache hits and performance require later GPU testing. See [the current validation record](outputs/discovery-html-validation-2026-11-14.md).
 
 A vLLM operator is optional. LMCache does not universally need a database: local RAM/disk, remote stores and multiprocess/P-D transfer have different requirements. Recipe connector flags do not provision those services. Native Responses forwarding or `previous_response_id` support does not establish durable, shared conversation state. See [component ownership and missing capabilities](docs/model-layer-components.md).
 

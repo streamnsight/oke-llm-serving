@@ -6,7 +6,7 @@
 
 The optional `object_storage` adapter creates a private, versioned Standard Object Storage bucket, retained by Terraform `prevent_destroy`, and a manually invoked DevOps Shell pipeline in the supplied project. Generic Artifact Registry holds only scripts, the pinned file specification and small execution reports. Weight shards and their completion manifest belong in the model bucket. Discovery's RMS ZIP/PAR bucket is a separate concern.
 
-The adapter is implemented and locally tested with mocked OCI/Kubernetes interfaces. Its output deliberately remains `runtime_status = requires_validation`. No cloud staging run or staging image build has been performed. The future model stack is not yet wired to consume this adapter automatically.
+The adapter is implemented and locally tested with mocked OCI/Kubernetes interfaces. Its output deliberately remains `runtime_status = requires_validation`. No cloud staging run or staging image build has been performed. The independent model stack can create the staging resources when explicitly selected, but verified materialization into a serving volume remains pending; selecting staging does not make its weight objects consumable by the engine automatically.
 
 ## Required inputs
 

@@ -4,6 +4,8 @@ Licensed under the Universal Permissive License v 1.0 as shown at http://oss.ora
 -->
 # Discovery presentation and model deployment workflow
 
+Historical plan, completed 2026-11-13. The shared-project, infrastructure-bound model publisher and JSON output described here have been superseded by the [HTML report and independent model project plan](discovery-html-report-plan.md). Current usage is documented in [the model binding contract](../docs/model-binding.md).
+
 Status: implemented and validated through live RMS pipeline creation; GPU runtime validation remains deferred. This feature builds on the CPU-validated component foundation. GPU allocation, pool resizing/cycling/deletion and model workload execution are not authorized for this validation. Preserve the user's staged AGENTS.md and untracked discovery review. See [the validation record](model-deployment-validation-2026-11-13.md).
 
 ## Outcome and boundaries

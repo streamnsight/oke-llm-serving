@@ -16,8 +16,8 @@ User direction: each model owns an independent DevOps project and pipelines whil
 2. [x] Build the accessible report using the supplied Redwood tokens/shell styles, native collapsed option sections, memory/model sections, deployment links and bottom capacity table. Escape untrusted metadata and commands as text; allow HTTPS links only.
 3. [x] Publish the report alongside bundles for all successful assessments, including zero-option and bundle-publication-disabled cases. Retain exactly one typed link output; keep JSON as embedded report data.
 4. [x] Publish independent model ZIPs during discovery; give each model its own project/environment/artifact repositories and pipelines, native cluster/network/pool lookup, and runtime binding/readiness. Preserve trusted namespace onboarding with explicitly selected cross-project principals. Mocked creation succeeds before GPU allocation; live RMS validation follows below.
-5. [ ] Test data/eligibility/links, empty/unknown/limit cases and output/schema contracts. Inspect desktop/mobile rendering and option interactions in a browser. Validate packaged Terraform with RMS-compatible Terraform; do not touch GPU allocations.
-6. [ ] Update documentation, record validation, clean generated development assets, commit and integrate after scoped validation. Preserve user-owned AGENTS.md staging and the separate discovery review; never modify local discovery state/tfvars.
+5. [x] Test data/eligibility/links, empty/unknown/limit cases and output/schema contracts. Inspect desktop/mobile rendering and option interactions in a browser. Validate packaged Terraform with RMS-compatible Terraform; do not touch GPU allocations. Live RMS discovery publication and cluster-only independent model project creation passed, including four ACTIVE pipelines and six ACTIVE stages without allocated GPUs or automatic execution.
+6. [x] Update documentation, record validation, clean generated development assets, commit and integrate after scoped validation. Preserve user-owned AGENTS.md staging and the separate discovery review; never modify local discovery state/tfvars. See [validation evidence and remaining runtime boundaries](discovery-html-validation-2026-11-14.md).
 
 ## Edge cases
 
@@ -27,3 +27,4 @@ User direction: each model owns an independent DevOps project and pipelines whil
 - The displayed command must distinguish the adapted planned TP/PP/workload from the original upstream recipe command, especially when rendering used another GPU family.
 - Expired PARs, missing publication links and model stacks awaiting infrastructure must have clear states without fake clickable links.
 - Keep large detailed evidence opt-in. Styles, scripts and data are embedded; opening the report makes no additional discovery requests.
+- Hugging Face punctuation can produce repeated hyphens in valid Kubernetes names. OCI Notifications and DevOps project names require normalized service names; cover both constraints in regression checks.
