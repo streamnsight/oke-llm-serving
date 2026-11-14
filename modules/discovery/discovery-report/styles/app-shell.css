@@ -1,0 +1,155 @@
+/* Copyright (c) 2020-2022 Oracle and/or its affiliates. All rights reserved.
+Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
+Copied from the supplied oci-design-system-redwood-jet styling package. */
+/* Application-owned markup only. No JET component internals or global reset. */
+.oci-shell {
+  display: grid;
+  grid-template-columns: var(--oci-component-navigation-width) minmax(0, 1fr);
+  grid-template-rows: auto 1fr auto;
+  min-block-size: 100dvh;
+  background: var(--oci-color-neutral);
+  color: var(--oci-color-text);
+  font-family: var(--oci-type-body-font-family);
+  font-size: var(--oci-type-body-font-size);
+  line-height: var(--oci-type-body-line-height);
+}
+.oci-header {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--oci-spacing-lg);
+  min-block-size: var(--oci-component-app-header-height);
+  padding-inline: var(--oci-spacing-lg);
+  background: var(--oci-component-app-header-background-color);
+  color: var(--oci-component-app-header-text-color);
+}
+.oci-header__brand { font-weight: var(--oci-type-label-font-weight); }
+.oci-header__search { flex: 1 1 18rem; max-inline-size: 44rem; margin-inline: auto; }
+.oci-header__utilities { display: flex; align-items: center; gap: var(--oci-spacing-base); }
+.oci-nav {
+  background: var(--oci-component-navigation-background-color);
+  border-inline-end: 1px solid var(--oci-color-divider);
+  padding-block: var(--oci-spacing-lg);
+}
+.oci-nav__title { margin: 0 var(--oci-spacing-base) var(--oci-spacing-lg); }
+.oci-nav__link {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  min-block-size: var(--oci-component-navigation-selected-height);
+  padding: var(--oci-spacing-sm) var(--oci-spacing-base);
+  border-inline-start: 2px solid transparent;
+  color: var(--oci-component-navigation-text-color);
+  font-weight: var(--oci-type-label-font-weight);
+  text-decoration: none;
+}
+.oci-nav__link:hover { background: var(--oci-color-row-hover); }
+.oci-nav__link[aria-current="page"] {
+  background: var(--oci-component-navigation-selected-background-color);
+  color: var(--oci-component-navigation-selected-text-color);
+  border-inline-start-color: var(--oci-color-link);
+}
+.oci-main { min-inline-size: 0; }
+.oci-page-heading {
+  padding: var(--oci-spacing-lg) var(--oci-component-page-heading-padding);
+  background: var(--oci-component-page-heading-background-color);
+}
+.oci-page-heading > :first-child { margin-block-start: 0; }
+.oci-page-heading > :last-child { margin-block-end: 0; }
+.oci-page-title, .oci-dialog-title, .oci-service-title, .oci-section-title { margin-block: 0 var(--oci-spacing-base); }
+.oci-page-title {
+  font-size: var(--oci-type-page-title-font-size);
+  font-weight: var(--oci-type-page-title-font-weight);
+  line-height: var(--oci-type-page-title-line-height);
+}
+.oci-dialog-title {
+  font-size: var(--oci-type-dialog-title-font-size);
+  font-weight: var(--oci-type-dialog-title-font-weight);
+  line-height: var(--oci-type-dialog-title-line-height);
+}
+.oci-service-title {
+  font-size: var(--oci-type-service-title-font-size);
+  font-weight: var(--oci-type-service-title-font-weight);
+  line-height: var(--oci-type-service-title-line-height);
+}
+.oci-section-title {
+  font-size: var(--oci-type-section-title-font-size);
+  font-weight: var(--oci-type-section-title-font-weight);
+  line-height: var(--oci-type-section-title-line-height);
+}
+.oci-stripe {
+  block-size: var(--oci-component-decorative-stripe-height);
+  background: var(--oci-component-decorative-stripe-background-color);
+}
+.oci-workspace { padding: var(--oci-spacing-lg) var(--oci-spacing-xxl); }
+.oci-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--oci-spacing-sm); }
+.oci-toolbar__end { margin-inline-start: auto; }
+.oci-stack { display: grid; gap: var(--oci-spacing-lg); }
+.oci-link { color: var(--oci-color-link); text-decoration: underline; text-underline-offset: 2px; }
+.oci-caption { font-size: var(--oci-type-caption-font-size); line-height: var(--oci-type-caption-line-height); }
+.oci-filter-chip {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: var(--oci-spacing-xs);
+  padding: var(--oci-component-filter-chip-padding) var(--oci-spacing-sm);
+  border-radius: var(--oci-component-filter-chip-rounded);
+  background: var(--oci-component-filter-chip-background-color);
+  color: var(--oci-component-filter-chip-text-color);
+  font-size: var(--oci-type-caption-font-size);
+}
+.oci-status-active {
+  display: inline-block;
+  padding: 0 var(--oci-spacing-sm);
+  border-radius: var(--oci-component-status-active-rounded);
+  background: var(--oci-component-status-active-background-color);
+  color: var(--oci-component-status-active-text-color);
+  font-size: var(--oci-type-status-font-size);
+  line-height: var(--oci-type-status-line-height);
+}
+.oci-empty-output {
+  box-sizing: border-box;
+  display: grid;
+  place-items: center;
+  min-block-size: var(--oci-component-empty-output-height);
+  padding: var(--oci-spacing-base);
+  border: 1px solid var(--oci-color-divider);
+  border-radius: var(--oci-component-empty-output-rounded);
+  text-align: center;
+}
+.oci-dialog-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--oci-spacing-sm);
+  padding: var(--oci-spacing-lg) var(--oci-component-dialog-footer-padding);
+  border-block-start: 1px solid var(--oci-color-divider);
+  background: var(--oci-component-dialog-footer-background-color);
+}
+.oci-footer {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: var(--oci-spacing-sm);
+  padding: var(--oci-spacing-xs) var(--oci-spacing-base);
+  border-block-start: 1px solid var(--oci-color-divider);
+  font-size: var(--oci-type-caption-font-size);
+  line-height: var(--oci-type-caption-line-height);
+  color: var(--oci-color-text-secondary);
+}
+.oci-nav__link:focus-visible, .oci-link:focus-visible { outline: 2px solid var(--oci-color-link); outline-offset: -2px; }
+.oci-header .oci-link { color: var(--oci-color-on-primary); }
+.oci-header .oci-link:focus-visible { outline-color: var(--oci-color-on-primary); }
+
+/* Small screens stack navigation. An app can replace this with a JET drawer
+   and accessible toggle; CSS alone does not provide drawer behavior. */
+@media (max-width: 60rem) {
+  .oci-shell { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto 1fr auto; }
+  .oci-nav { border-inline-end: 0; border-block-end: 1px solid var(--oci-color-divider); padding-block: var(--oci-spacing-sm); }
+  .oci-nav__title { margin-block-end: var(--oci-spacing-sm); }
+  .oci-page-heading, .oci-workspace { padding-inline: var(--oci-spacing-base); }
+  .oci-header { gap: var(--oci-spacing-sm); padding-block: var(--oci-spacing-sm); }
+  .oci-header__search { flex-basis: 100%; order: 1; max-inline-size: none; }
+  .oci-dialog-actions { padding-inline: var(--oci-spacing-base); }
+}

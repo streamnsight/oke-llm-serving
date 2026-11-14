@@ -2,21 +2,14 @@
 Copyright (c) 2020-2022 Oracle and/or its affiliates. All rights reserved.
 Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
 -->
-# Model discovery to OKE deployment
+# Deployment workflow
 
-The workflow has three Terraform states: discovery, retained infrastructure/shared controllers, and a model-only deployment. The old combined deployment root has been removed.
+1. Package discovery with `make package`, create its RMS stack and supply model/context/concurrency. Plan and Apply create a single linked HTML report containing all confirmed choices and both sets of deployment links. No GPUs are allocated.
+2. For new capacity, open an option's infrastructure link and select the existing cluster. Review the retained GPU pool/transport and required shared components. Infrastructure owns pool allocation and CPU component delivery. Reuse this state/pool for future models; do not destroy it when retiring a model.
+3. Open the option's model link, select the cluster and create its independent project/pipelines. Pool/network defaults are inferred. This metadata step can happen before infrastructure finishes; no model execution starts automatically.
+4. Run the required shared-component pipelines and the trusted namespace-onboarding flow for this model project's exact principals. Then execute model deploy, validate and benchmark as appropriate. Runtime checks actual retained pool/controller readiness; scheduling handles contention within the retained allocation.
+5. To retire a model, run guarded model undeploy, revoke model access and only then destroy model metadata/project resources. Retained data/namespaces and shared infrastructure need separate owner-reviewed retirement.
 
-1. Package/upload discovery, enter the model and workload assumptions, then Plan/Apply. Read the consolidated `discovery` output and choose any capacity-confirmed option's RMS URL. The optional HTML comparison link opens separately from RMS.
-2. In the infrastructure stack, select an existing cluster in the chosen region. Review Plan before GPU allocation. Existing CPU pools host shared components. GPU pools/Compute Clusters remain retained and cannot be retired by a model change.
-3. Run the required shared component pipelines. Monitoring defaults on; KEDA is opt-in; LWS follows topology. Reuse or configure compatible OKE-managed GPU/network support separately. A successful Terraform Apply is not runtime readiness.
-4. Open infrastructure's `model_launch_url`. Its ZIP already contains the selected model/profile/recipe and the actual cluster/allocation/project/repository binding. Model Apply creates deploy, validate, benchmark and undeploy pipelines; it starts no inference.
-5. Use `onboarding_arguments` with the platform's trusted onboarding pipeline. This grants exact model pipeline principals namespace-scoped permissions and bounded shared readiness reads. Model principals do not receive cluster administration or GPU infrastructure permissions.
-6. Run model deploy. A checksum-verified local workload chart, with optional pinned router dependency, is published to OCIR and installed through a native Helm stage. Preflight checks ownership, the real allocation and selected prerequisites; final checks inspect the current release and serving endpoints.
-7. Run validate or benchmark explicitly. Health/model identity checks support task-agnostic deployment; text probes and vLLM benchmark backends are explicit choices. Multimodal/audio models need appropriate test payloads/datasets. The CPU benchmark Job runs official `vllm bench serve`, records its native JSON and does not request a GPU.
-8. Run guarded undeploy before destroying model pipeline metadata. It removes the owned release, drains its pods and preserves retained namespace/PVC/data and shared infrastructure. Trusted access revocation is separate and refuses active workloads.
+The report distinguishes physical supply, usable quota, GPUs per replica, whole-host allocation and packed replicas. It preserves configuration provenance and unknown estimates. A capacity observation does not reserve hardware or validate a recipe on that exact image/GPU/workload.
 
-There is no per-model project or evidence bucket. Scripts/specifications/values/reports use Generic Artifact Registry; charts use OCIR. Object Storage transports stack ZIPs and optional model weights. A pinned staged-weight manifest must still be materialized into a suitable local directory/PVC before serving; the CPU staging scratch volume is not a distributed model volume.
-
-Prefix-aware routing is approximate cache locality, not a durable Responses conversation service. LMCache storage/connector requirements depend on the selected mode/image. See [component boundaries and missing adapters](model-layer-components.md), [model binding and commands](model-binding.md), [weight staging](model-storage.md) and [shared component ownership](infrastructure-bootstrap.md).
-
-GPU inference, CUDA/NCCL/RDMA, actual cache hits, endpoint semantics and benchmark performance require hardware validation. Pipeline creation and successful rendering do not establish those properties.
+See [discovery report](rms-discovery.md), [infrastructure bootstrap](infrastructure-bootstrap.md), [model access/lifecycle](model-binding.md) and [component responsibilities](model-layer-components.md).

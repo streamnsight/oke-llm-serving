@@ -16,7 +16,7 @@ The repository root is discovery and the single released entry ZIP. Downstream T
 
 The GPU specification catalog belongs to `modules/discovery/accelerator-inventory/data/gpus.json`; allocation also reads it. Controller chart defaults belong to `modules/cluster-add-ons/platform-bootstrap/data/components.json`. Recipe-derived serving images and argv are separate from controller dependencies. No static model/engine catalog is needed.
 
-Infrastructure owns pools, Compute Clusters, shared controllers, the DevOps project and artifact repositories. A model consumes those references and owns its release, routes/cache/scaling instances and pipelines. Model teardown must not delete retained infrastructure, shared APIs or data. Object Storage is for stack ZIPs and optional model data; software artifacts and execution evidence use Artifact Registry/OCIR.
+Infrastructure owns pools, Compute Clusters, shared controllers and their delivery project/repositories. Each model owns an independent project, private OKE environment, artifact repositories, release, routes/cache/scaling instances and pipelines; cluster/pool metadata is resolved at launch/runtime. Model teardown must not delete retained infrastructure, shared APIs or data. Object Storage is for stack ZIPs and optional model data; software artifacts and execution evidence use Artifact Registry/OCIR.
 
 Terraform module labels/resource names stay stable during directory reorganization. Run `terraform init` after updating source paths to refresh the local module cache; directory moves do not require a second state or reallocation of existing GPU hosts. Packaging retains the same grouped module paths and validates relocated references.
 

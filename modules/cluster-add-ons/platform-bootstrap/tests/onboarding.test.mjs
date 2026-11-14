@@ -41,7 +41,7 @@ function setup(t, components = {}) {
   t.after(() => rmSync(root, { recursive: true, force: true }));
   for (const name of ['bin', 'input', 'objects']) mkdirSync(join(root, name));
   for (const name of ['onboard-model.sh', 'model-access.jq']) copyFileSync(join(moduleDir, 'scripts', name), join(root, 'input', name));
-  writeFileSync(join(root, 'input', 'model-access-context.json'), JSON.stringify({ components }));
+  writeFileSync(join(root, 'input', 'model-access-context.json'), JSON.stringify({ components: Object.fromEntries(Object.entries(components).map(([name,c])=>[name,{ownership_token:hash(`platform/cluster/${name}`),release_name:name,crd_names:[],...c}])) }));
   writeFileSync(join(root, 'kubectl'), kubectl);
   const scripts = {
     cat: String.raw`#!/usr/bin/env node
@@ -54,8 +54,9 @@ fs.writeFileSync(args[args.indexOf('-o')+1],args.some(a=>a.endsWith('/kubectl.sh
     oci: String.raw`#!/usr/bin/env node
 const fs=require('node:fs'),path=require('node:path'),args=process.argv.slice(2);
 if(process.env.OCI_CLI_AUTH!=='resource_principal') process.exit(93);
+if(args.slice(0,3).join(' ')==='devops project get') { console.log(JSON.stringify({data:{id:process.env.MODEL_PROJECT_ID,'lifecycle-state':process.env.MOCK_INACTIVE_PROJECT?'DELETED':'ACTIVE'}})); process.exit(0); }
 if(args.slice(0,3).join(' ')==='devops deploy-pipeline get') {
- const id=args[args.indexOf('--pipeline-id')+1]; console.log(JSON.stringify({data:{id,'project-id':process.env.MOCK_FOREIGN_PROJECT?'foreign-project':'project','lifecycle-state':'ACTIVE','deploy-pipeline-parameters':{items:[{name:'MODEL_NAMESPACE','default-value':process.env.MOCK_WRONG_NAMESPACE?'foreign':process.env.MODEL_NAMESPACE}]}}})); process.exit(0);
+ const id=args[args.indexOf('--pipeline-id')+1]; console.log(JSON.stringify({data:{id,'project-id':process.env.MOCK_FOREIGN_PROJECT?'foreign-project':process.env.MODEL_PROJECT_ID,'lifecycle-state':process.env.MOCK_INACTIVE_PIPELINE?'DELETED':'ACTIVE','deploy-pipeline-parameters':{items:[{name:'MODEL_NAMESPACE','default-value':process.env.MOCK_WRONG_NAMESPACE?'foreign':process.env.MODEL_NAMESPACE},{name:'MODEL_PROJECT_ID','default-value':process.env.MODEL_PROJECT_ID},{name:'MODEL_CLUSTER_ID','default-value':process.env.MOCK_WRONG_CLUSTER?'foreign':process.env.CLUSTER_ID},{name:'MODEL_PLATFORM_NAME','default-value':process.env.MOCK_WRONG_PLATFORM?'foreign':process.env.PLATFORM_NAME},{name:'MODEL_GPU_POOL_ID','default-value':process.env.MOCK_WRONG_POOL?'foreign':process.env.MODEL_GPU_POOL_ID}]}}})); process.exit(0);
 }
 if(args.slice(0,3).join(' ')==='ce cluster create-kubeconfig') process.exit(0);
 if(args.slice(0,4).join(' ')==='artifacts generic artifact upload-by-path') { fs.copyFileSync(args[args.indexOf('--content-body')+1],path.join(process.env.MOCK_DIR,'report.json')); process.exit(0); }
@@ -68,7 +69,7 @@ process.exit(99);
   function run(env = {}) {
     return spawnSync('bash', [join(root, 'input', 'onboard-model.sh')], { encoding: 'utf8', env: {
       ...process.env, PATH: `${join(root, 'bin')}:${process.env.PATH}`, MOCK_DIR: root, MOCK_KUBECTL: join(root, 'kubectl'),
-      PLATFORM_NAME: 'platform', CLUSTER_ID: 'cluster', PROJECT_ID: 'project', MODEL_NAMESPACE: namespace, MODEL_PIPELINE_IDS: JSON.stringify(pipelines), MODEL_ACCESS_OPERATION: 'grant',
+      PLATFORM_NAME: 'platform', CLUSTER_ID: 'cluster', PROJECT_ID: 'platform-project', MODEL_PROJECT_ID: 'ocid1.devopsproject.oc1.model', MODEL_GPU_POOL_ID: 'runtime', MODEL_NAMESPACE: namespace, MODEL_PIPELINE_IDS: JSON.stringify(pipelines), MODEL_ACCESS_OPERATION: 'grant',
       RESULT_REPOSITORY_ID: 'results', KUBERNETES_VERSION: 'v1.34.1', OCI_CLI_REGION: 'eu-frankfurt-1', ...env
     }});
   }
@@ -81,7 +82,7 @@ test('trusted onboarding grants only exact namespace access and read-only cluste
   assert.equal(result.status, 0, result.stderr);
   const docs = f.objects(), ns = docs.find(o => o.kind === 'Namespace');
   assert.equal(ns.metadata.labels['oke-llm/platform-owner'], hash('platform/cluster').slice(0, 32));
-  assert.equal(docs.filter(o => o.kind === 'RoleBinding' && o.subjects[0].kind === 'User').length, 2);
+  assert.equal(docs.filter(o => o.kind === 'RoleBinding' && o.metadata.namespace === namespace && o.subjects[0].kind === 'User').length, 2);
   assert.equal(docs.some(o => o.kind === 'ServiceAccount' && o.metadata.name === 'oke-llm-router'), true);
   const reader = docs.find(o => o.kind === 'ClusterRole');
   assert.equal(reader.rules.every(rule => rule.verbs.every(v => ['get', 'list', 'watch'].includes(v))), true);
@@ -92,8 +93,8 @@ test('trusted onboarding grants only exact namespace access and read-only cluste
   assert.equal(f.objects().filter(o => o.kind === 'Namespace').length, 1);
 });
 
-test('foreign project or pipeline namespace defaults are rejected before Kubernetes mutation', t => {
-  for (const env of [{ MOCK_FOREIGN_PROJECT: 'true' }, { MOCK_WRONG_NAMESPACE: 'true' }]) {
+test('wrong model project/cluster/platform/pool/namespace and inactive principals are rejected before Kubernetes mutation', t => {
+  for (const env of [{ MOCK_FOREIGN_PROJECT: 'true' }, { MOCK_WRONG_NAMESPACE: 'true' }, { MOCK_WRONG_CLUSTER: 'true' }, { MOCK_WRONG_PLATFORM: 'true' }, { MOCK_WRONG_POOL: 'true' }, { MOCK_INACTIVE_PROJECT: 'true' }, { MOCK_INACTIVE_PIPELINE: 'true' }]) {
     const f = setup(t), result = f.run(env);
     assert.notEqual(result.status, 0);
     assert.deepEqual(f.objects(), []);
@@ -114,10 +115,10 @@ test('revoke refuses active workloads, then removes only the exact requested pri
   assert.equal(f.run().status, 0);
   let result = f.run({ MODEL_ACCESS_OPERATION: 'revoke', MOCK_ACTIVE_POD: 'true' });
   assert.notEqual(result.status, 0);
-  assert.equal(f.objects().filter(o => o.kind === 'RoleBinding' && o.subjects[0].kind === 'User').length, 2);
-  result = f.run({ MODEL_ACCESS_OPERATION: 'revoke', MODEL_PIPELINE_IDS: JSON.stringify([pipelines[0]]) });
+  assert.equal(f.objects().filter(o => o.kind === 'RoleBinding' && o.metadata.namespace === namespace && o.subjects[0].kind === 'User').length, 2);
+  result = f.run({ MODEL_ACCESS_OPERATION: 'revoke', MODEL_PIPELINE_IDS: JSON.stringify([pipelines[0]]), MOCK_INACTIVE_PROJECT: 'true', MOCK_INACTIVE_PIPELINE: 'true' });
   assert.equal(result.status, 0, result.stderr);
-  assert.equal(f.objects().filter(o => o.kind === 'RoleBinding' && o.subjects[0].kind === 'User').length, 1);
+  assert.equal(f.objects().filter(o => o.kind === 'RoleBinding' && o.metadata.namespace === namespace && o.subjects[0].kind === 'User').length, 1);
   assert.equal(f.objects().some(o => o.kind === 'Namespace'), true);
   assert.equal(f.calls().some(args => args[0] === 'delete' && args[1] === 'namespace'), false);
 });
@@ -145,4 +146,19 @@ test('shared readiness access is exact-name read-only and revoke cleans bindings
   assert.equal(result.status, 0, result.stderr);
   assert.equal(f.objects().filter(doc => doc.kind === 'RoleBinding' && doc.subjects[0].kind === 'User').length, 0);
   assert.equal(f.objects().some(doc => doc.kind === 'Role' && doc.metadata.namespace === 'monitoring'), true, 'retained read role cannot affect other workloads');
+});
+
+
+test('model runtime context is in trusted kube-system with only exact-name model read access', t => {
+  const f = setup(t);
+  const r = f.run(); assert.equal(r.status, 0, r.stderr);
+  const context = f.objects().find(d => d.kind === 'ConfigMap');
+  assert.equal(context.metadata.namespace, 'kube-system');
+  const data = JSON.parse(context.data['context.json']);
+  assert.equal(data.model_project_id, 'ocid1.devopsproject.oc1.model');
+  assert.equal(data.gpu_pool_id, 'runtime');
+  const role = f.objects().find(d => d.kind === 'Role' && d.metadata.namespace === 'kube-system');
+  assert.deepEqual(role.rules, [{apiGroups:[''],resources:['configmaps'],resourceNames:[context.metadata.name],verbs:['get']}]);
+  const reader = f.objects().find(d => d.kind === 'ClusterRole');
+  assert.equal(reader.rules.some(rule => rule.resources?.includes('pods')), false, 'no cross-namespace Pod-spec access');
 });

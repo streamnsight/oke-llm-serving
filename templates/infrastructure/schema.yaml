@@ -1,20 +1,13 @@
 # Copyright (c) 2020-2022 Oracle and/or its affiliates. All rights reserved.
 # Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
 title: OKE retained GPU infrastructure
-description: Apply creates DevOps platform resources and GPU infrastructure in an existing cluster. The temporary debug switch skips GPU allocation only. Run the bootstrap pipeline to install shared CPU controllers. No models are deployed.
+description: Apply creates DevOps platform resources and GPU infrastructure in
+  an existing cluster. The temporary debug switch skips GPU allocation only. Run
+  the bootstrap pipeline to install shared CPU controllers. No models are
+  deployed.
 schemaVersion: 1.1.0
 version: "0.1.0"
 outputs:
-  model_launch_url:
-    type: link
-    title: Create model deployment stack
-    displayText: Create model pipelines for this platform
-  model_deployment:
-    type: json
-    title: Configured model ZIP, provenance and onboarding instructions
-  model_platform_binding:
-    type: json
-    title: Existing platform and retained allocation binding
   infrastructure_preview:
     type: json
     title: Selected infrastructure and debug scope
@@ -27,45 +20,62 @@ outputs:
   allocation:
     type: json
     title: Retained GPU allocation (absent when debug skipping is enabled)
-  model_storage:
-    type: json
-    title: Optional model-data staging and download pipeline
-  model_staging_bootstrap:
-    type: json
-    title: Optional staging namespace, identity and scratch storage
 variableGroups:
   - title: Existing cluster and GPU selection
-    variables: [platform_name, compartment_id, cluster_id, availability_domain, gpu_shape, node_count, skip_gpu_allocation, advanced_settings]
+    variables:
+      [
+        platform_name,
+        compartment_id,
+        cluster_id,
+        availability_domain,
+        gpu_shape,
+        node_count,
+        skip_gpu_allocation,
+        advanced_settings
+      ]
   - title: Platform and storage overrides
     visible: advanced_settings
-    variables: [enable_lws, enable_disaggregated_set, monitoring_enabled, autoscaling_enabled, lws_mode, prometheus_mode, keda_mode, cluster_authorization_mode, model_storage_mode, model_staging_image, model_staging_cpu_shape, rdma_mode, os_version, boot_volume_gib, gpu_image_id, rdma_resource_name, observation_id]
+    variables:
+      [
+        enable_lws,
+        enable_disaggregated_set,
+        monitoring_enabled,
+        autoscaling_enabled,
+        lws_mode,
+        prometheus_mode,
+        keda_mode,
+        cluster_authorization_mode,
+        rdma_mode,
+        os_version,
+        boot_volume_gib,
+        gpu_image_id,
+        rdma_resource_name,
+        observation_id
+      ]
   - title: Network overrides (must belong to the cluster VCN)
     visible: advanced_settings
-    variables: [subnet_id, pod_subnet_id, devops_subnet_id, worker_nsg_ids, pod_nsg_ids, devops_nsg_ids]
+    variables:
+      [
+        subnet_id,
+        pod_subnet_id,
+        devops_subnet_id,
+        worker_nsg_ids,
+        pod_nsg_ids,
+        devops_nsg_ids
+      ]
   - title: RMS context
     visible: false
-    variables: [tenancy_ocid, compartment_ocid, region]
+    variables: [ tenancy_ocid, compartment_ocid, region ]
 variables:
   cluster_authorization_mode:
     type: enum
-    enum: [iam, rbac]
+    enum: [ iam, rbac ]
     default: iam
     title: Pipeline Kubernetes authorization
-    description: IAM scopes Kubernetes administration to this cluster and the pipeline identities. RBAC requires applying the generated cluster role binding separately. Neither grants OCI node-pool administration to pipelines.
-  model_storage_mode:
-    type: enum
-    enum: [direct_huggingface, object_storage]
-    default: direct_huggingface
-    title: Model distribution
-    description: Direct mode creates no bucket or staging pipeline. Staging creates retained private model data, separate from software artifacts; GPU-local warmup happens later in model deployment.
-  model_staging_image:
-    type: string
-    title: Optional model stager image digest
-    description: Required for Object Storage staging. Build and validate modules/llm-deployment/model-storage/image/Dockerfile, then provide its image@sha256 digest.
-  model_staging_cpu_shape:
-    type: string
-    title: Optional existing CPU shape for download jobs
-    description: Defaults to a CPU pool shape in this cluster; the pipeline checks actual schedulable nodes.
+    description: IAM scopes Kubernetes administration to this cluster and the
+      pipeline identities. RBAC requires applying the generated cluster role
+      binding separately. Neither grants OCI node-pool administration to
+      pipelines.
   tenancy_ocid:
     type: string
     required: true
@@ -81,7 +91,8 @@ variables:
     type: string
     default: llm-platform
     title: Stable platform name
-    description: Keep this name independent of a model or discovery run. Use one platform owner per cluster.
+    description: Keep this name independent of a model or discovery run. Use one
+      platform owner per cluster.
   compartment_id:
     type: oci:identity:compartment:id
     default: compartment_ocid
@@ -112,7 +123,9 @@ variables:
     type: boolean
     default: false
     title: Debug only — skip GPU allocation
-    description: DevOps and shared CPU components are still created. Normally leave off. Never enable after GPU allocation; retained pools cannot be destroyed.
+    description: DevOps and shared CPU components are still created. Normally leave
+      off. Never enable after GPU allocation; retained pools cannot be
+      destroyed.
   advanced_settings:
     type: boolean
     default: false
@@ -133,32 +146,35 @@ variables:
     type: boolean
     default: false
     title: KEDA workload autoscaling
-    description: Installs the controller for the later model stack. GPU hosts stay allocated.
+    description: Installs the controller for the later model stack. GPU hosts stay
+      allocated.
   lws_mode:
     type: enum
-    enum: [managed, reuse, retire]
+    enum: [ managed, reuse, retire ]
     default: managed
     title: LWS lifecycle
-    description: Reuse validates an existing release. Retire retains a guarded uninstall pipeline; run it explicitly before removing the component.
+    description: Reuse validates an existing release. Retire retains a guarded
+      uninstall pipeline; run it explicitly before removing the component.
   prometheus_mode:
     type: enum
-    enum: [managed, reuse, retire]
+    enum: [ managed, reuse, retire ]
     default: managed
     title: Prometheus lifecycle
   keda_mode:
     type: enum
-    enum: [managed, reuse, retire]
+    enum: [ managed, reuse, retire ]
     default: managed
     title: KEDA lifecycle
   rdma_mode:
     type: enum
-    enum: [auto, ethernet, rdma]
+    enum: [ auto, ethernet, rdma ]
     default: auto
     title: RDMA override
-    description: Auto follows the discovery execution plan. A single-host layout does not require a fabric merely because its hardware supports RDMA.
+    description: Auto follows the discovery execution plan. A single-host layout
+      does not require a fabric merely because its hardware supports RDMA.
   os_version:
     type: enum
-    enum: ["8", "9"]
+    enum: [ "8", "9" ]
     default: "8"
     title: Oracle Linux major version
   boot_volume_gib:
@@ -166,7 +182,8 @@ variables:
     default: 200
     minimum: 200
     title: GPU host boot volume GiB
-    description: Increase before allocation for large checkpoints and caches. Model disk sizing is deferred to model deployment.
+    description: Increase before allocation for large checkpoints and caches. Model
+      disk sizing is deferred to model deployment.
   gpu_image_id:
     type: string
     title: Optional OKE GPU image OCID override
@@ -186,7 +203,8 @@ variables:
   devops_subnet_id:
     type: string
     title: DevOps runner subnet OCID override
-    description: Must reach the private OKE API and have HTTPS egress for OCI and Helm release downloads.
+    description: Must reach the private OKE API and have HTTPS egress for OCI and
+      Helm release downloads.
   worker_nsg_ids:
     type: list
     default: "[]"

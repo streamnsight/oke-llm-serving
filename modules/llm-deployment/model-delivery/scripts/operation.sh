@@ -26,6 +26,7 @@ operation_cleanup() {
 trap operation_cleanup EXIT
 delivery_tools
 model_inputs
+model_geometry
 model_platform_ready
 lock_acquire
 model_ready_owner

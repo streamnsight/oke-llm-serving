@@ -136,6 +136,9 @@ output "profile" {
       gated                   = try(local.info.gated, false)
       pipeline_tag            = try(local.info.pipeline_tag, try(contains(local.fallback_metadata.meta.tasks, "text"), false) ? "text-generation" : null)
       license                 = try(local.info.cardData.license, null)
+      library                 = try(local.info.library_name, null)
+      created_at              = try(local.info.createdAt, null)
+      last_modified           = try(local.info.lastModified, null)
       config_sources          = { config_repository = local.config_repository, tokenizer_repository = local.tokenizer_repository, revisions = { for k, r in data.http.fallback_model : k => jsondecode(r.response_body).sha } }
       chat_template_available = try(length(jsondecode(data.http.fallback_tokenizer[0].response_body).chat_template) > 0, false) || try(length(local.metadata_chat_template) > 0, false) || try(length(jsondecode(data.http.tokenizer[0].response_body).chat_template) > 0, false) || contains([for file in try(local.info.siblings, []) : file.rfilename], "chat_template.jinja")
     }
@@ -162,20 +165,21 @@ output "profile" {
       interpretation = "Regex evidence only; examples may not state mandatory minimum versions. No match does not imply incompatibility."
     }
     weights = {
+      checkpoint_formats        = sort(distinct(flatten([for f in try(local.info.siblings, []) : [for extension in ["safetensors", "gguf", "bin", "pt", "pth"] : extension if endswith(lower(f.rfilename), ".${extension}")]])))
       selected_checkpoint       = local.has_index ? "model.safetensors.index.json" : local.canonical ? "model.safetensors" : null
       checkpoint_download_bytes = try(coalesce(local.checkpoint_download_bytes, one([for f in local.info.siblings : try(f.size, f.lfs.size) if endswith(f.rfilename, ".gguf")])), null)
       # A staging allowlist, not executable repository code. LFS object IDs are
       # content SHA256s; ordinary Git blob IDs are deliberately not called SHA256.
       staging_files = [for f in try(local.info.siblings, []) : {
-        path = f.rfilename, size_bytes = try(f.size, f.lfs.size, null),
+        path   = f.rfilename, size_bytes = try(f.size, f.lfs.size, null),
         sha256 = try(can(regex("^[a-f0-9]{64}$", f.lfs.sha256)) ? f.lfs.sha256 : null, null)
       } if !strcontains(f.rfilename, "/") && (endswith(f.rfilename, ".safetensors") || endswith(f.rfilename, ".json") || contains(["tokenizer.model", "tokenizer.tiktoken", "merges.txt", "vocab.txt", "chat_template.jinja"], f.rfilename))]
-      storage_source            = "Hub-published root safetensors file sizes; storage only, never resident GPU memory"
-      tensor_data_bytes         = local.weight_bytes
-      tensor_elements           = try(local.info.safetensors.total, null)
-      elements_by_dtype         = local.parameters
-      source                    = "Hub-published safetensors counts by dtype; not independently verified headers"
-      confidence                = "declared_metadata"
+      storage_source    = "Hub-published root safetensors file sizes; storage only, never resident GPU memory"
+      tensor_data_bytes = local.weight_bytes
+      tensor_elements   = try(local.info.safetensors.total, null)
+      elements_by_dtype = local.parameters
+      source            = "Hub-published safetensors counts by dtype; not independently verified headers"
+      confidence        = "declared_metadata"
     }
     memory = {
       status                      = local.supported ? "estimated" : "unsupported"

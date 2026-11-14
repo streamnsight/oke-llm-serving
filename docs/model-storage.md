@@ -12,7 +12,7 @@ The adapter is implemented and locally tested with mocked OCI/Kubernetes interfa
 
 Enable staging only after these are known:
 
-- An existing enhanced OKE cluster and confirmed CPU node pool, private API network access, exact Kubernetes version, and an existing DevOps project and Generic Artifact repository in the deployment region.
+- An existing enhanced OKE cluster and confirmed CPU node pool, private API network access, exact Kubernetes version, and the model stack's independent DevOps project and Generic Artifact repository in the deployment region.
 - A Hugging Face `owner/model`, resolved 40-character commit SHA, selected variant such as `bf16`, and explicit unique file allowlist with byte sizes. Include the selected shards, their index, tokenizer/config and modality assets the engine needs. Do not enumerate every checkpoint variant indiscriminately. Supply Hub LFS SHA256 values when published; ordinary Git files may have no SHA256 metadata.
 - A tested `linux/amd64` staging image pinned by digest. It must provide Bash, curl, jq, coreutils and OCI CLI with `oke_workload_identity` authentication. No moving image default or runtime package installation is assumed.
 - A CPU-pool label selector, sufficient CPU resources (Job requests 2 CPU / 4 GiB), and a retained RWO scratch PVC. The default is 64 GiB using `oci-bv`; it must fit the largest selected file plus 10% and 64 MiB. Downloads are sequential, with at most two multipart upload workers.

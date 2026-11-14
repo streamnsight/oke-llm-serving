@@ -41,11 +41,11 @@ override_module {
 run "discovery_publishes_only_confirmed_choices" {
   command = apply
   assert {
-    condition     = output.deployment_option_count == 1 && toset(keys(output.discovery.options)) == toset(["selected"]) && strcontains(output.recommended_launch_url, "region=us-phoenix-1&zipUrl=") && module.infrastructure_publication[0].deployment_options.selected.artifact_region == "us-ashburn-1" && output.comparison_report_url != null
+    condition     = module.discovery_report.summary.option_count == 1 && toset(keys(module.discovery_report.summary.options)) == toset(["selected"]) && strcontains(local.published_options.selected.launch_url, "region=us-phoenix-1&zipUrl=") && strcontains(module.discovery_report.summary.options.selected.links.model_deployment.launch_url, "region=us-phoenix-1&zipUrl=") && module.infrastructure_publication[0].deployment_options.selected.artifact_region == "us-ashburn-1" && output.comparison_report_url != null
     error_message = "Publish confirmed choices only, retaining the distinction between storage region and deployment region."
   }
   assert {
-    condition     = oci_objectstorage_object.comparison[0].content_type == "text/html; charset=utf-8" && oci_objectstorage_object.comparison[0].content_disposition == "inline" && oci_objectstorage_preauthrequest.comparison[0].access_type == "ObjectRead" && oci_objectstorage_preauthrequest.comparison[0].object_name == oci_objectstorage_object.comparison[0].object && oci_objectstorage_preauthrequest.comparison[0].time_expires == output.discovery.options.selected.links.expires_at && strcontains(oci_objectstorage_object.comparison[0].content, trim(jsonencode(output.discovery.options.selected.links.launch_url), "\""))
+    condition     = oci_objectstorage_object.comparison[0].content_type == "text/html; charset=utf-8" && oci_objectstorage_object.comparison[0].content_disposition == "inline" && oci_objectstorage_preauthrequest.comparison[0].access_type == "ObjectRead" && oci_objectstorage_preauthrequest.comparison[0].object_name == oci_objectstorage_object.comparison[0].object && oci_objectstorage_preauthrequest.comparison[0].time_expires == module.discovery_report.summary.options.selected.links.expires_at && strcontains(oci_objectstorage_object.comparison[0].content, trim(jsonencode(module.discovery_report.summary.options.selected.links.launch_url), "\""))
     error_message = "The separate HTML comparison page must use a scoped read PAR in the existing private publication bucket and expire with its bundle links."
   }
 }
@@ -53,15 +53,27 @@ run "publication_can_be_disabled_for_discovery_only" {
   command = plan
   variables { publish_infrastructure_bundles = false }
   assert {
-    condition     = length(module.infrastructure_publication) == 0 && output.discovery.published_option_count == 0 && output.deployment_option_count == 1 && output.discovery.options.selected.links.launch_url == null && output.recommended_launch_url == null && output.comparison_report_url == null && length(oci_objectstorage_object.comparison) == 0
-    error_message = "Discovery-only mode retains confirmed choices but creates no publisher/report resources or launch links."
+    condition     = length(module.infrastructure_publication) == 1 && module.discovery_report.summary.published_option_count == 0 && module.discovery_report.summary.option_count == 1 && module.discovery_report.summary.options.selected.links.launch_url == null && length(module.model_publication) == 0 && length(oci_objectstorage_object.comparison) == 1 && length(oci_objectstorage_preauthrequest.comparison) == 1
+    error_message = "Assessment-only mode retains the HTML report and confirmed choices but publishes no infrastructure/model launch ZIPs."
   }
 }
 run "debug_gpu_gate_reaches_the_publisher" {
   command = apply
   variables { skip_gpu_allocation = true }
   assert {
-    condition     = output.discovery.options.selected.skip_gpu_allocation
+    condition     = module.discovery_report.summary.options.selected.skip_gpu_allocation
     error_message = "Discovery's debug setting must reach the actual published option."
+  }
+}
+
+run "zero_options_still_publish_a_report" {
+  command = apply
+  override_module {
+    target  = module.planner
+    outputs = { assessment = { candidates = [], suggestions = [], blocking_reasons = ["No capacity confirmed"], recommended_selection_id = null } }
+  }
+  assert {
+    condition     = output.comparison_report_url != null && module.discovery_report.summary.option_count == 0 && length(oci_objectstorage_object.comparison) == 1 && length(module.model_publication) == 0 && length(local.published_options) == 0 && strcontains(oci_objectstorage_object.comparison[0].content, "No capacity confirmed")
+    error_message = "With no viable options the only output must still open a report explaining exclusions and regional evidence."
   }
 }

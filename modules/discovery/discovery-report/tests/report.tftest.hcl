@@ -2,8 +2,8 @@
 # Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
 variables {
   profile = {
-    model   = { repository = "org/model", resolved_revision = "pinned" }, architecture = { kind = "dense" },
-    weights = { checkpoint_download_bytes = 4100000000, tensor_data_bytes = 4000000000 },
+    model   = { repository = "org/model", resolved_revision = "pinned", url = "https://huggingface.co/org/model/tree/pinned", license = "apache-2.0" }, architecture = { kind = "dense", model_type = "llama", architectures = ["LlamaForCausalLM"], attention = { layers = 32, heads = 32, kv_heads = 8, head_dim = 128 } },
+    weights = { checkpoint_download_bytes = 4100000000, tensor_data_bytes = 4000000000, checkpoint_formats = ["safetensors"], tensor_elements = 2000000000, elements_by_dtype = { BF16 = 2000000000 } },
     memory  = { status = "estimated", reasons = [], weight_bytes = 4000000000, kv_bytes = 2000000000, runtime_allowance_bytes = 1000000000, recommended_aggregate_bytes = 8400000000, assumptions = { context_length = 4096, concurrency = 4, safety_margin_fraction = 0.2 } }
   }
   assessment            = { recommended_selection_id = "selected", shape_observations = [], blocking_reasons = [] }
@@ -16,8 +16,9 @@ variables {
     configuration_status = "suggested_requires_validation", runtime_validation = "not_run"
   } }
   publications = { selected = { launch_url = "https://cloud.oracle.com/resourcemanager/stacks/create?region=region-one&zipUrl=fixture", download_url = "https://objectstorage.example/p/fixture.zip", published_at = "2026-11-13T01:00:00Z", expires_at = "2026-11-14T01:00:00Z" } }
+  model_publications = { selected = { launch_url = "https://cloud.oracle.com/resourcemanager/stacks/create?region=region-one&zipUrl=model", download_url = "https://objectstorage.example/p/model.zip", expires_at = "2026-11-14T01:00:00Z" } }
   regions = [{
-    inventory = { region = "region-one", availability_domains = [for ad in ["AD-1", "AD-2"] : { name = ad, shapes = [{ shape = "GPU.8", gpus = 8, gpu_memory_bytes_per_gpu = 40000000000 }] }] },
+    inventory = { region = "region-one", availability_domains = [for ad in ["AD-1", "AD-2"] : { name = ad, shapes = [{ shape = "GPU.8", gpus = 8, gpu_memory_bytes_per_gpu = 40000000000, quota_names = ["gpu-count"] }] }], limits = [for ad in ["AD-1", "AD-2"] : { name = "gpu-count", scope_type = "AD", availability_domain = ad, description = "GPUs for test instances", tenancy_limit = 64 }] },
     capacity  = { region = "region-one", availability_domains = [for ad, count in { "AD-1" = 17, "AD-2" = 3 } : { name = ad, assessment = { observed_at = "2026-11-13T00:00:00Z", shapes = [{ shape = "GPU.8", available_instances = count, requested_instances = 1, availability_status = "AVAILABLE", fault_domain = null }] } }] }
   }]
 }
@@ -32,8 +33,60 @@ run "actual_capacity_packing_memory_and_all_links_are_compact" {
     error_message = "Aggregate physical capacity only across unique ADs of the exact shape; keep entitlement separate and label decimal GB consistently."
   }
   assert {
-    condition     = output.summary.option_count == 1 && output.summary.options.selected.links.launch_url == var.publications.selected.launch_url && output.summary.options.selected.links.download_url == var.publications.selected.download_url && output.summary.options.selected.links.expires_at == var.publications.selected.expires_at && output.summary.diagnostics == null
-    error_message = "The compact native JSON must contain every option and its full launch/download URLs without requiring the optional HTML or diagnostics."
+    condition     = output.summary.option_count == 1 && output.summary.options.selected.links.launch_url == var.publications.selected.launch_url && output.summary.options.selected.links.download_url == var.publications.selected.download_url && output.summary.options.selected.links.model_deployment.launch_url == var.model_publications.selected.launch_url && output.summary.options.selected.links.expires_at == var.publications.selected.expires_at && output.summary.diagnostics == null
+    error_message = "The embedded report data must retain both infrastructure/model launch and PAR URLs with exact expiry."
+  }
+  assert {
+    condition = output.summary.model.dimensions.layers == 32 && output.summary.model.checkpoint_formats == ["safetensors"] && output.summary.model.parameter_count == 2000000000 && output.summary.model.model_type == "llama"
+    error_message = "Present existing structured model metadata without additional lookups."
+  }
+}
+
+run "show_limit_increases_even_when_another_option_is_usable" {
+  command = plan
+  variables {
+    regions = [for region in var.regions : merge(region, { inventory = merge(region.inventory, { limits = [for limit in region.inventory.limits : merge(limit, { tenancy_limit = limit.availability_domain == "AD-1" ? 0 : 64 })] }) })]
+  }
+  assert {
+    condition = output.summary.option_count == 1 && output.summary.regional_capacity[0].limit_increase_possible && length(output.summary.regional_capacity[0].availability_domains[0].limit_increase_requests) == 1 && output.summary.regional_capacity[0].availability_domains[0].limit_increase_requests[0].minimum_gpus_for_whole_hosts == 8
+    error_message = "Positive physical capacity with insufficient limits stays visible even when another confirmed deployment option exists; request whole-host GPU units."
+  }
+}
+
+run "zero_capacity_is_not_a_limit_increase_opportunity" {
+  command = plan
+  variables {
+    regions = [for region in var.regions : merge(region, {
+      inventory = merge(region.inventory, { limits = [for limit in region.inventory.limits : merge(limit, { tenancy_limit = 0 })] }),
+      capacity = merge(region.capacity, { availability_domains = [for ad in region.capacity.availability_domains : merge(ad, { assessment = merge(ad.assessment, { shapes = [for shape in ad.assessment.shapes : merge(shape, { available_instances = 0, availability_status = "OUT_OF_HOST_CAPACITY" })] }) })] })
+    })]
+  }
+  assert {
+    condition = !output.summary.regional_capacity[0].limit_increase_possible
+    error_message = "Higher limits do not solve observed zero hardware capacity."
+  }
+}
+
+run "unknown_model_size_remains_explicit_in_limit_review" {
+  command = plan
+  variables {
+    profile = { model = { repository = "org/custom" }, memory = { status = "unsupported", reasons = ["Unknown architecture"] } }
+    regions = [for region in var.regions : merge(region, { inventory = merge(region.inventory, { limits = [for limit in region.inventory.limits : merge(limit, { tenancy_limit = 0 })] }) })]
+  }
+  assert {
+    condition = output.summary.regional_capacity[0].limit_increase_possible && output.summary.regional_capacity[0].minimum_model_hosts == null && output.summary.regional_capacity[0].availability_domains[0].limit_increase_requests[0].model_fit == "unknown_validate_model_sizing_first"
+    error_message = "Show potential limit review without claiming unknown model sizing is a deployable fit."
+  }
+}
+
+run "negative_unknown_limits_are_not_presented_as_insufficient_quotas" {
+  command = plan
+  variables {
+    regions = [for region in var.regions : merge(region, { inventory = merge(region.inventory, { limits = [for limit in region.inventory.limits : merge(limit, { tenancy_limit = -1 })] }) })]
+  }
+  assert {
+    condition = !output.summary.regional_capacity[0].limit_increase_possible
+    error_message = "A negative/sentinel quota value must not become a guessed limit-increase requirement."
   }
 }
 run "partial_ad_coverage_has_no_false_regional_total" {

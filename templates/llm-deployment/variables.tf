@@ -1,6 +1,39 @@
 # Copyright (c) 2020-2022 Oracle and/or its affiliates. All rights reserved.
 # Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
 variable "tenancy_ocid" { type = string }
+variable "cluster_id" { type = string }
+variable "advanced_settings" {
+  type    = bool
+  default = false
+}
+variable "compartment_id" {
+  type    = string
+  default = null
+}
+variable "gpu_pool_id" {
+  type    = string
+  default = null
+}
+variable "gpu_pool_compartment_id" {
+  type    = string
+  default = null
+}
+variable "platform_name" {
+  type    = string
+  default = null
+}
+variable "runner_subnet_id" {
+  type    = string
+  default = null
+}
+variable "runner_nsg_ids" {
+  type    = list(string)
+  default = null
+}
+variable "rdma_resource_name" {
+  type    = string
+  default = null
+}
 variable "compartment_ocid" {
   type    = string
   default = null
@@ -108,4 +141,12 @@ variable "prometheus_url" {
 variable "target_inflight" {
   type    = number
   default = 8
+}
+variable "model_staging_image" {
+  type    = string
+  default = null
+}
+variable "model_staging_cpu_shape" {
+  type    = string
+  default = null
 }

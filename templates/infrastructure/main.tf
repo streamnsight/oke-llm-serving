@@ -30,7 +30,7 @@ locals {
   recommendation_changes = local.selected_specification == null ? [] : [for key, value in local.selected_specification.recommendation : key if try({
     availability_domain = var.availability_domain, gpu_shape = var.gpu_shape, node_count = var.node_count,
     boot_volume_gib     = var.boot_volume_gib, skip_gpu_allocation = var.skip_gpu_allocation,
-    enable_lws          = var.enable_lws, enable_disaggregated_set = var.enable_disaggregated_set, monitoring_enabled = var.monitoring_enabled, autoscaling_enabled = var.autoscaling_enabled, rdma_mode = var.rdma_mode, model_storage_mode = var.model_storage_mode
+    enable_lws          = var.enable_lws, enable_disaggregated_set = var.enable_disaggregated_set, monitoring_enabled = var.monitoring_enabled, autoscaling_enabled = var.autoscaling_enabled, rdma_mode = var.rdma_mode
   }[key] != value, false) && key != "skip_gpu_allocation"]
   specification = {
     schema_version              = "1.0", platform_name = var.platform_name, region = var.region, cluster_id = var.cluster_id,

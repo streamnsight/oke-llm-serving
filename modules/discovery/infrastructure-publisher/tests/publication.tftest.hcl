@@ -66,8 +66,8 @@ run "apply_renders_zip_and_creates_scoped_links" {
     error_message = "Keep recommendations editable, size disk from checkpoint bytes and preserve the actual RMS region input."
   }
   assert {
-    condition     = alltrue([for name in keys(local.files["selected"]) : (!startswith(name, "templates/") || startswith(name, "templates/llm-deployment/")) && !startswith(name, "modules/discovery/infrastructure-publisher/") && !strcontains(name, "/.terraform/") && !strcontains(name, "/tests/")]) && contains(keys(local.files["selected"]), "templates/llm-deployment/main.tf") && contains(keys(local.files["selected"]), "modules/discovery/model-publisher/main.tf")
-    error_message = "Infrastructure includes its model-only child template/publisher once, excluding parent infrastructure templates, tests, caches and state."
+    condition     = alltrue([for name in keys(local.files["selected"]) : !startswith(name, "templates/") && !startswith(name, "modules/discovery/infrastructure-publisher/") && !startswith(name, "modules/discovery/model-publisher/") && !startswith(name, "modules/llm-deployment/") && !strcontains(name, "/.terraform/") && !strcontains(name, "/tests/")]) && !contains(keys(local.files["selected"]), "model-publication.tf")
+    error_message = "Infrastructure contains only its stage dependencies; discovery independently publishes the model ZIP."
   }
 }
 run "long_model_archive_path_does_not_lengthen_the_launch_url" {
@@ -115,12 +115,12 @@ run "existing_classic_and_noncommercial_hosts_are_unchanged" {
     error_message = "Do not rewrite existing classic or other-realm service endpoints."
   }
 }
-run "empty_options_create_no_storage" {
+run "empty_options_retain_the_shared_report_store_without_bundles" {
   command = plan
   variables { options = {} }
   assert {
-    condition     = length(oci_objectstorage_bucket.artifacts) == 0 && length(oci_objectstorage_object.launch) == 0 && length(archive_file.infrastructure) == 0 && length(output.deployment_options) == 0
-    error_message = "No confirmed options must create no publication resources."
+    condition     = length(oci_objectstorage_bucket.artifacts) == 1 && length(oci_objectstorage_object.launch) == 0 && length(archive_file.infrastructure) == 0 && length(output.deployment_options) == 0 && output.artifact_location.region == var.region
+    error_message = "The report still needs its private store when capacity has no confirmed options; no infrastructure ZIP may be generated."
   }
 }
 run "reject_unconfirmed_options" {
@@ -150,19 +150,15 @@ run "component_and_transport_choices_reach_both_editable_defaults" {
     } }
   }
   assert {
-    condition     = local.defaults.configured.enable_lws && local.defaults.configured.enable_disaggregated_set && !local.defaults.configured.monitoring_enabled && local.defaults.configured.autoscaling_enabled && local.defaults.configured.rdma_mode == "rdma" && alltrue([for key, value in local.defaults.configured : jsondecode(local.files.configured["recommendations_override.tf.json"]).variable[key].default == value && yamldecode(local.files.configured["schema.yaml"]).variables[key].default == value]) && contains(keys(local.files.configured), "modules/shared/component-delivery/scripts/component.sh") && contains(keys(local.files.configured), "modules/llm-deployment/model-storage/scripts/download.sh")
+    condition     = local.defaults.configured.enable_lws && local.defaults.configured.enable_disaggregated_set && !local.defaults.configured.monitoring_enabled && local.defaults.configured.autoscaling_enabled && local.defaults.configured.rdma_mode == "rdma" && alltrue([for key, value in local.defaults.configured : jsondecode(local.files.configured["recommendations_override.tf.json"]).variable[key].default == value && yamldecode(local.files.configured["schema.yaml"]).variables[key].default == value]) && contains(keys(local.files.configured), "modules/shared/component-delivery/scripts/component.sh")
     error_message = "Generated ZIPs must carry selected component/network defaults in both HCL and RMS and contain every new module dependency."
   }
 }
-run "model_handoff_retains_full_recipe_profile_and_original_publication_region" {
+run "infrastructure_payload_has_no_model_publisher_dependency" {
   command = apply
-  variables {
-    model_profile      = { model = { repository = "org/model", resolved_revision = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }, memory = { assumptions = { context_length = 16384, concurrency = 7 } } }
-    serving_resolution = { engine = { image = "vllm/vllm-openai@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" }, recipe = { args = ["--reasoning-parser", "qwen3"], env = { RECIPE_FLAG = "retained" }, companions = [{ name = "optional-cache", configuration_status = "requires_validation" }] } }
-  }
   assert {
-    condition     = local.specifications.selected.model_spec.selection == var.options.selected && local.specifications.selected.model_spec.profile.memory.assumptions.context_length == 16384 && local.specifications.selected.model_spec.serving_configuration.recipe == var.serving_resolution.recipe && local.specifications.selected.publication.region == "us-ashburn-1" && local.specifications.selected.publication.bucket_name == oci_objectstorage_bucket.artifacts[0].name && output.artifact_location.namespace == "fixture" && output.artifact_location.region == "us-ashburn-1"
-    error_message = "Infrastructure must carry complete model/recipe/workload provenance and reuse the actual discovery publication bucket/region for the later configured model ZIP."
+    condition     = local.specifications.selected.selection == var.options.selected && !contains(keys(local.specifications.selected), "model_spec") && !contains(keys(local.specifications.selected), "publication") && output.artifact_location.namespace == "fixture" && output.artifact_location.region == "us-ashburn-1"
+    error_message = "Keep selected infrastructure/boot sizing evidence; model publication has no dependency on infrastructure Apply outputs."
   }
 }
 run "packed_replicas_each_reserve_their_full_weight_workspace" {

@@ -115,7 +115,7 @@ output "assessment" {
     recommended_selection_id       = try(local.ranked_suggestions[0].id, local.ranked_candidates[0].id, null)
     recommendation_basis           = length(local.suggestions) > 0 ? "untested_recipe_suggestion" : length(local.candidates) > 0 ? "analytical_infrastructure_option_requires_expert_serving_validation" : "none"
     suggestions                    = local.ranked_suggestions
-    recipe_options                 = { features = try(local.api.features, {}), kv_offload_support = try(local.api.kv_offload_support, {}), cache_options = local.cache_options, source = try(local.api.source, {}) }
+    recipe_options                 = { features = try(local.api.features, {}), kv_offload_support = try(local.api.kv_offload_support, {}), cache_options = local.cache_options, source = try(local.api.source, {}), memory_budget_bytes = local.api_budget }
     recipe_alternatives            = try(local.api.variants, {})
     recipe_api_diagnostics         = { for k, r in local.renderings : k => r.selection if !contains(keys(local.valid_renderings), k) }
     platform_policy                = { monitoring_enabled = var.monitoring_enabled, autoscaling_enabled = var.autoscaling_enabled, fixed_replica_packing = "fill_complete_replicas_on_allocated_single_node_hosts" }

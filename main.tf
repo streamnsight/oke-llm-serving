@@ -62,14 +62,12 @@ module "discovery_report" {
   regions               = local.regional_results
   options               = local.infrastructure_options
   publications          = local.published_options
+  model_publications    = local.published_model_options
+  publication           = { published_at = local.publication_location.published_at, expires_at = timeadd(local.publication_location.published_at, "${var.par_lifetime_hours}h"), bundles_enabled = var.publish_infrastructure_bundles }
   serving_configuration = module.serving_resolution.resolution
   include_diagnostics   = var.include_diagnostics
   scan = {
     observation_id     = var.observation_id, home_region = try(local.oci_discovery.home_region, null),
     subscribed_regions = sort(tolist(local.subscribed_regions)), assessed_regions = sort(tolist(local.selected_regions))
   }
-}
-output "discovery" {
-  description = "Compact model, capacity, replica-packing and all-option launch report. Unknown estimates stay null; optional diagnostics are off by default."
-  value       = merge(module.discovery_report.summary, { comparison_report_url = local.comparison_report_url })
 }

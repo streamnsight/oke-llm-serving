@@ -118,9 +118,18 @@ resource "oci_devops_deploy_artifact" "stage" {
   deploy_artifact_type       = "COMMAND_SPEC"
   argument_substitution_mode = "NONE"
   deploy_artifact_source {
-    deploy_artifact_source_type = "INLINE"
-    base64encoded_content       = base64encode(local.command_spec)
+    deploy_artifact_source_type = "GENERIC_ARTIFACT"
+    repository_id               = var.artifact_repository_id
+    deploy_artifact_path        = oci_generic_artifacts_content_artifact_by_path.command[0].artifact_path
+    deploy_artifact_version     = oci_generic_artifacts_content_artifact_by_path.command[0].version
   }
+}
+resource "oci_generic_artifacts_content_artifact_by_path" "command" {
+  count         = local.enabled ? 1 : 0
+  repository_id = var.artifact_repository_id
+  artifact_path = "model-storage/${var.name}/command.yaml"
+  version       = sha256(local.command_spec)
+  content       = local.command_spec
 }
 resource "oci_devops_deploy_stage" "stage" {
   count                           = local.enabled ? 1 : 0
@@ -163,7 +172,7 @@ resource "oci_identity_policy" "runner" {
   name           = "${var.name}-${local.owner}-model-stage"
   description    = "Runner cluster/artifact access; no model bucket or Vault permissions. Kubernetes authorization is bootstrapped separately."
   statements = [
-    "Allow dynamic-group id ${oci_identity_dynamic_group.runner[0].id} to use cluster-family in compartment id ${var.cluster_compartment_id}",
+    "Allow dynamic-group id ${oci_identity_dynamic_group.runner[0].id} to use clusters in compartment id ${var.cluster_compartment_id} where target.cluster.id = '${var.cluster_id}'",
     "Allow dynamic-group id ${oci_identity_dynamic_group.runner[0].id} to read devops-family in compartment id ${var.compartment_id}",
     "Allow dynamic-group id ${oci_identity_dynamic_group.runner[0].id} to manage compute-container-instances in compartment id ${var.compartment_id}",
     "Allow dynamic-group id ${oci_identity_dynamic_group.runner[0].id} to manage compute-containers in compartment id ${var.compartment_id}",

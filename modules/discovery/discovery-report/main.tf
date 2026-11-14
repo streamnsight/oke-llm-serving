@@ -2,9 +2,12 @@
 # Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
 terraform { required_version = ">= 1.5.0" }
 locals {
+  model_budget_bytes = try(coalesce(try(var.profile.memory.recommended_aggregate_bytes, null), try(var.assessment.recipe_options.memory_budget_bytes, null)), null)
+  model_budget_basis = try(var.profile.memory.recommended_aggregate_bytes > 0, false) ? "analytical_aggregate_estimate" : local.model_budget_bytes != null ? "heuristic_recipe_budget" : "unknown"
   inventory_rows = flatten([for region in var.regions : [for ad in try(region.inventory.availability_domains, []) : [for shape in ad.shapes : {
     region          = region.inventory.region, ad = ad.name, shape = shape.shape, gpus = shape.gpus,
     gpu_description = try(shape.gpu_description, null), memory_bytes_per_gpu = try(shape.gpu_memory_bytes_per_gpu, null)
+    limits          = [for limit in try(region.inventory.limits, []) : limit if contains(try(shape.quota_names, []), limit.name) && (limit.scope_type != "AD" || limit.availability_domain == ad.name)]
   }]]])
   capacity_rows = flatten([for region in var.regions : [for ad in try(region.capacity.availability_domains, []) : [for row in try(ad.assessment.shapes, []) : {
     region       = region.capacity.region, ad = ad.name, shape = row.shape,
@@ -17,7 +20,8 @@ locals {
     [for option in values(var.options) : jsonencode([option.region, option.gpu_shape])]
   ))
   shape_contexts = { for key in local.shape_keys : key => {
-    region = jsondecode(key)[0], shape = jsondecode(key)[1]
+    region               = jsondecode(key)[0], shape = jsondecode(key)[1]
+    memory_bytes_per_gpu = try(one(distinct([for row in local.inventory_rows : row.memory_bytes_per_gpu if row.region == jsondecode(key)[0] && row.shape == jsondecode(key)[1] && try(row.memory_bytes_per_gpu > 0, false)])), null)
     ads = sort(distinct(flatten([for region in var.regions : concat(
       [for ad in try(region.inventory.availability_domains, []) : ad.name],
       [for ad in try(region.capacity.availability_domains, []) : ad.name]
@@ -42,12 +46,35 @@ locals {
     status          = ad.known ? ad.rows[0].status : length(ad.rows) == 0 ? "not_assessed" : "ambiguous_or_incomplete_report",
     observed_at     = length(ad.rows) == 1 ? ad.rows[0].observed_at : null
   } }
+  minimum_model_hosts = { for key, shape in local.shape_contexts : key => try(
+    local.model_budget_bytes > 0 ? ceil(local.model_budget_bytes / (one(shape.gpu_counts) * shape.memory_bytes_per_gpu * 0.9)) : null, null
+  ) }
+  ad_limits = { for key, ad in local.ad_observations : key => distinct(flatten([
+    for row in local.inventory_rows : row.limits if jsonencode([row.region, row.shape]) == ad.shape_key && row.ad == ad.availability_domain
+  ])) }
+  limit_requests = { for key, ad in local.ad_observations : key => [for limit in local.ad_limits[key] : {
+    limit_name                   = limit.name, scope = limit.scope_type, availability_domain = limit.scope_type == "AD" ? ad.availability_domain : null,
+    current_limit                = limit.tenancy_limit,
+    minimum_gpus_for_whole_hosts = try(local.minimum_model_hosts[ad.shape_key] * one(local.shape_contexts[ad.shape_key].gpu_counts), null),
+    model_fit                    = local.minimum_model_hosts[ad.shape_key] == null ? "unknown_validate_model_sizing_first" : "aggregate_memory_only_validate_layout_and_runtime"
+    } if try(ad.known && ad.available_hosts > 0 &&
+    (local.minimum_model_hosts[ad.shape_key] == null ? true : ad.available_hosts >= local.minimum_model_hosts[ad.shape_key]) &&
+    (tonumber(limit.tenancy_limit) == 0 ? true : try(startswith(limit.description, "GPUs for ") && tonumber(limit.tenancy_limit) > 0 && tonumber(limit.tenancy_limit) < local.minimum_model_hosts[ad.shape_key] * one(local.shape_contexts[ad.shape_key].gpu_counts), false)), false)
+  ] }
+  ad_details = { for key, ad in local.ad_observations : key => merge(ad, {
+    entitled_hosts      = try(one([for row in var.assessment.shape_observations : row.entitled_instances if jsonencode([row.region, row.shape]) == ad.shape_key && row.availability_domain == ad.availability_domain]), null),
+    entitlement_status  = try(one([for row in var.assessment.shape_observations : row.status if jsonencode([row.region, row.shape]) == ad.shape_key && row.availability_domain == ad.availability_domain]), "unknown"),
+    minimum_model_hosts = local.minimum_model_hosts[ad.shape_key], limit_increase_requests = local.limit_requests[key]
+  }) }
   regional_counts = { for key, shape in local.shape_contexts : key => {
-    region               = shape.region, gpu_shape = shape.shape,
-    gpus_per_host        = length(shape.gpu_counts) == 1 ? shape.gpu_counts[0] : null,
-    expected_ads         = length(shape.ads), known_ads = length([for ad in values(local.ad_observations) : ad if ad.shape_key == key && ad.known]),
-    known_reported_hosts = sum(concat([0], [for ad in values(local.ad_observations) : ad.available_hosts if ad.shape_key == key && ad.known])),
-    availability_domains = [for ad in shape.ads : { for field, value in local.ad_observations[jsonencode([shape.region, shape.shape, ad])] : field => value if field != "shape_key" }]
+    region                  = shape.region, gpu_shape = shape.shape,
+    memory_gb_per_gpu       = try(shape.memory_bytes_per_gpu / 1e9, null),
+    minimum_model_hosts     = local.minimum_model_hosts[key], model_sizing_basis = local.model_budget_basis,
+    limit_increase_possible = anytrue([for ad in values(local.ad_details) : length(ad.limit_increase_requests) > 0 if ad.shape_key == key]),
+    gpus_per_host           = length(shape.gpu_counts) == 1 ? shape.gpu_counts[0] : null,
+    expected_ads            = length(shape.ads), known_ads = length([for ad in values(local.ad_observations) : ad if ad.shape_key == key && ad.known]),
+    known_reported_hosts    = sum(concat([0], [for ad in values(local.ad_observations) : ad.available_hosts if ad.shape_key == key && ad.known])),
+    availability_domains    = [for ad in shape.ads : { for field, value in local.ad_details[jsonencode([shape.region, shape.shape, ad])] : field => value if field != "shape_key" }]
   } }
   regional_capacity = { for key, row in local.regional_counts : key => merge(row, {
     coverage            = row.expected_ads > 0 && row.expected_ads == row.known_ads ? "complete" : "partial",
@@ -63,6 +90,8 @@ locals {
     runtime_allowance   = try(var.profile.memory.runtime_allowance_bytes, null),
     total_estimated     = try(var.profile.memory.recommended_aggregate_bytes, null)
   }
+  option_recipes = { for id, option in var.options : id => try(option.serving_configuration.recipe, var.serving_configuration.recipe, {}) }
+  option_engines = { for id, option in var.options : id => try(option.serving_configuration.engine, option.engine, var.serving_configuration.engine, {}) }
   choices = { for id, option in var.options : id => {
     region   = option.region, availability_domain = option.availability_domain, gpu_shape = option.gpu_shape,
     gpu_type = try(one([for row in local.inventory_rows : row.gpu_description if row.region == option.region && row.ad == option.availability_domain && row.shape == option.gpu_shape]), null),
@@ -96,23 +125,50 @@ locals {
     tasks                    = try(option.serving_configuration.recipe.serving_tasks, []),
     components               = sort([for component, requirement in try(option.platform_plan.components, {}) : component if requirement.required]),
     integration_requirements = [for diagnostic in try(option.platform_plan.diagnostics, []) : diagnostic.code if diagnostic.code != "runtime_not_validated"],
+    requires_rdma            = try(option.requires_rdma, false),
+    warnings                 = try(option.warnings, []), deployment_requirements = try(option.deployment_requirements, []),
+    serving = {
+      framework            = try(local.option_engines[id].framework, "vllm"), image = try(local.option_engines[id].image, null),
+      version              = try(local.option_engines[id].version, null), platform = try(local.option_engines[id].platform, null),
+      args                 = try(local.option_recipes[id].args, []), environment = try(local.option_recipes[id].env, {}),
+      original_argv        = try(local.option_recipes[id].api.original_argv, local.option_recipes[id].api.rendering.argv, []),
+      original_environment = try(local.option_recipes[id].api.rendering.env, {}),
+      source_url           = try(local.option_recipes[id].api.rendering.page_url, local.option_recipes[id].source_url, null),
+      source_hardware      = try(local.option_recipes[id].api.selection.hardware, local.option_recipes[id].selected_hardware, null),
+      selected_hardware    = try(local.option_recipes[id].selected_hardware, null),
+      dependencies         = try(local.option_recipes[id].dependencies, []), companions = try(local.option_recipes[id].companions, [])
+    },
     links = {
       launch_url   = try(var.publications[id].launch_url, null), download_url = try(var.publications[id].download_url, null),
-      published_at = try(var.publications[id].published_at, null), expires_at = try(var.publications[id].expires_at, null)
+      published_at = try(var.publications[id].published_at, null), expires_at = try(var.publications[id].expires_at, null),
+      model_deployment = {
+        launch_url = try(var.model_publications[id].launch_url, null), download_url = try(var.model_publications[id].download_url, null),
+        expires_at = try(var.model_publications[id].expires_at, null)
+      }
     },
     skip_gpu_allocation = try(var.publications[id].skip_gpu_allocation, false)
   } }
   summary = {
-    schema_version = "3.0", scan = var.scan,
+    schema_version = "4.0", scan = var.scan, publication = var.publication,
     model = {
       repository              = try(var.profile.model.repository, null), revision = try(var.profile.model.resolved_revision, null),
       architecture            = try(var.profile.architecture.kind, null),
+      model_type              = try(var.profile.architecture.model_type, null), architecture_classes = try(var.profile.architecture.architectures, []),
+      dimensions              = { for key, value in try(var.profile.architecture.attention, {}) : key => value if key != "layer_types" },
+      experts                 = try(var.profile.architecture.experts, null), experts_per_token = try(var.profile.architecture.experts_per_token, null),
+      declared_context_length = try(var.profile.architecture.declared_context_length, null), quantization = try(var.profile.architecture.quantization, null),
+      huggingface_url         = try(var.profile.model.url, null), library = try(var.profile.model.library, null), license = try(var.profile.model.license, null),
+      gated                   = try(var.profile.model.gated, null), created_at = try(var.profile.model.created_at, null), last_modified = try(var.profile.model.last_modified, null),
+      checkpoint_formats      = try(var.profile.weights.checkpoint_formats, []), selected_checkpoint = try(var.profile.weights.selected_checkpoint, null),
+      parameter_count         = try(var.profile.weights.tensor_elements, null), parameters_by_dtype = try(var.profile.weights.elements_by_dtype, {}),
+      weights_source          = try(var.profile.weights.source, null),
       declared_pipeline       = try(var.profile.model.pipeline_tag, null),
       context_length          = try(var.profile.memory.assumptions.context_length, null),
       concurrency_per_replica = try(var.profile.memory.assumptions.concurrency, null),
       memory_status           = try(var.profile.memory.status, "unknown"), memory_reasons = try(var.profile.memory.reasons, []),
       memory_gb               = { for name, bytes in local.memory_bytes : name => bytes == null ? null : bytes / 1e9 },
       safety_margin_fraction  = try(var.profile.memory.assumptions.safety_margin_fraction, null)
+      memory_assumptions      = try(var.profile.memory.assumptions, {}), recipe_memory_budget_gb = try(var.assessment.recipe_options.memory_budget_bytes / 1e9, null)
     },
     recommended_option_id = try(var.assessment.recommended_selection_id, null),
     recommendation_basis  = try(var.assessment.recommendation_basis, "not_established"),
@@ -131,4 +187,8 @@ locals {
   }
 }
 output "summary" { value = local.summary }
-output "html" { value = templatefile("${path.module}/report.html.tftpl", { report_json = jsonencode(local.summary) }) }
+output "html" { value = templatefile("${path.module}/report.html.tftpl", {
+  report_json   = jsonencode(local.summary),
+  report_script = file("${path.module}/report.js"),
+  theme_css     = join("\n", [file("${path.module}/styles/tokens.css"), file("${path.module}/styles/app-shell.css"), file("${path.module}/styles/report.css")])
+}) }

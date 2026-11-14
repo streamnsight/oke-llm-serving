@@ -5,14 +5,10 @@ variable "model_spec" {
   type        = any
   default     = null
 }
-variable "platform_binding" {
-  description = "Existing platform IDs and allocation geometry. Debug bindings may have no GPU pool; runtime deployment must then fail preflight."
-  type        = any
-}
 variable "publication" {
-  description = "Original discovery ZIP bucket. Pass an OCI provider configured for its region; this module creates no buckets."
+  description = "Shared discovery ZIP/report publication context. Pass an OCI provider in this storage region; this module creates no buckets."
   type = object({
-    namespace = string, bucket_name = string, region = string, par_lifetime_hours = optional(number, 24)
+    namespace = string, bucket_name = string, region = string, published_at = string, par_lifetime_hours = optional(number, 24)
   })
   default = null
   validation {

@@ -23,13 +23,17 @@ if(tool==='kubectl'){
  if(a.includes('namespace'))out(s.namespace);
  else if(a.includes('nodes'))out({items:s.nodes});
  else if(a.includes('pvc'))out(s.pvc||{});
- else if(a.includes('configmap'))out(s.owner||{});
+ else if(a.includes('configmap'))out(a.includes('kube-system')?s.context||{}:s.owner||{});
  else if(a.includes('crd'))out({status:{conditions:[{type:'Established',status:'True'}]}});
  else if(a.includes('pods'))out({items:s.pods});
  else if(a.includes('deployment'))out(s.controller||{metadata:{generation:1},spec:{replicas:1},status:{observedGeneration:1,availableReplicas:1,conditions:[{type:'Available',status:'True'}]}});
  else if(a.includes('port-forward')){setInterval(()=>{},10000);process.on('SIGTERM',()=>process.exit(0));}
  else if(a.includes('wait')||a.includes('rollout')){if(s.notReady)process.exit(1);}
  else{process.stderr.write('Unexpected kubectl');process.exit(1);}
+} else if(tool==='oci'){
+ if(a.slice(0,3).join(' ')==='ce node-pool list')out({data:s.pools||[s.pool]});
+ else if(a.slice(0,3).join(' ')==='ce node-pool get')out({data:s.pool});
+ else process.exit(1);
 } else if(tool==='helm'){
  if(a[0]==='status')out({version:s.revision||3,info:{status:'deployed'}});
  else if(a.slice(0,2).join(' ')==='get metadata')out({chart:'oke-llm-model',version:'0.1.0-test',revision:s.metadataRevision||s.revision||3,status:'deployed'});
@@ -43,7 +47,7 @@ if(tool==='kubectl'){
 function fixture(changes={}){
  const dir=mkdtempSync(`${tmpdir()}/model-runtime-`);mkdirSync(`${dir}/runtime`);mkdirSync(`${dir}/bin`);
  for(const file of ['common.sh','preflight.sh','validate.sh','benchmark.sh'])copyFileSync(`${modulePath}/scripts/${file}`,`${dir}/runtime/${file}`);
- for(const tool of ['kubectl','helm','curl','sleep'])writeFileSync(`${dir}/bin/${tool}`,`#!${process.execPath}\n${mock}`,{mode:0o755});
+ for(const tool of ['kubectl','helm','curl','sleep','oci'])writeFileSync(`${dir}/bin/${tool}`,`#!${process.execPath}\n${mock}`,{mode:0o755});
  const current=structuredClone(config);if(changes.config)Object.assign(current,changes.config);
  writeFileSync(`${dir}/runtime/config.json`,JSON.stringify(current));
  const namespace={metadata:{labels:{'oke-llm/platform-owner':hash('fixture/cluster').slice(0,32),'oke-llm/model-namespace':'true'},annotations:{'oke-llm/platform-name':'fixture','oke-llm/cluster-id':'cluster'}}};
@@ -87,8 +91,8 @@ test('LWS chart has rank variables, per-group host separation and leader-only en
 test('pinned upstream router dependency renders only namespaced router resources and literal leader selector',{skip:!process.env.MODEL_ROUTER_CHART_FILE},()=>{
  const c=chartFixture(true);try{const docs=c.render({router:{enabled:true},'vllm-stack':{servingEngineSpec:{enableEngine:false,modelSpec:[]},routerSpec:{enableRouter:true,serviceAccountName:'oke-llm-router',routingLogic:'prefixaware',extraArgs:['--k8s-label-selector','oke-llm/model=model-fixture,oke-llm/endpoint=true'],repository:'lmcache/lmstack-router',tag:'v0.1.14@sha256:'+'7'.repeat(64)},'kube-prometheus-stack':{enabled:false},'prometheus-adapter':{enabled:false},'k8s-aibom':{enabled:false}}});const router=docs.find(d=>d.kind==='Deployment'&&d.metadata.name==='model-deployment-router');assert(router);const container=router.spec.template.spec.containers[0];assert(container.args.includes('prefixaware'));assert(container.args.includes('oke-llm/model=model-fixture,oke-llm/endpoint=true'));assert.equal(router.spec.template.spec.serviceAccountName,'oke-llm-router');assert(!docs.some(d=>['ClusterRole','ClusterRoleBinding','CustomResourceDefinition','Role','RoleBinding','PersistentVolumeClaim'].includes(d.kind)));}finally{c.close();}
 });
-test('model RMS form matches typed Terraform fields and never asks for discovery JSON or GPU pool creation',()=>{
- const schema=parse(readFileSync(`${root}/templates/llm-deployment/schema.yaml`,'utf8')),variables=[...readFileSync(`${root}/templates/llm-deployment/variables.tf`,'utf8').matchAll(/variable "([^"]+)"/g)].map(m=>m[1]);assert.deepEqual(Object.keys(schema.variables).sort(),variables.sort());for(const key of['discovery_json','cluster_id','gpu_shape','gpu_image_id','node_count'])assert.equal(schema.variables[key],undefined);for(const group of schema.variableGroups)for(const key of group.variables)assert(Object.hasOwn(schema.variables,key));
+test('model RMS form selects existing cluster/pool and matches Terraform variables without GPU allocation fields',()=>{
+ const schema=parse(readFileSync(`${root}/templates/llm-deployment/schema.yaml`,'utf8')),variables=[...readFileSync(`${root}/templates/llm-deployment/variables.tf`,'utf8').matchAll(/variable "([^"]+)"/g)].map(m=>m[1]);assert.deepEqual(Object.keys(schema.variables).filter(key=>!Object.values(schema.variables).some(v=>v.valueType===key)).sort(),variables.sort());for(const key of['discovery_json','gpu_shape','gpu_image_id','node_count','platform_binding'])assert.equal(schema.variables[key],undefined);assert.equal(schema.variables.cluster_id.required,true);assert.equal(schema.variables.cluster_id.type,'oci:container:cluster:id');assert.equal(schema.variables.gpu_pool_id.type,'string');for(const group of schema.variableGroups)for(const key of group.variables)assert(Object.hasOwn(schema.variables,key));
 });
 test('all model Shell sources parse',()=>{for(const file of ['common.sh','preflight.sh','validate.sh','benchmark.sh','bench-client.sh','operation.sh'])execFileSync('bash',['-n',`${modulePath}/scripts/${file}`]);});
 
@@ -115,5 +119,63 @@ test('model ServiceMonitor carries the infrastructure selector and scaling targe
 test('benchmark parameter validation rejects shell expressions and oversized token contexts before any Job',()=>{
  for(const env of [{BENCHMARK_REQUESTS:'$(touch unwanted)'},{BENCHMARK_INPUT_TOKENS:'4096'}]){
   const f=fixture({config:{serving:{recipe:{args:[]}}},env:{BENCHMARK_BACKEND:'openai',BENCHMARK_REQUESTS:'32',BENCHMARK_INPUT_TOKENS:'256',BENCHMARK_OUTPUT_TOKENS:'64',...env}});try{const r=f.run('bash runtime/benchmark.sh');assert.notEqual(r.status,0,r.stderr);assert(!r.state.calls.some(c=>c.args.includes('create')));}finally{f.close();}
+ }
+});
+
+const runtimePlatform={...config.platform,binding_mode:'runtime',project_id:'ocid1.devopsproject.oc1.model',cluster_compartment_id:'cluster-compartment',gpu_pool_compartment_id:'pool-compartment',gpu_shape:'BM.GPU.A10.4',availability_domain:'AD-1'};
+const runtimePool={id:'pool','cluster-id':'cluster','lifecycle-state':'ACTIVE','node-shape':'BM.GPU.A10.4','initial-node-labels':[{key:'oke-llm/allocation',value:'fixture'}],'freeform-tags':{'oke-llm-allocation':'owned-allocation'},'node-config-details':{'placement-configs':[{'availability-domain':'AD-1'}]},nodes:[{id:'instance','lifecycle-state':'ACTIVE'}]};
+const runtimeNode={metadata:{labels:{}},spec:{providerID:'oci://instance'},status:{conditions:[{type:'Ready',status:'True'}],allocatable:{'nvidia.com/gpu':'4'}}};
+test('runtime discovers an exact owned OCI pool and never equates allocatable GPU totals with free devices',()=>{
+ const otherAdPool={...runtimePool,'node-config-details':{'placement-configs':[{'availability-domain':'AD-2'}]}};
+ const f=fixture({config:{platform:{...runtimePlatform,allocation:{gpu_pool_id:null}}},state:{pool:otherAdPool,nodes:[runtimeNode]}});
+ try{const r=f.run('model_geometry');assert.equal(r.status,0,r.stderr);const evidence=JSON.parse(readFileSync(`${f.dir}/model-allocation-check.json`));assert.equal(evidence.free_gpu_headroom,'unknown_other_namespace_requests_not_visible');assert.deepEqual(evidence.actual_availability_domains,['AD-2']);assert.equal(evidence.retained_pool_requires_new_regional_capacity,false);assert(!r.state.calls.some(c=>c.tool==='kubectl'&&(c.args.includes('--all-namespaces')||c.args.includes('-A'))));assert(r.state.calls.some(c=>c.tool==='oci'&&c.args.includes('list')));}finally{f.close();}
+});
+test('runtime pool resolution rejects missing/ambiguous, foreign, unready and shared GPU allocations',()=>{
+ const cases=[
+  {pools:[]}, {pools:[runtimePool,runtimePool]},
+  {pool:{...runtimePool,'cluster-id':'foreign'}},
+  {pool:{...runtimePool,'node-shape':'foreign'}},
+  {pool:{...runtimePool,'lifecycle-state':'UPDATING'}},
+  {pool:{...runtimePool,'initial-node-labels':[]}}, {pool:{...runtimePool,'freeform-tags':{}}},
+  {pool:{...runtimePool,nodes:[{id:'foreign-instance','lifecycle-state':'ACTIVE'}]}},
+  {nodes:[{...runtimeNode,spec:{providerID:'oci://foreign-instance'}}]},
+  {nodes:[{...runtimeNode,metadata:{labels:{'nvidia.com/gpu.replicas':'4'}}}]},
+  {nodes:[{...runtimeNode,spec:{...runtimeNode.spec,unschedulable:true}}]}
+ ];
+ for(const change of cases){const f=fixture({config:{platform:{...runtimePlatform,allocation:{gpu_pool_id:null}}},state:{pool:runtimePool,nodes:[runtimeNode],...change}});try{const r=f.run('model_geometry');assert.notEqual(r.status,0,JSON.stringify(change));assert(!r.state.calls.some(c=>c.args.some(a=>['create','update','delete','apply','replace'].includes(a))));}finally{f.close();}}
+});
+function runtimeContext(component){const metadata={labels:{'oke-llm/platform-owner':hash('fixture/cluster').slice(0,32)},annotations:{'oke-llm/model-namespace':defaults.MODEL_NAMESPACE,'oke-llm/model-project-id':runtimePlatform.project_id}};return{metadata,data:{'context.json':JSON.stringify({platform_name:'fixture',cluster_id:'cluster',model_project_id:runtimePlatform.project_id,model_namespace:defaults.MODEL_NAMESPACE,gpu_pool_id:'runtime',components:{lws:component}})}};}
+test('runtime obtains live controller generations only through the trusted fixed read context',()=>{
+ const component={mode:'managed',namespace:'lws-system',owner_name:'owned-controller',ownership_token:hash('fixture/cluster/lws'),release_name:'lws',crd_names:['leaderworkersets.leaderworkerset.x-k8s.io'],deployment_names:['lws-controller-manager']};
+ const owner={data:{ownership_token:component.ownership_token,generation:'current-not-frozen',status:'ready',chart_version:'0.8.0',helm_revision:'3'}};
+ const controller={metadata:{generation:2,annotations:{'meta.helm.sh/release-name':'lws','meta.helm.sh/release-namespace':'lws-system'}},spec:{replicas:1},status:{observedGeneration:2,availableReplicas:1,conditions:[{type:'Available',status:'True'}]}};
+ for(const [change,pass] of [[{},true],[{owner:{data:{...owner.data,status:'prepared'}}},false],[{owner:{data:{...owner.data,ownership_token:'foreign'}}},false],[{controller:{...controller,metadata:{...controller.metadata,annotations:{'meta.helm.sh/release-name':'other'}}}},false],[{context:{metadata:{labels:{},annotations:{}},data:{}}},false]]){
+  const f=fixture({config:{platform:runtimePlatform},state:{context:runtimeContext(component),owner,controller,...change}});try{const r=f.run('model_platform_ready');assert.equal(r.status===0,pass,r.stderr);if(pass){const evidence=JSON.parse(readFileSync(`${f.dir}/platform-readiness.json`));assert.equal(evidence[0].current_ready_generation,'current-not-frozen');assert(r.state.calls.every(c=>c.tool==='kubectl'&&c.args.includes('get')));}}finally{f.close();}
+ }
+});
+test('bounded placement failure reports that free devices were not established at preflight',()=>{
+ const f=fixture({state:{notReady:true}});try{const r=f.run('model_validate');assert.notEqual(r.status,0);assert.match(r.stderr,/not proof of free devices/);}finally{f.close();}
+});
+
+test('native chart refuses explicit Ray and disaggregated recipe strategies before hardware or chart actions',()=>{
+ for(const model of [{selection:{platform_plan:{topology:{backend:'ray',strategy:'multi_node_tp_pp'}}}},{selection:{platform_plan:{topology:{backend:'mp',strategy:'disaggregated_requires_adapter'}}}}]){
+  const f=fixture({config:{model}});try{const r=f.run('bash runtime/preflight.sh');assert.notEqual(r.status,0);assert.match(r.stderr,/native multiprocessing only/);assert(!r.state.calls.some(c=>c.tool==='oci'||c.tool==='curl'));}finally{f.close();}
+ }
+ const f=fixture({config:{serving:{recipe:{args:['--distributed-executor-backend=ray']}}}});try{const r=f.run('bash runtime/preflight.sh');assert.notEqual(r.status,0);assert.match(r.stderr,/native multiprocessing only/);}finally{f.close();}
+});
+
+test('RDMA reuse requires one actual AD, the actual Compute Cluster and advertised device resources',()=>{
+ const transport={requires_rdma:true,rdma_resource_name:'rdma/test'};
+ const platform={...runtimePlatform,transport,allocation:{gpu_pool_id:'pool',compute_cluster_id:'compute-cluster'}};
+ const pool={...runtimePool,'node-config-details':{'placement-configs':[{'availability-domain':'AD-2'}],'compute-cluster-id':'compute-cluster'}};
+ const node={...runtimeNode,status:{...runtimeNode.status,allocatable:{...runtimeNode.status.allocatable,'rdma/test':'1'}}};
+ for(const [change,pass] of [[{},true],[{pool:{...pool,'node-config-details':{...pool['node-config-details'],'compute-cluster-id':'foreign'}}},false],[{pool:{...pool,'node-config-details':{...pool['node-config-details'],'placement-configs':[{'availability-domain':'AD-1'},{'availability-domain':'AD-2'}]}}},false],[{nodes:[runtimeNode]},false]]){
+  const f=fixture({config:{platform},state:{pool,nodes:[node],...change}});try{const r=f.run('model_geometry');assert.equal(r.status===0,pass,r.stderr);}finally{f.close();}
+ }
+});
+test('editable runtime arguments cannot retarget the model project, cluster, platform or pool boundary',()=>{
+ const fixed={MODEL_PROJECT_ID:runtimePlatform.project_id,MODEL_CLUSTER_ID:'cluster',MODEL_PLATFORM_NAME:'fixture',MODEL_GPU_POOL_ID:'runtime'};
+ for(const key of Object.keys(fixed)){
+  const f=fixture({config:{platform:runtimePlatform,defaults:{...defaults,...fixed}},env:{...fixed,[key]:'other'}});try{const r=f.run('model_inputs');assert.notEqual(r.status,0);assert.match(r.stderr,/immutable onboarding boundary/);assert.equal(r.state.calls.length,0);}finally{f.close();}
  }
 });

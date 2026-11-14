@@ -4,7 +4,7 @@ variable "tenancy_ocid" { type = string }
 variable "compartment_id" { type = string }
 variable "platform" {
   type        = any
-  description = "Trusted infrastructure binding; reuses its OKE environment, project, allocation and artifact repositories."
+  description = "Runtime target and independent model-project resources. GPU pool/controllers may not exist at Apply; trusted readiness and namespace authorization are checked when a pipeline runs."
 }
 variable "model" {
   type        = any

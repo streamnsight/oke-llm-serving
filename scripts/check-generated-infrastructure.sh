@@ -13,7 +13,7 @@ for required in main.tf schema.yaml .terraform.lock.hcl recommendations_override
   [[ -f "$staging/$required" ]] || { echo "Missing rendered asset: $required" >&2; exit 1; }
 done
 [[ ! -d "$staging/templates/infrastructure" && ! -d "$staging/modules/discovery/infrastructure-publisher" ]]
-[[ -f "$staging/templates/llm-deployment/main.tf" && -f "$staging/modules/discovery/model-publisher/main.tf" ]]
+[[ ! -d "$staging/templates" && ! -d "$staging/modules/llm-deployment" && ! -d "$staging/modules/discovery/model-publisher" ]]
 if find "$staging" \( -name .terraform -o -name tests -o -name '*.tfstate*' -o -name '*.tfvars*' \) -print | grep -q .; then
   echo 'Rendered ZIP contains development/private files or tfvars that shadow Console edits.' >&2; exit 1
 fi

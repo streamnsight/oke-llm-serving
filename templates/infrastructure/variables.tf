@@ -155,22 +155,3 @@ variable "rdma_resource_name" {
   type        = string
   default     = null
 }
-variable "model_storage_mode" {
-  description = "Optional model-data staging, independent of pipeline software artifacts."
-  type        = string
-  default     = "direct_huggingface"
-  validation {
-    condition     = contains(["direct_huggingface", "object_storage"], var.model_storage_mode)
-    error_message = "Choose direct_huggingface or object_storage."
-  }
-}
-variable "model_staging_image" {
-  description = "Digest-pinned CPU image built from modules/llm-deployment/model-storage/image/Dockerfile; needed only for optional Object Storage staging."
-  type        = string
-  default     = null
-}
-variable "model_staging_cpu_shape" {
-  description = "Optional existing CPU shape override. Defaults to a CPU shape observed in the existing cluster pools; runner validates actual nodes."
-  type        = string
-  default     = null
-}

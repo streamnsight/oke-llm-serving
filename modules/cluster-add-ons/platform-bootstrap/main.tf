@@ -226,7 +226,7 @@ output "platform" {
     model_onboarding = {
       pipeline_id        = oci_devops_deploy_pipeline.model_onboarding.id, namespace_prefix = "${var.name}-model-",
       owner_label        = "oke-llm/platform-owner", owner_value = substr(sha256("${var.name}/${var.config.cluster_id}"), 0, 32),
-      required_arguments = ["MODEL_NAMESPACE", "MODEL_PIPELINE_IDS"], operations = ["grant", "revoke"], automatically_started = false
+      required_arguments = ["MODEL_NAMESPACE", "MODEL_PIPELINE_IDS", "MODEL_PROJECT_ID", "MODEL_GPU_POOL_ID"], operations = ["grant", "revoke"], automatically_started = false
     },
     runtime_readiness = "not_asserted_by_terraform; run deploy/validate and inspect immutable execution evidence"
   }

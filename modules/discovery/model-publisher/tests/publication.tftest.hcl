@@ -9,22 +9,13 @@ mock_provider "oci" {
 variables {
   template_dir = "../../../templates/llm-deployment"
   modules_dir  = "../.."
-  publication  = { namespace = "fixture", bucket_name = "original-discovery-bundles", region = "us-chicago-1", par_lifetime_hours = 24 }
-  platform_binding = {
-    schema_version               = "1.0", platform_name = "platform", generation = "platform-generation", region = "eu-frankfurt-1", gpu_shape = "BM.GPU.H100.8",
-    project_id                   = "existing-project", deploy_environment_id = "existing-environment", script_repository_id = "existing-scripts", result_repository_id = "existing-results",
-    compartment_id               = "workload-compartment", cluster_id = "cluster", cluster_compartment_id = "cluster-compartment", kubernetes_version = "v1.34.1",
-    runner_subnet_id             = "runner-subnet", runner_nsg_ids = [], gpu_selector = "oke-llm/allocation=platform",
-    allocation                   = { gpu_pool_id = null, allocation_identity = null, compute_cluster_id = null }, gpu_count_per_host = 8, node_count = 1, gpu_allocation_enabled = false,
-    transport                    = { requires_rdma = false, rdma_resource_name = null, mode = "ethernet" },
-    monitoring_enabled           = false, autoscaling_enabled = false, required_components = [], components = {}, component_generations = {},
-    model_onboarding_pipeline_id = "trusted-onboarding-pipeline", model_storage = { mode = "direct_huggingface" }
-  }
+  publication  = { namespace = "fixture", bucket_name = "original-discovery-bundles", region = "us-chicago-1", published_at = "2026-11-14T10:00:00Z", par_lifetime_hours = 24 }
   model_spec = {
     schema_version = "1.0", kind = "llm_model", selection_id = "selected", source_commit = "source-commit",
     model          = { repository = "org/model", revision = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", context_length = 8192, concurrency = 8, checkpoint_download_bytes = 107374182400 },
     profile        = { memory = { assumptions = { context_length = 4096, concurrency = 1 } } },
     selection = {
+      region                = "eu-frankfurt-1", availability_domain = "AD-1", gpu_shape = "BM.GPU.H100.8", gpus_per_node = 8, availability = "available_at_scan",
       tensor_parallel_size  = 4, pipeline_parallel_size = 1, replicas = 2, node_count = 1,
       serving_configuration = { engine = { image = "vllm/vllm-openai@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" }, recipe = { args = ["--reasoning-parser", "qwen3", "--tool-call-parser", "qwen3_coder"], env = { VLLM_USE_RUST_FRONTEND = "1" }, original_evidence = join("", [for i in range(900) : "0123456789"]) } }
     }
@@ -35,7 +26,7 @@ run "no_model_or_publication_context_creates_no_resources" {
   variables { model_spec = null }
   assert {
     condition     = output.deployment == null && length(archive_file.model) == 0 && length(oci_objectstorage_object.model) == 0 && length(oci_objectstorage_preauthrequest.model) == 0
-    error_message = "A manually created infrastructure stack without a frozen selection must not invent a model bundle or bucket."
+    error_message = "Missing model evidence disables publication without requiring an infrastructure Apply output."
   }
 }
 run "plan_never_requires_a_previous_worker_archive" {
@@ -60,15 +51,15 @@ run "apply_creates_real_root_archive_and_reuses_original_bucket_region" {
     error_message = "Keep run IDs in filenames and permit explicitly unallocated debug bindings without claiming GPU readiness."
   }
   assert {
-    condition     = jsondecode(local.files["inputs/model-spec.json"]).selection.serving_configuration.recipe == var.model_spec.selection.serving_configuration.recipe && length(local.files["inputs/model-spec.json"]) > 8192 && jsondecode(local.files["inputs/platform-binding.json"]).project_id == "existing-project" && jsondecode(local.files["inputs/platform-binding.json"]).allocation.gpu_pool_id == null
-    error_message = "Preserve exact recipe argv/env/provenance and platform binding in files, not giant RMS variables."
+    condition     = jsondecode(local.files["inputs/model-spec.json"]).selection == var.model_spec.selection && length(local.files["inputs/model-spec.json"]) > 8192 && !contains(keys(local.files), "inputs/platform-binding.json") && !contains(keys(local.defaults), "cluster_id") && !contains(keys(local.defaults), "gpu_pool_id") && !contains(keys(local.defaults), "region")
+    error_message = "Preserve full selection/recipe evidence in a file; region, cluster and retained GPU pool remain launch-time selections, without any infrastructure Apply output."
   }
   assert {
     condition     = alltrue([for key, value in local.defaults : jsondecode(local.files["recommendations_override.tf.json"]).variable[key].default == value && yamldecode(local.files["schema.yaml"]).variables[key].default == value]) && local.defaults.tensor_parallel_size == 4 && local.defaults.replicas == 2 && local.defaults.context_length == 8192 && !contains(keys(local.files), "terraform.tfvars.json")
     error_message = "Recommend editable geometry/context defaults consistently in both HCL and RMS schema; tfvars must not override user edits."
   }
   assert {
-    condition     = alltrue([for filename in keys(local.files) : !startswith(filename, "templates/") && !startswith(filename, "modules/infrastructure/") && !startswith(filename, "modules/discovery/") && !strcontains(filename, "/tests/")])
+    condition     = alltrue([for filename in keys(local.files) : !startswith(filename, "templates/") && !startswith(filename, "modules/infrastructure/") && !startswith(filename, "modules/discovery/") && !strcontains(filename, "/tests/")]) && alltrue([for dependency in ["model-target", "model-project", "model-delivery", "model-storage"] : contains(keys(local.files), "modules/llm-deployment/${dependency}/main.tf")])
     error_message = "The model ZIP must contain only runtime dependencies, without recursive publishers or infrastructure resources."
   }
 }
@@ -77,12 +68,44 @@ run "selected_engine_beats_global_fallback_and_numeric_org_is_a_safe_release" {
   variables {
     model_spec = {
       model                 = { repository = "01-ai/model", revision = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" },
-      selection             = { tensor_parallel_size = 2, pipeline_parallel_size = 1, replicas = 1, engine = { image = "vllm/vllm-openai@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" } },
+      selection             = { region = "eu-frankfurt-1", gpu_shape = "BM.GPU.H100.8", node_count = 1, availability = "available_at_scan", tensor_parallel_size = 2, pipeline_parallel_size = 1, replicas = 1, engine = { image = "vllm/vllm-openai@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" } },
       serving_configuration = { engine = { image = "vllm/vllm-openai@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc" }, recipe = { args = ["--tool-call-parser", "qwen3_coder"] } }
     }
   }
   assert {
-    condition     = local.defaults.serving_image == "vllm/vllm-openai@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" && can(regex("^[a-z][a-z0-9-]+$", local.defaults.model_name)) && length(local.defaults.namespace) <= 63 && !contains(keys(local.defaults), "workspace_gib")
+    condition     = local.defaults.serving_image == "vllm/vllm-openai@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" && can(regex("^[a-z][a-z0-9-]+$", local.defaults.model_name)) && !contains(keys(local.defaults), "workspace_gib")
     error_message = "The chosen platform image must override global fallback evidence, and valid numeric Hub organizations must still generate a safe model release name."
+  }
+}
+run "missing_publication_context_is_disabled" {
+  command = plan
+  variables { publication = null }
+  assert {
+    condition     = output.deployment == null && length(archive_file.model) == 0
+    error_message = "Do not create a second publication store when no shared context is provided."
+  }
+}
+run "unconfirmed_capacity_never_produces_a_deployable_model_zip" {
+  command = plan
+  variables {
+    model_spec = { selection_id = "excluded", model = { repository = "org/model" }, selection = { region = "eu-frankfurt-1", gpu_shape = "BM.GPU.H100.8", node_count = 1, availability = "unconfirmed" } }
+  }
+  expect_failures = [terraform_data.publication]
+}
+run "model_options_have_distinct_archive_paths_and_shared_expiry" {
+  command = apply
+  variables {
+    model_spec = {
+      selection_id = "other-ad", model = { repository = "org/model", revision = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }, profile = {},
+      selection = {
+        region               = "eu-frankfurt-1", availability_domain = "AD-2", gpu_shape = "BM.GPU.H100.8", gpus_per_node = 8, node_count = 1, availability = "available_at_scan",
+        tensor_parallel_size = 4, pipeline_parallel_size = 1, replicas = 2,
+        engine               = { image = "vllm/vllm-openai@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" }
+      }
+    }
+  }
+  assert {
+    condition     = output.deployment.selection_id == "other-ad" && output.deployment.published_at == var.publication.published_at && output.deployment.expires_at == "2026-11-15T10:00:00Z" && archive_file.model[0].output_path == "${path.root}/.generated/model-${substr(sha256(jsonencode(var.model_spec)), 0, 20)}.zip" && length(output.deployment.launch_object_name) == 37
+    error_message = "Same-model options need independent archive paths, filename run IDs and the common discovery PAR expiry."
   }
 }

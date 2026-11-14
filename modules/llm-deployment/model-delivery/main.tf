@@ -13,22 +13,26 @@ locals {
   identity  = "model-${substr(sha256("${var.platform.cluster_id}/${local.namespace}/${local.name}"), 0, 24)}"
   owner     = sha256("${var.platform.platform_name}/${var.platform.cluster_id}/${local.namespace}/${local.name}")
   defaults = {
-    MODEL_NAMESPACE   = local.namespace
-    MODEL_ID          = coalesce(var.overrides.model_id, try(local.serving.model.repository, null), var.model.model.repository)
-    MODEL_REVISION    = coalesce(var.overrides.model_revision, try(local.serving.model.resolved_revision, null), try(var.model.model.revision, null), "unresolved")
-    SERVING_IMAGE     = coalesce(var.overrides.serving_image, try(local.serving.engine.image, null), "unresolved")
-    TP                = tostring(coalesce(var.overrides.tensor_parallel_size, try(local.selection.tensor_parallel_size, null), 1))
-    PP                = tostring(coalesce(var.overrides.pipeline_parallel_size, try(local.selection.pipeline_parallel_size, null), 1))
-    HOSTS_PER_REPLICA = tostring(coalesce(var.overrides.hosts_per_replica, try(local.selection.pipeline_parallel_size, null), 1))
-    GPUS_PER_POD      = tostring(coalesce(var.overrides.gpus_per_pod, try(local.selection.tensor_parallel_size, null), 1))
-    REPLICAS          = tostring(coalesce(var.overrides.replicas, try(local.selection.replicas, null), 1))
-    CONTEXT_LENGTH    = tostring(coalesce(var.overrides.context_length, try(local.profile.memory.assumptions.context_length, null), 4096))
-    CONCURRENCY       = tostring(coalesce(var.overrides.concurrency, try(local.profile.memory.assumptions.concurrency, null), 1))
-    INFERENCE_PROBE   = var.inference_probe
-    MIN_REPLICAS      = tostring(var.autoscaling.min_replicas)
-    MAX_REPLICAS      = tostring(var.autoscaling.max_replicas)
-    TARGET_INFLIGHT   = tostring(var.autoscaling.target_inflight)
-    PROMETHEUS_URL    = var.autoscaling.prometheus_url == "" ? "not-configured" : var.autoscaling.prometheus_url
+    MODEL_NAMESPACE     = local.namespace
+    MODEL_CLUSTER_ID    = var.platform.cluster_id
+    MODEL_PLATFORM_NAME = var.platform.platform_name
+    MODEL_PROJECT_ID    = var.platform.project_id
+    MODEL_GPU_POOL_ID   = try(coalesce(var.platform.allocation.gpu_pool_id, "runtime"), "runtime")
+    MODEL_ID            = coalesce(var.overrides.model_id, try(local.serving.model.repository, null), var.model.model.repository)
+    MODEL_REVISION      = coalesce(var.overrides.model_revision, try(local.serving.model.resolved_revision, null), try(var.model.model.revision, null), "unresolved")
+    SERVING_IMAGE       = coalesce(var.overrides.serving_image, try(local.serving.engine.image, null), "unresolved")
+    TP                  = tostring(coalesce(var.overrides.tensor_parallel_size, try(local.selection.tensor_parallel_size, null), 1))
+    PP                  = tostring(coalesce(var.overrides.pipeline_parallel_size, try(local.selection.pipeline_parallel_size, null), 1))
+    HOSTS_PER_REPLICA   = tostring(coalesce(var.overrides.hosts_per_replica, try(local.selection.pipeline_parallel_size, null), 1))
+    GPUS_PER_POD        = tostring(coalesce(var.overrides.gpus_per_pod, try(local.selection.tensor_parallel_size, null), 1))
+    REPLICAS            = tostring(coalesce(var.overrides.replicas, try(local.selection.replicas, null), 1))
+    CONTEXT_LENGTH      = tostring(coalesce(var.overrides.context_length, try(local.profile.memory.assumptions.context_length, null), 4096))
+    CONCURRENCY         = tostring(coalesce(var.overrides.concurrency, try(local.profile.memory.assumptions.concurrency, null), 1))
+    INFERENCE_PROBE     = var.inference_probe
+    MIN_REPLICAS        = tostring(var.autoscaling.min_replicas)
+    MAX_REPLICAS        = tostring(var.autoscaling.max_replicas)
+    TARGET_INFLIGHT     = tostring(var.autoscaling.target_inflight)
+    PROMETHEUS_URL      = var.autoscaling.prometheus_url == "" ? "not-configured" : var.autoscaling.prometheus_url
   }
   # This is a full snapshot PER POD: packed replicas do not share emptyDir.
   snapshot_bytes = try(coalesce(var.model.model.checkpoint_download_bytes, try(local.profile.weights.total_file_bytes, null)), null)
@@ -84,7 +88,7 @@ resource "terraform_data" "contract" {
   lifecycle {
     precondition {
       condition     = startswith(local.namespace, "${var.platform.platform_name}-model-") && length(local.namespace) <= 63
-      error_message = "Use the trusted platform model namespace prefix; onboarding must explicitly authorize these exact pipeline IDs."
+      error_message = "Use the expected platform namespace prefix; trusted onboarding must authorize these exact independent-project pipeline IDs before execution."
     }
     precondition {
       condition     = can(regex("@sha256:[a-f0-9]{64}$", local.defaults.SERVING_IMAGE)) && can(regex("^[a-f0-9]{40}$", local.defaults.MODEL_REVISION))

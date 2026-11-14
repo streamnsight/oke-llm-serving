@@ -68,7 +68,7 @@ variable "compartment_ocid" {
   default     = null
 }
 variable "publish_infrastructure_bundles" {
-  description = "On Apply, publish configured GPU infrastructure ZIPs and expiring launch URLs for confirmed options. Allocates no GPU hosts."
+  description = "Publish configured infrastructure ZIPs for confirmed options. The HTML report is always published on Apply, including when ZIP publication is disabled. Allocates no GPU hosts."
   type        = bool
   default     = true
 }
@@ -106,7 +106,7 @@ variable "model_storage_mode" {
   }
 }
 variable "include_diagnostics" {
-  description = "Include detailed model, engine and regional evidence in the consolidated JSON. This does not run unselected engine/cache alternative lookups."
+  description = "Include expandable model, engine and regional diagnostic evidence in the HTML report. This does not run unselected engine/cache alternative lookups."
   type        = bool
   default     = false
 }

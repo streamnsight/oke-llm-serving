@@ -2,14 +2,14 @@
 Copyright (c) 2020-2022 Oracle and/or its affiliates. All rights reserved.
 Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
 -->
-# Review each stage with Terraform Plan
+# Review deployment plans
 
-Use the configured ZIPs published by the preceding stack. The former combined preview/inline JSON handoff has been removed.
+Use the configured ZIP links in the discovery HTML report. Both infrastructure and model links are published up front; no inline JSON handoff or completed-platform binding is needed.
 
-Infrastructure Plan resolves the selected cluster/image/network and shows retained GPU allocation and shared component resources. The temporary `skip_gpu_allocation=true` development switch skips GPU allocation only; it still creates DevOps metadata and CPU component pipelines. Do not use it to remove an existing allocation. Known missing OKE GPU/network prerequisites block the normal allocation path; image metadata is not proof of functioning CUDA/RDMA.
+Infrastructure Plan shows the selected cluster/network/image, retained GPU allocation and shared component project. The temporary `skip_gpu_allocation` debug switch suppresses only GPU allocation resources; platform delivery can still be created and run on existing CPU pools. Normal use defaults to allocating the selected GPU hosts. Never flip this switch after allocation to remove managed pool resources.
 
-Model Plan contains model-owned pipelines, artifacts, chart repository and scoped authorization. It must contain no GPU pools, Compute Clusters/instances, project creation, shared controllers or model-data bucket ownership. Model Apply creates those delivery resources and starts no deployment automatically. A CPU-debug infrastructure binding can create model pipelines, but execution rejects an absent real GPU allocation.
+Model Plan owns its independent project/environment/repositories, delivery pipelines, scoped IAM and optional model-data staging. It must contain no GPU pools, Compute Clusters/instances or shared-controller resources. Cluster is the only required infrastructure choice; pool/network defaults are inferred, with explicit advanced overrides for ambiguity. Apply creates metadata only. No pool yet is a valid creation state; model execution still requires actual retained capacity and trusted readiness.
 
-Editable HCL/schema defaults live in the generated ZIP. Full model and platform specifications are input files, so the RMS 8192-byte variable limit does not require truncated discovery JSON or tfvars overrides.
+Review image/model/parallelism/context changes as new unvalidated settings. Generated schema and HCL defaults match and stay editable; no tfvars file masks edits. Large model/recipe specifications are embedded files rather than RMS variables, avoiding the 8192-byte variable limit.
 
-See [the workflow](deployment-workflow.md) and [bound model stack](model-binding.md).
+GPU resource tests require deliberate authorization. For metadata-only checks, inspect a saved Plan and reject GPU/Compute resources and automatic `oci_devops_deployment` resources before applying it. Model deployment, benchmarking and guarded retirement are separate explicit pipeline operations.

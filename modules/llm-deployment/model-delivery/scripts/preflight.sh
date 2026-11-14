@@ -4,6 +4,17 @@
 set -euo pipefail
 source runtime/common.sh
 model_inputs
+# Preserve recipe intent: this chart's explicit MP implementation must never
+# silently replace a Ray or disaggregated execution requirement.
+jq -e '
+  (.model.selection.platform_plan.topology // {}) as $t |
+  (($t.backend // "mp") | .=="mp" or .=="native_mp" or .=="none") and
+  (($t.strategy // "single_node_tp") | .=="single_node_tp" or .=="multi_node_tp_pp") and
+  ((.serving.recipe.args // []) as $args | all(range(0;$args|length); . as $i |
+    if ($args[$i]=="--distributed-executor-backend") then $args[$i+1]=="mp"
+    elif ($args[$i]|startswith("--distributed-executor-backend=")) then $args[$i]=="--distributed-executor-backend=mp"
+    else true end))
+' "$model_config" >/dev/null || model_fail 'This model chart implements native multiprocessing only; selected Ray, P/D or other execution strategies require their own complete adapter'
 model_geometry
 model_platform_ready
 model_storage

@@ -3,10 +3,11 @@
 locals {
   model_onboarding_scripts = toset(["onboard-model.sh", "model-access.jq"])
   model_onboarding_parameters = {
-    MODEL_NAMESPACE = "", MODEL_PIPELINE_IDS = "[]", MODEL_ACCESS_OPERATION = "grant"
+    MODEL_NAMESPACE = "", MODEL_PIPELINE_IDS = "[]", MODEL_PROJECT_ID = "", MODEL_GPU_POOL_ID = "runtime", MODEL_ACCESS_OPERATION = "grant"
   }
   model_onboarding_context = jsonencode({ components = { for key, c in local.component_specs : key => {
-    namespace = c.namespace, mode = c.mode, owner_name = module.components.owner_names[key], deployment_names = c.deployment_names
+    namespace    = c.namespace, mode = c.mode, owner_name = module.components.owner_names[key], ownership_token = c.ownership_token,
+    release_name = c.release_name, crd_names = c.crd_names, deployment_names = c.deployment_names
   } } })
   model_onboarding_command = yamlencode({
     version = "0.1", component = "command", timeoutInSeconds = 1800, shell = "bash", failImmediatelyOnError = true,
@@ -21,7 +22,7 @@ locals {
     }], [{ name = "component-access-context", type = "GENERIC_ARTIFACT", artifactId = oci_generic_artifacts_content_artifact_by_path.model_onboarding_context.artifact_id, location = "./model-access-context.json" }]),
     steps = [{ type = "Command", name = "authorize-exact-model-pipelines", timeoutInSeconds = 1800, command = join("\n", concat([
       "set -euo pipefail",
-      "export MODEL_NAMESPACE MODEL_PIPELINE_IDS MODEL_ACCESS_OPERATION PLATFORM_NAME CLUSTER_ID PROJECT_ID KUBERNETES_VERSION RESULT_REPOSITORY_ID OCI_CLI_AUTH OCI_CLI_REGION"
+      "export MODEL_NAMESPACE MODEL_PIPELINE_IDS MODEL_PROJECT_ID MODEL_GPU_POOL_ID MODEL_ACCESS_OPERATION PLATFORM_NAME CLUSTER_ID PROJECT_ID KUBERNETES_VERSION RESULT_REPOSITORY_ID OCI_CLI_AUTH OCI_CLI_REGION"
     ], [for script in sort(tolist(local.model_onboarding_scripts)) : "printf '%s  %s\\n' '${filesha256("${path.module}/scripts/${script}")}' '${script}' | sha256sum -c -"], ["printf '%s  model-access-context.json\\n' '${sha256(local.model_onboarding_context)}' | sha256sum -c -", "bash ./onboard-model.sh"])) }]
   })
 }
@@ -35,14 +36,14 @@ resource "oci_generic_artifacts_content_artifact_by_path" "model_onboarding" {
 resource "oci_devops_deploy_pipeline" "model_onboarding" {
   project_id   = oci_devops_project.platform.id
   display_name = "${var.name}-model-onboarding"
-  description  = "Trusted CPU-only namespace/RBAC onboarding for exact model pipelines in this project. Never deploys models or changes GPU infrastructure. Revoke requires no active Pods."
+  description  = "Trusted CPU-only namespace/RBAC onboarding for exact model pipelines in an explicitly selected independent model project. Never deploys models or changes GPU infrastructure. Revoke requires no active Pods."
   deploy_pipeline_parameters {
     dynamic "items" {
       for_each = local.model_onboarding_parameters
       content {
         name          = items.key
         default_value = items.value
-        description   = "Use the model stack's onboarding_arguments. Namespace must belong to this platform; pipeline defaults must declare that namespace. grant or revoke is explicit."
+        description   = "Use the model stack's onboarding_arguments. Namespace must belong to this platform; active pipeline defaults must declare that model project, cluster, platform, GPU pool and namespace. grant or revoke is explicit."
       }
     }
   }

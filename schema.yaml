@@ -7,19 +7,9 @@ version: "0.1.0"
 outputs:
   comparison_report_url:
     type: link
-    title: Compare all confirmed options
-    displayText: Compare all options
-    description: Opens a separate Object Storage HTML page. The native discovery JSON below also contains every count and launch/download URL.
-  recommended_launch_url:
-    type: link
-    title: Recommended option only
-    displayText: Deploy recommended option
-  deployment_option_count:
-    type: number
-    title: Available infrastructure options
-  discovery:
-    type: json
-    title: Model, GPU capacity and all deployment options
+    title: Model and GPU discovery report
+    displayText: Open discovery report
+    description: Model details, workload memory, all confirmed deployment choices and regional capacity/limit evidence. Opens a separate Object Storage HTML page, including when no deployment is available.
 primaryOutputButton: ${comparison_report_url}
 variableGroups:
   - title: Model and serving assumptions
@@ -36,7 +26,7 @@ variables:
     type: boolean
     default: false
     title: Include detailed diagnostic evidence
-    description: Adds full model, engine and regional evidence to the consolidated JSON. Does not run unused alternative-engine/cache lookups.
+    description: Adds an expandable section with full model, engine and regional evidence to the HTML report. Does not run unused alternative-engine/cache lookups.
   model_storage_mode:
     type: enum
     enum: [direct_huggingface, object_storage]
@@ -65,7 +55,7 @@ variables:
     type: boolean
     default: true
     title: Publish configured infrastructure ZIPs
-    description: Apply creates private Object Storage artifacts and expiring launch links. No GPU hosts are allocated.
+    description: Apply publishes configured stack ZIPs and expiring deployment links. The HTML report is published even when this is disabled or no option is available. No GPU hosts are allocated.
   artifact_compartment_id:
     type: oci:identity:compartment:id
     required: false

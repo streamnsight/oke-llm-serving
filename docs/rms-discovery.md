@@ -4,61 +4,58 @@ Licensed under the Universal Permissive License v 1.0 as shown at http://oss.ora
 -->
 # Resource Manager discovery
 
-`make package` produces `work/packages/oke-llm-discovery.zip`. Upload that ZIP with working directory `.`. It contains grouped `modules/` and the infrastructure/model templates. CI publishes only this entry ZIP. Root build tools, development tests, state, request files and node_modules are excluded.
+Run `make package` and upload `work/packages/oke-llm-discovery.zip` to RMS with working directory `.`. Enter a public Hugging Face URL/ID, revision, context tokens and concurrent sequences per replica. Empty region/shape filters assess all READY subscribed regions and visible GPU shapes. Discovery allocates no GPUs.
 
-Enter a public Hugging Face URL/ID, revision, context tokens and concurrent sequences per replica. No catalog selection or deployment flags are needed. Empty region/shape filters mean every READY subscribed region and visible GPU shape. The scanner discovers the tenancy home region from its authenticated principal/profile; the optional hidden region is only an initial endpoint hint.
+## One clickable report
 
-## One result
+The only Terraform output is `comparison_report_url`. `schema.yaml` declares it as `type: link` and the primary output button. It opens a self-contained HTML report from the private discovery Object Storage bucket through an expiring ObjectRead PAR. RMS opens this page separately; it does not render the HTML inside the output console. The report is still published when no option is viable or ZIP publication is disabled.
 
-RMS displays `discovery`, one consolidated JSON with:
+The page contains:
 
-- `model`: immutable identity, workload assumptions, declared checkpoint size and nullable memory estimates.
-- `options`: every confirmed choice, including shape/AD/region capacity, entitlement, allocation, replica packing, memory and full launch/download URLs.
-- `regional_capacity`: exact-shape totals and assessed-AD coverage, without adding alternative shapes or quota ceilings.
-- `failure_summary`: useful reasons when no deployable choice is offered.
-- `diagnostics`: null by default; `include_diagnostics=true` exposes existing detailed evidence without enabling exploratory scans.
+1. Model identity, revision, type/architecture, layer and attention dimensions, Hub-published parameter/dtype counts, checkpoint formats/download size, license and source link.
+2. Resident-weight, KV-cache, runtime and total-memory estimates for the entered context/concurrency, with dtype/margin assumptions. Unsupported estimates remain unknown; recipe budgets are labeled heuristic.
+3. Collapsed deployment options showing region/AD, exact GPU shape, observed supply, GPUs per replica, allocated hosts, packed replicas and unused GPUs. Expanded details include image, planned command, original upstream command, provenance, component requirements and separate infrastructure/model PAR and RMS links.
+4. Regional capacity and per-AD entitlement evidence, including potential limit-increase requests where physical hosts exist. Aggregate-memory lower bounds do not establish a valid model layout or runtime. Zero physical capacity is not a limit-increase opportunity.
 
-The count and two URL outputs are navigation aids. **Compare all options** opens a separate HTML page via Object Storage PAR; RMS does not render it. The native JSON contains all the same choices and links and remains usable without HTML. The secondary recommendation link chooses one option; all other links remain selectable.
+Counts for alternative shapes are not added together. Regional totals require unique complete whole-AD reports for the same exact shape; partial/conflicting coverage remains unknown. A positive report is a snapshot, not a reservation. All generated serving configurations still require runtime validation.
 
-## Obtain JSON
+Report JSON, scripts and Redwood styling are embedded in the page. Opening, filtering or expanding it makes no new discovery requests. `include_diagnostics=true` adds a collapsed evidence section, without enabling unused engine/cache lookups. There are no duplicate public JSON outputs.
 
-Locally:
+The style tokens and shell come from the supplied `oci-design-system-redwood-jet` package; the report uses native HTML controls with module-owned layout styles and no JET runtime or CDN dependency. Oracle documents [RMS schema types and output controls](https://docs.oracle.com/en-us/iaas/Content/ResourceManager/Concepts/terraformconfigresourcemanager_topic-schema.htm).
+
+## Deploy from the page
+
+Each confirmed option has **both** deployment ZIPs immediately:
+
+- **GPU pool and shared components:** choose an existing cluster in the indicated region, review Plan and provision retained infrastructure. Skip this when reusing a suitable platform. Existing CPU pools run controllers; GPU allocation is managed only here.
+- **Model project and pipelines:** select the cluster. The stack creates a separate project/environment/repositories/pipelines for the model and infers matching pool/networking. It can be created before GPUs/controllers exist; execution waits for trusted namespace onboarding and real readiness. Ambiguous pool/network choices have optional advanced overrides.
+
+Neither clicking a link nor creating a model stack starts inference. Model deploy/validate/benchmark/undeploy are explicit operations. See [model target and access](model-binding.md).
+
+For local use:
 
 ```sh
-terraform output -json discovery > work/discovery.json
-jq '.model, .options' work/discovery.json
+terraform init
+terraform plan -var-file=/path/to/request.tfvars.json -out=work/discovery.tfplan
+terraform apply work/discovery.tfplan
+terraform output -raw comparison_report_url
 ```
 
-In RMS, inspect the job's Outputs or retrieve its Terraform state through the API:
+Disabling `publish_infrastructure_bundles` omits both sets of stack ZIPs, while still creating the assessment page. Report and stack links share a publication expiry; reapplying discovery publishes a new snapshot and can replace old objects/PARs. Rebuilding a local ZIP alone does not change existing RMS stacks or links.
 
-```sh
-oci resource-manager job get-job-tf-state --job-id "$JOB_ID" --file work/discovery.tfstate
-jq '.outputs.discovery.value' work/discovery.tfstate > work/discovery.json
-```
-
-No large JSON is pasted into downstream RMS variables. Discovery publishes configured infrastructure ZIPs; infrastructure subsequently publishes a model ZIP bound to its actual IDs. HCL declaration defaults and schema defaults match, so Console edits remain effective.
-
-## Required work, without duplicate scans
-
-The root owns one recipe metadata response and supplies it to model profiling, serving resolution and hardware planning. Hardware render queries run only for GPU types with positive reported capacity and entitlement for at least one whole host. Identical queries share one request; an already-resolved exact image tag/SHA is reused. Unselected nightly/cache alternatives are not fetched. Missing recipes preserve explicit uncertainty rather than probing guessed paths.
-
-Regional discovery invokes one module-owned OCI CLI/Bash/jq scanner. One subscription response supplies both the home region and the region list. Each region lists limits once, queries each relevant quota/scope once and batches all assessed shapes into one capacity report per AD. Shape listings for the target compartment and tenancy root have different visibility purposes; when they are the same compartment, the response is reused.
+## Work performed once
 
 | Operation | Work per scan, excluding pagination/retries |
 |---|---|
-| Region subscriptions | One response for the tenancy |
+| Region subscriptions | One response supplies region list and home region |
 | AD inventory | One list per selected region |
 | GPU shapes | One listing per AD/compartment; reuse when target equals tenancy root |
 | Limit definitions and values | One list each per region with relevant GPU quota names |
 | Entitlement headroom | One request per relevant quota/scope |
 | Physical capacity | One batched report per AD with assessed GPU shapes |
 | Recipe metadata | One shared response per model |
-| Rendered recipe and image metadata | One per distinct required query/reference, reusing resolved evidence |
+| Recipe rendering / image metadata | Distinct required queries only; reuse exact resolved references |
 
-Regions with no relevant GPU quota names skip limit-list requests. Regions/ADs without assessed GPU shapes make no capacity-report request. No separate scan is run to produce the comparison report or diagnostic output.
+Configured limits, effective compartment headroom and physical host capacity are separate necessary checks. Unrelated quota calls, unused nightly/cache alternatives and rendering for unavailable hardware are skipped. Later new-allocation admission rechecks the selected AD/shape and relevant regional/global quotas; model reuse does not allocate new hosts.
 
-A configured limit, effective compartment headroom and currently reported physical host capacity are all required for offered options. Unrelated GPU-named quota entries are omitted. Later native allocation admission makes fresh checks for only the selected AD/shape and its relevant regional/global quotas; it does not repeat the all-region scan. It needs no subscription or AD-list lookup because those choices are already known. This later check remains necessary because discovery is not a reservation and users can edit deployment quantities.
-
-RMS runtime requires OCI CLI, Bash and jq for dynamic regional lookup; the tested RMS worker supplies them. Public model/recipe profiling uses Terraform HTTP/HCL. There is no custom Python/Go program or nested Terraform execution.
-
-Discovery itself creates only bundle/report storage and PARs. It creates no GPU/CPU nodes, controllers or DevOps pipelines. See [publication](infrastructure-publication.md), [infrastructure bootstrap](infrastructure-bootstrap.md) and [model binding](model-binding.md).
+RMS regional lookup uses the tested OCI CLI/Bash/jq helper with principal/delegated authentication. Public model/recipe profiling uses Terraform HTTP/HCL. There is no nested Terraform or custom Python/Go discovery program. Discovery owns only publication storage, ZIPs, HTML and PARs; it creates no nodes, controllers or DevOps projects.

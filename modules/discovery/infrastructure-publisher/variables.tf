@@ -7,21 +7,6 @@ variable "model" {
   description = "Selected model identity/revision and storage estimate; no credentials or full discovery report."
   type        = any
 }
-variable "model_profile" {
-  description = "Structured, frozen model profile and workload assumptions carried into the selected model bundle."
-  type        = any
-  default     = {}
-}
-variable "serving_resolution" {
-  description = "Frozen fallback serving configuration for candidates without their own recipe rendering."
-  type        = any
-  default     = null
-}
-variable "model_template_dir" {
-  description = "Model-only stack template to embed once inside each infrastructure ZIP."
-  type        = string
-  default     = null
-}
 variable "options" {
   description = "Confirmed infrastructure choices keyed by assessment selection ID."
   type        = any

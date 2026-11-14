@@ -115,6 +115,7 @@ resource "oci_identity_policy" "model" {
   description    = "Model delivery only: cluster access, Shell containers, networking, compartment-scoped Generic Artifacts and the exact OCIR chart repository. No GPU or cluster administration."
   statements = concat([
     "Allow dynamic-group id ${oci_identity_dynamic_group.model.id} to use clusters in compartment id ${var.platform.cluster_compartment_id} where target.cluster.id = '${var.platform.cluster_id}'",
+    "Allow dynamic-group id ${oci_identity_dynamic_group.model.id} to read cluster-node-pools in compartment id ${try(var.platform.gpu_pool_compartment_id, var.platform.cluster_compartment_id)}",
     "Allow dynamic-group id ${oci_identity_dynamic_group.model.id} to read devops-family in compartment id ${var.compartment_id}",
     "Allow dynamic-group id ${oci_identity_dynamic_group.model.id} to manage compute-container-instances in compartment id ${var.compartment_id}",
     "Allow dynamic-group id ${oci_identity_dynamic_group.model.id} to manage compute-containers in compartment id ${var.compartment_id}",
