@@ -21,14 +21,15 @@ if(args.includes('--auth')&&flag('--auth')==='instance_obo_user') {
 let data;
 if(command.includes('region-subscription list')) data=scenario==='batch-four'?[1,2,3,4].map(n=>({'region-name':'region-'+n,status:'READY','is-home-region':n===1})):[{'region-name':'new-region-99',status:'READY','is-home-region':true},{'region-name':'not-ready',status:'IN_PROGRESS'}];
 else if(command.includes('availability-domain list')) data=[{name:'AD-1'}];
-else if(command.includes('compute shape list')) data=[{shape:'VM.GPU.A10.1',gpus:1,'gpu-description':'A10','memory-in-gbs':240,ocpus:15,'quota-names':['gpu-a10-count']}];
+else if(command.includes('compute shape list')) data=scenario==='no-gpus'?[]:[{shape:'VM.GPU.A10.1',gpus:1,'gpu-description':'A10','memory-in-gbs':240,ocpus:15,'quota-names':['gpu-a10-count']},...(scenario==='multiple-shapes'?[{shape:'BM.GPU.A10.4',gpus:4,'gpu-description':'A10','memory-in-gbs':1024,ocpus:64,'quota-names':['gpu-a10-count']}]:[])];
 else if(command.includes('limits definition list'))data=[{name:'gpu-a10-count','is-resource-availability-supported':true},...(scenario==='unrelated-limits'?[{name:'gpu-unused-count','is-resource-availability-supported':true}]:[])];
 else if(command.includes('limits value list')) data=scenario==='unmapped'?[]:[{name:'gpu-a10-count','scope-type':'AD','availability-domain':scenario==='other-ad-zero'?'AD-2':'AD-1',value:['zero','other-ad-zero'].includes(scenario)?0:8},...(scenario==='unrelated-limits'?[{name:'gpu-unused-count','scope-type':'REGION',value:100}]:[])];
 else if(command.includes('resource-availability get'))data={available:8,used:0};
 else if(command.includes('compute-capacity-report create')) {
  const request=JSON.parse(fs.readFileSync(flag('--shape-availabilities').replace('file://',''),'utf8'));
- if(request[0].instanceShape!=='VM.GPU.A10.1')throw Error('wrong report request');
- data={'time-created':'2026-11-11T00:00:00Z','shape-availabilities':scenario==='missing'?[]:[{'instance-shape':'VM.GPU.A10.1','availability-status':'AVAILABLE','available-count':scenario==='unknown'?null:2}]};
+ const expected=scenario==='multiple-shapes'?['BM.GPU.A10.4','VM.GPU.A10.1']:['VM.GPU.A10.1'];
+ if(JSON.stringify(request.map(row=>row.instanceShape))!==JSON.stringify(expected))throw Error('wrong report request');
+ data={'time-created':'2026-11-11T00:00:00Z','shape-availabilities':scenario==='missing'?[]:request.map(row=>({'instance-shape':row.instanceShape,'availability-status':'AVAILABLE','available-count':scenario==='unknown'?null:2}))};
 } else throw Error('Unexpected command: '+command);
 process.stdout.write(JSON.stringify({data}));
 `;
@@ -65,6 +66,20 @@ test('only shape-relevant quota headroom is queried while physical reports remai
  assert.equal(r.calls.filter(c=>c.includes('compute-capacity-report')).length,1,'one physical capacity report per AD');
  assert.equal(r.result.regions[0].inventory.headroom_queries_used,1);
 });
+test('multiple shapes share one quota query and one physical capacity report per AD',()=>{
+ const r=run('multiple-shapes',{compartment_id:'tenancy'});assert.equal(r.status,0,r.stderr);
+ assert.equal(r.calls.filter(c=>c.includes('shape')).length,1,'reuse shape inventory when the target is the tenancy root');
+ assert.equal(r.calls.filter(c=>c.includes('resource-availability')).length,1,'shared quota is checked once');
+ assert.equal(r.calls.filter(c=>c.includes('compute-capacity-report')).length,1,'all shapes are batched in one AD request');
+ assert.equal(r.result.regions[0].capacity.availability_domains[0].assessment.shapes.length,2,'both choices retain physical observations');
+});
+test('regions without visible GPU shapes do not query limits or physical reports',()=>{
+ const r=run('no-gpus',{compartment_id:'tenancy'});assert.equal(r.status,0,r.stderr);
+ assert.equal(r.calls.filter(c=>c.includes('limits')||c.includes('compute-capacity-report')).length,0);
+ assert.equal(r.result.regions.length,1,'the assessed region remains visible');
+ assert.equal(r.result.regions[0].inventory.headroom_queries_used,0);
+ assert.equal(r.result.regions[0].capacity.availability_domains[0].status,'no_gpu_shapes_listed');
+});
 test('unknown counts and missing report rows remain partial',()=>{
  for(const scenario of ['unknown','missing']) {
   const r=run(scenario);assert.equal(r.status,0,r.stderr);const assessment=r.result.regions[0].capacity.availability_domains[0].assessment;
@@ -91,8 +106,9 @@ test('a complete four-region batch publishes every region with no trailing jobs'
 test('home region is discovered even when the local caller omits a connection region',()=>{
  const r=run('',{region:''});assert.equal(r.status,0,r.stderr);assert.equal(r.result.home_region,'new-region-99');
  const subscriptions=r.calls.filter(c=>c.includes('region-subscription'));
+ assert.equal(subscriptions.length,1,'reuse the subscription response after learning the home region');
  assert.equal(subscriptions[0].includes('--region'),false,'first request uses CLI defaults');
- assert.equal(subscriptions[1][subscriptions[1].indexOf('--region')+1],'new-region-99','home region handles subscription discovery');
+ assert.ok(r.calls.filter(c=>!c.includes('region-subscription')).every(c=>c[c.indexOf('--region')+1]==='new-region-99'),'regional requests use the selected region');
 });
 
 test('blank RMS scope list entries mean no filter',()=>{

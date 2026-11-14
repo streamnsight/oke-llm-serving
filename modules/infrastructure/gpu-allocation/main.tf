@@ -18,11 +18,12 @@ data "oci_containerengine_node_pools" "owned" {
   cluster_id     = var.cluster_id
 }
 module "inventory" {
-  source         = "../../discovery/accelerator-inventory"
-  tenancy_ocid   = var.tenancy_ocid
-  compartment_id = var.compartment_id
-  region         = var.region
-  shape_names    = [var.gpu_shape]
+  source              = "../../discovery/accelerator-inventory"
+  tenancy_ocid        = var.tenancy_ocid
+  compartment_id      = var.compartment_id
+  region              = var.region
+  availability_domain = var.availability_domain
+  shape_names         = [var.gpu_shape]
 }
 data "oci_core_shapes" "target" {
   compartment_id      = var.compartment_id
@@ -47,6 +48,7 @@ locals {
     available                = try(coalesce(limit.resource_availability.fractional_availability, limit.resource_availability.available), null)
     sufficient               = try(startswith(limit.description, "GPUs for ") && limit.resource_availability.status == "observed" && coalesce(limit.resource_availability.fractional_availability, limit.resource_availability.available) >= local.shape.gpus * local.additional_instances, false)
   } if try(contains(local.shape.quota_names, limit.name), false) && (limit.scope_type != "AD" || limit.availability_domain == var.availability_domain)]
+  quota_coverage_complete = try(length(local.shape.quota_names) > 0 && length(setsubtract(toset(local.shape.quota_names), toset([for check in local.quota_checks : check.name]))) == 0, false)
 }
 
 module "capacity" {
@@ -162,7 +164,7 @@ resource "oci_containerengine_node_pool" "gpu" {
       error_message = "This stack retains GPU allocations: reducing node_count releases scarce capacity and requires a separate explicit retirement procedure."
     }
     precondition {
-      condition     = local.additional_instances == 0 || (length(local.quota_checks) > 0 && alltrue([for check in local.quota_checks : check.sufficient]))
+      condition     = local.additional_instances == 0 || (local.quota_coverage_complete && alltrue([for check in local.quota_checks : check.sufficient]))
       error_message = "Quantity-specific GPU entitlement must cover additional instances. Unknown quota units/availability require assessment before allocation."
     }
     precondition {

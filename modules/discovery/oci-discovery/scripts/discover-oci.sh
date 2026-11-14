@@ -71,9 +71,8 @@ jq_lib() { jq -L "$module_dir/scripts/lib" "$@"; }
 # It is only needed to learn the tenancy's actual home region, never a UI choice.
 cli "$connection_region" "$scratch/subscriptions.json" iam region-subscription list --tenancy-id "$tenancy"
 home_region=$(jq -er '[.[]|select(.is_home_region==true and .status=="READY")|.region_name] | if length==1 then .[0] else error("Expected exactly one READY tenancy home region") end' "$scratch/subscriptions.json")
-if [[ "$connection_region" != "$home_region" ]]; then
-  cli "$home_region" "$scratch/subscriptions.json" iam region-subscription list --tenancy-id "$tenancy"
-fi
+# The response already contains all subscriptions and the home-region flag.
+# Regional requests below use their own explicit endpoints.
 jq '[.[]|select(.status=="READY")|.region_name]|unique' "$scratch/subscriptions.json" > "$scratch/ready.json"
 jq -en --slurpfile q "$query" --slurpfile ready "$scratch/ready.json" '
   (if ($q[0].regions|length)>0 then $q[0].regions else $ready[0] end) as $selected |
@@ -99,8 +98,13 @@ scan_region() (
   done < <(jq -r 'sort_by(.name)[].name' "$dir/ads.json")
   if ((ad_index>0)); then jq -s 'add|[.[].quota_names[]?]|unique' "$dir"/ad-*/shapes.json > "$dir/quotas.json"
   else printf '[]' > "$dir/quotas.json"; fi
-  cli "$region" "$dir/definitions.json" limits definition list --compartment-id "$tenancy" --service-name compute --all
-  cli "$region" "$dir/values.json" limits value list --compartment-id "$tenancy" --service-name compute --all
+  if jq -e 'length > 0' "$dir/quotas.json" >/dev/null; then
+    cli "$region" "$dir/definitions.json" limits definition list --compartment-id "$tenancy" --service-name compute --all
+    cli "$region" "$dir/values.json" limits value list --compartment-id "$tenancy" --service-name compute --all
+  else
+    printf '[]' > "$dir/definitions.json"
+    printf '[]' > "$dir/values.json"
+  fi
   jq_lib --slurpfile q "$query" --slurpfile defs "$dir/definitions.json" --slurpfile quotas "$dir/quotas.json" 'include "oci-discovery"; limit_plan($q[0];($defs[0]|map({key:.name,value:.})|from_entries);$quotas[0])' "$dir/values.json" > "$dir/limit-plan.json"
   used=0; : > "$dir/observations.jsonl"
   while IFS= read -r limit; do

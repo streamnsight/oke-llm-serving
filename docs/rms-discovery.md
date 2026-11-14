@@ -42,7 +42,22 @@ No large JSON is pasted into downstream RMS variables. Discovery publishes confi
 
 The root owns one recipe metadata response and supplies it to model profiling, serving resolution and hardware planning. Identical hardware render queries share one request; an already-resolved exact image tag/SHA is reused. Unselected nightly/cache alternatives are not fetched. Missing recipes preserve explicit uncertainty rather than probing guessed paths.
 
-Regional discovery invokes one module-owned OCI CLI/Bash/jq scanner. It queries relevant shapes/limits/headroom and batches capacity reports by AD. Different checks answer different questions: a configured limit, effective compartment headroom and currently reported physical host capacity are all required for offered options. Unrelated GPU-named quota entries are omitted. Native allocation admission later repeats only the selected target's checks because discovery is not a reservation.
+Regional discovery invokes one module-owned OCI CLI/Bash/jq scanner. One subscription response supplies both the home region and the region list. Each region lists limits once, queries each relevant quota/scope once and batches all assessed shapes into one capacity report per AD. Shape listings for the target compartment and tenancy root have different visibility purposes; when they are the same compartment, the response is reused.
+
+| Operation | Work per scan, excluding pagination/retries |
+|---|---|
+| Region subscriptions | One response for the tenancy |
+| AD inventory | One list per selected region |
+| GPU shapes | One listing per AD/compartment; reuse when target equals tenancy root |
+| Limit definitions and values | One list each per region with relevant GPU quota names |
+| Entitlement headroom | One request per relevant quota/scope |
+| Physical capacity | One batched report per AD with assessed GPU shapes |
+| Recipe metadata | One shared response per model |
+| Rendered recipe and image metadata | One per distinct required query/reference, reusing resolved evidence |
+
+Regions with no relevant GPU quota names skip limit-list requests. Regions/ADs without assessed GPU shapes make no capacity-report request. No separate scan is run to produce the comparison report or diagnostic output.
+
+A configured limit, effective compartment headroom and currently reported physical host capacity are all required for offered options. Unrelated GPU-named quota entries are omitted. Later native allocation admission makes fresh checks for only the selected AD/shape and its relevant regional/global quotas; it does not repeat the all-region scan. It needs no subscription or AD-list lookup because those choices are already known. This later check remains necessary because discovery is not a reservation and users can edit deployment quantities.
 
 RMS runtime requires OCI CLI, Bash and jq for dynamic regional lookup; the tested RMS worker supplies them. Public model/recipe profiling uses Terraform HTTP/HCL. There is no custom Python/Go program or nested Terraform execution.
 

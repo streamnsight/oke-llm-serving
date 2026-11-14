@@ -10,16 +10,13 @@ terraform {
   }
 }
 
-data "oci_identity_region_subscriptions" "subscriptions" {
-  tenancy_id = var.tenancy_ocid
-}
-
 data "oci_identity_availability_domains" "domains" {
+  count          = var.availability_domain == null ? 1 : 0
   compartment_id = var.tenancy_ocid
 }
 
 data "oci_core_shapes" "domain" {
-  for_each            = toset(data.oci_identity_availability_domains.domains.availability_domains[*].name)
+  for_each            = var.availability_domain == null ? toset(data.oci_identity_availability_domains.domains[0].availability_domains[*].name) : toset([var.availability_domain])
   compartment_id      = coalesce(var.compartment_id, var.tenancy_ocid)
   availability_domain = each.key
   image_id            = var.image_id
@@ -60,7 +57,8 @@ locals {
   quota_names = toset(flatten([for shapes in values(local.shapes_by_ad) : flatten([for shape in shapes : shape.quota_names])]))
   limits = {
     for limit in data.oci_limits_limit_values.compute.limit_values : jsonencode([limit.name, limit.scope_type, limit.availability_domain]) => limit
-    if contains(local.quota_names, limit.name) || (length(var.shape_names) == 0 && strcontains(lower(limit.name), "gpu"))
+    if contains(local.quota_names, limit.name) &&
+    (var.availability_domain == null || limit.scope_type != "AD" || limit.availability_domain == var.availability_domain)
   }
   eligible_limits = {
     for key, limit in local.limits : key => limit
@@ -70,11 +68,7 @@ locals {
     contains(["AD", "REGION", "GLOBAL"], limit.scope_type) &&
     (limit.scope_type != "AD" || try(length(limit.availability_domain) > 0, false))
   }
-  # Relevant shape limits get the budget before ancillary reserved/reservable limits.
-  ordered_keys = concat(
-    sort([for key, limit in local.eligible_limits : key if contains(local.quota_names, limit.name)]),
-    sort([for key, limit in local.eligible_limits : key if !contains(local.quota_names, limit.name)])
-  )
+  ordered_keys         = sort(keys(local.eligible_limits))
   selected_keys        = toset(slice(local.ordered_keys, 0, min(var.max_limit_checks, length(local.eligible_limits))))
   unmapped_quota_names = setsubtract(local.quota_names, toset([for limit in values(local.limits) : limit.name]))
 }
@@ -119,7 +113,6 @@ output "result" {
     tenancy_id     = var.tenancy_ocid
     compartment_id = coalesce(var.compartment_id, var.tenancy_ocid)
     status         = length(local.unmapped_quota_names) == 0 && alltrue([for limit in local.limit_observations : limit.resource_availability.status == "observed"]) ? "complete" : "partial"
-    subscriptions  = data.oci_identity_region_subscriptions.subscriptions.region_subscriptions
     availability_domains = [for ad, shapes in local.shapes_by_ad : {
       name = ad, shapes = shapes
     }]

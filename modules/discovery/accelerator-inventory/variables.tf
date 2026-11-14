@@ -1,7 +1,7 @@
 # Copyright (c) 2020-2022 Oracle and/or its affiliates. All rights reserved.
 # Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
 variable "tenancy_ocid" {
-  description = "Root tenancy OCID for subscriptions, ADs and service-limit metadata."
+  description = "Root tenancy OCID for ADs and service-limit metadata."
   type        = string
   nullable    = false
 }
@@ -14,6 +14,15 @@ variable "compartment_id" {
   description = "Target compartment for shapes and entitlement headroom; null selects the root tenancy."
   type        = string
   default     = null
+}
+variable "availability_domain" {
+  description = "Optional selected AD for allocation admission. Null inventories all ADs in the provider region."
+  type        = string
+  default     = null
+  validation {
+    condition     = var.availability_domain == null ? true : trimspace(var.availability_domain) != ""
+    error_message = "Use an AD name or null for all ADs."
+  }
 }
 variable "image_id" {
   description = "Optional image OCID to filter compatible shapes in this region."

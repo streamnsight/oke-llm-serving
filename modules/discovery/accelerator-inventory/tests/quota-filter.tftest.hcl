@@ -1,11 +1,6 @@
 # Copyright (c) 2020-2022 Oracle and/or its affiliates. All rights reserved.
 # Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
 mock_provider "oci" {
-  mock_data "oci_identity_region_subscriptions" {
-    defaults = {
-      region_subscriptions = [{ region_name = "region-one", status = "READY", is_home_region = true, region_key = "ONE" }]
-    }
-  }
   mock_data "oci_identity_availability_domains" {
     defaults = { availability_domains = [{ name = "AD-1" }] }
   }
@@ -48,7 +43,7 @@ variables {
 }
 
 
-run "prioritize_shape_limits" {
+run "budget_is_used_only_for_shape_limits" {
   command = plan
   variables {
     shape_names      = []
@@ -56,7 +51,7 @@ run "prioritize_shape_limits" {
   }
   assert {
     condition     = length(data.oci_limits_resource_availability.headroom) == 1 && alltrue([for query in data.oci_limits_resource_availability.headroom : query.limit_name == "gpu-test-count"])
-    error_message = "Shape-matched limits must precede alphabetically earlier ancillary GPU limits."
+    error_message = "Unrelated GPU limits must not consume the headroom request budget."
   }
 }
 run "filtered_zero_limit" {

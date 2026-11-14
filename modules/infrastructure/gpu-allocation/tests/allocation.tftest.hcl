@@ -282,6 +282,19 @@ run "quantity_specific_entitlement_blocks_new_allocation" {
   expect_failures = [oci_containerengine_node_pool.gpu]
 }
 
+run "missing_one_required_quota_cannot_pass_focused_admission" {
+  command = plan
+  override_data {
+    target = data.oci_core_shapes.target
+    values = { shapes = [{ name = "VM.GPU.A10.1", gpus = 1, rdma_ports = 0, quota_names = ["gpu-a10-count", "another-required-quota"] }] }
+  }
+  expect_failures = [oci_containerengine_node_pool.gpu]
+  assert {
+    condition     = length(local.quota_checks) == 1 && !local.quota_coverage_complete
+    error_message = "One successful quota observation must not mask a second missing required shape quota."
+  }
+}
+
 run "reports_service_addon_versions_without_installing_a_second_operator" {
   command = plan
   override_data {

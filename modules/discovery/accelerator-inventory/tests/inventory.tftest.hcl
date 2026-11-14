@@ -1,11 +1,6 @@
 # Copyright (c) 2020-2022 Oracle and/or its affiliates. All rights reserved.
 # Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
 mock_provider "oci" {
-  mock_data "oci_identity_region_subscriptions" {
-    defaults = {
-      region_subscriptions = [{ region_name = "region-one", status = "READY", is_home_region = true, region_key = "ONE" }]
-    }
-  }
   mock_data "oci_identity_availability_domains" {
     defaults = { availability_domains = [{ name = "AD-1" }] }
   }
@@ -66,6 +61,12 @@ run "scopes_and_gpu_filter" {
 run "regional_and_unsupported_limits" {
   command = plan
   variables { shape_names = [] }
+  override_data {
+    target = data.oci_core_shapes.domain["AD-1"]
+    values = {
+      shapes = [{ name = "VM.GPU.Test.2", gpus = 2, quota_names = ["gpu-test-count", "gpu-regional-count", "gpu-unsupported-count"] }]
+    }
+  }
   assert {
     condition     = output.result.status == "partial" && output.result.headroom_queries_used == 2
     error_message = "Unsupported limits should remain unknown without an API call."
@@ -73,6 +74,44 @@ run "regional_and_unsupported_limits" {
   assert {
     condition     = alltrue([for query in data.oci_limits_resource_availability.headroom : query.availability_domain == null if query.limit_name == "gpu-regional-count"])
     error_message = "Regional headroom must omit AD."
+  }
+}
+
+run "unrelated_gpu_limits_are_not_queried" {
+  command = plan
+  variables { shape_names = [] }
+  assert {
+    condition     = output.result.status == "complete" && output.result.headroom_queries_used == 1 && length(output.result.limits) == 1
+    error_message = "Unfiltered inventory must check only quota names belonging to visible GPU shapes, not every GPU-named limit."
+  }
+}
+
+run "selected_ad_avoids_regional_inventory_and_other_ad_headroom" {
+  command = plan
+  variables { availability_domain = "AD-1" }
+  override_data {
+    target = data.oci_limits_limit_values.compute
+    values = {
+      limit_values = [
+        { name = "gpu-test-count", scope_type = "AD", availability_domain = "AD-1", value = 8 },
+        { name = "gpu-test-count", scope_type = "AD", availability_domain = "AD-2", value = 0 },
+        { name = "gpu-regional-count", scope_type = "REGION", availability_domain = null, value = 16 }
+      ]
+    }
+  }
+  override_data {
+    target = data.oci_core_shapes.domain["AD-1"]
+    values = {
+      shapes = [{ name = "VM.GPU.Test.2", gpus = 2, quota_names = ["gpu-test-count", "gpu-regional-count"] }]
+    }
+  }
+  assert {
+    condition     = length(data.oci_identity_availability_domains.domains) == 0 && keys(data.oci_core_shapes.domain) == ["AD-1"]
+    error_message = "Focused admission must not list ADs or inventory shapes in other ADs."
+  }
+  assert {
+    condition     = output.result.status == "complete" && output.result.headroom_queries_used == 2 && alltrue([for query in data.oci_limits_resource_availability.headroom : query.availability_domain == null || query.availability_domain == "AD-1"])
+    error_message = "Focused admission must retain relevant regional and selected-AD headroom checks while omitting other ADs."
   }
 }
 
