@@ -4,6 +4,8 @@ Licensed under the Universal Permissive License v 1.0 as shown at http://oss.ora
 -->
 # CPU platform deployment validation — 2026-11-13
 
+This records the initial bootstrap. The subsequent [component-pipeline revision](component-pipelines-validation-2026-11-13.md) adds Artifact Registry, environment parameters and independent LWS/validation pipelines; use that report for the current resource count and runtime results.
+
 The existing Frankfurt infrastructure RMS stack was updated and applied with `skip_gpu_allocation=true`. It now owns the DevOps foundation while creating no GPU infrastructure. The bootstrap pipeline completed twice: it installed LeaderWorkerSet on the first run and reused the same healthy release on the second.
 
 ## Behaviour and packages

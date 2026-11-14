@@ -29,7 +29,7 @@ Discovery creates reports, not GPU allocations. Counts represent available insta
 
 ## Deploy GPU infrastructure first
 
-After discovery Apply, open `recommended_launch_url` or choose a link in `deployment_options`. The generated ZIP prefills the hardware/storage recommendation; select an existing cluster in that region. [The infrastructure template](templates/infrastructure) creates DevOps platform resources and GPU infrastructure on Apply, and reuses existing CPU pools. The temporary `skip_gpu_allocation=true` debug switch skips only GPU allocation; its pipeline can still install shared CPU controllers. No large discovery JSON is entered. See [bootstrap instructions](docs/infrastructure-bootstrap.md). `make package-infrastructure` remains a standalone developer build. Live RMS/upload/bootstrap validation is pending.
+After discovery Apply, open `recommended_launch_url` or choose a link in `deployment_options`. The generated ZIP prefills the hardware/storage recommendation; select an existing cluster in that region. [The infrastructure template](templates/infrastructure) creates DevOps platform resources and GPU infrastructure on Apply, and reuses existing CPU pools. The temporary `skip_gpu_allocation=true` debug switch skips only GPU allocation. Independent LWS and validation pipelines use editable environment settings and script files supplied by Artifact Registry; Object Storage holds specification/readiness evidence, not models. No large discovery JSON is entered. See [bootstrap instructions](docs/infrastructure-bootstrap.md). `make package-infrastructure` remains a standalone developer build. CPU-only RMS/bootstrap validation is documented under outputs/; GPU serving remains unvalidated.
 
 ## Earlier combined deployment path
 

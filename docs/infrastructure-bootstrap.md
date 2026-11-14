@@ -103,6 +103,8 @@ GPU/network support stays OKE-owned. [These add-ons are optional](https://docs.o
 
 Terraform owns private `platform-spec.json` with selected hardware, image/network evidence and allocation identity. The small `platform` output gives pool, cluster, project and specification/readiness URIs. The pipelines exclusively own `<platform>/<generation>/readiness.json`; Terraform never writes a runtime-success flag. Later model deployment must check its generation against the descriptor and reject an overridden generation as proof of the original specification. Neither object contains credentials or the full discovery report.
 
+Readiness is a point-in-time observation. Later model deployment must run validation for its target generation after component changes; an older ready record is insufficient to establish current controller state.
+
 The bucket is for mutable desired-specification/readiness records and per-run diagnostics (node inventories, Helm release inventory and admission results), not scripts or model weights. `script_repository_id` identifies the separate Artifact Registry repository. Its upload-by-path Terraform resource retains old artifact versions when updated; clearing those versions is an explicit repository-retirement task. Discovery's separate bundle bucket holds generated RMS ZIPs and launch PARs. Model storage/cache is part of the later model-deployment design.
 
 Local checks cover both allocation modes, environment overrides/types, isolated evidence, separate validation, explicit upgrade ownership/CRD conflicts, and complete Bash/jq execution with mocked external commands. CPU-only RMS/OKE bootstrap was validated live; see the reports under outputs/. Real upgrades, GPU allocation, CUDA and RDMA transport need their own validation.
