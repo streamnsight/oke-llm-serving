@@ -15,6 +15,12 @@ resource "oci_devops_project" "platform" {
   name           = var.name
   description    = "Shared LLM platform foundation; model pipelines can reference this project later."
   notification_config { topic_id = oci_ons_notification_topic.platform.id }
+  lifecycle {
+    precondition {
+      condition     = try(var.config.target.ready, true)
+      error_message = "The cluster target must pass discovery checks before creating the platform project."
+    }
+  }
 }
 resource "oci_logging_log_group" "platform" {
   compartment_id = var.compartment_id

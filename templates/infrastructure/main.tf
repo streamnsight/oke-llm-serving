@@ -99,7 +99,6 @@ module "allocation" {
   specification_id    = terraform_data.specification.id
 }
 module "bootstrap" {
-  depends_on     = [terraform_data.specification]
   providers      = { oci = oci, oci.home = oci.home }
   source         = "../../modules/platform-bootstrap"
   tenancy_ocid   = var.tenancy_ocid

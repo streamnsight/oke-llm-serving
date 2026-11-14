@@ -1,6 +1,7 @@
 # Copyright (c) 2020-2022 Oracle and/or its affiliates. All rights reserved.
 # Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
 mock_provider "oci" {
+  mock_data "oci_objectstorage_namespace" { defaults = { namespace = "fixture-namespace" } }
   mock_data "oci_identity_tenancy" { defaults = { home_region_key = "ORD" } }
   mock_data "oci_identity_regions" { defaults = { regions = [{ key = "ORD", name = "us-chicago-1" }] } }
 }
@@ -120,4 +121,12 @@ run "explicit_rdma_in_an_unconfirmed_region_is_rejected" {
     rdma_mode = "rdma"
   }
   expect_failures = [terraform_data.specification]
+}
+run "specification_changes_keep_storage_namespace_known_during_plan" {
+  command = plan
+  variables { node_count = 2 }
+  assert {
+    condition     = startswith(output.platform.specification_uri, "oci://us-ashburn-1/fixture-namespace/")
+    error_message = "A specification update must not defer the stable namespace lookup and plan to replace the platform bucket."
+  }
 }
