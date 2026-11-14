@@ -42,6 +42,10 @@ Artifacts; chart content belongs in OCIR. `registry_host` supports an explicit
 realm-specific OCIR endpoint; the default is commercial `${region}.ocir.io`.
 Prepare creates the namespace. Service-only `OCI_` controls are not declared as
 pipeline parameters; `ENFORCE_HELM_DEPLOYMENT` remains the editable rerun argument.
+Chart delivery passes the OCI-issued short-lived bearer token directly through
+a private Helm registry configuration (`registrytoken`), avoiding a second Basic
+credential exchange. The token never enters command arguments or result
+artifacts; temporary credential files are removed on exit.
 
 Raw CRDs in the chart's `crds/` directory are created with stable ownership and
 keep annotations before native installation. Updates require that ownership and

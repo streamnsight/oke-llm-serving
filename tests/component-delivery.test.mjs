@@ -3,7 +3,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {execFileSync,spawnSync} from 'node:child_process';
-import {mkdtempSync,mkdirSync,readFileSync,writeFileSync,rmSync,copyFileSync,existsSync} from 'node:fs';
+import {mkdtempSync,mkdirSync,readFileSync,writeFileSync,rmSync,copyFileSync,existsSync,readdirSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {resolve} from 'node:path';
 
@@ -18,6 +18,12 @@ const arg=n=>a[a.indexOf(n)+1],out=v=>process.stdout.write(typeof v==='string'?v
 let input;const body=()=>input??=(arg('-f')==='-'?fs.readFileSync(0,'utf8'):fs.readFileSync(arg('-f'),'utf8'));
 const fail=message=>{save();process.stderr.write(message);process.exit(1);};
 const save=()=>fs.writeFileSync(file,JSON.stringify(state));
+const registryAuth=()=>{
+ const config=arg('--registry-config');if(!config||config!==process.env.HELM_REGISTRY_CONFIG)fail('Explicit Helm registry config required');
+ const mode=fs.statSync(config).mode&0o777,entry=JSON.parse(fs.readFileSync(config)).auths[process.env.DELIVERY_REGISTRY_HOST];
+ if(mode!==0o600||entry.registrytoken!=='fixture.token.signature'||Object.keys(entry).join(',')!=='registrytoken')fail('Expected private direct-access-token configuration');
+ (state.authChecks??=[]).push({path:config,mode,keys:Object.keys(entry)});
+};
 state.calls.push({tool,args:a});
 if(tool==='kubectl') {
  const verb=a.find(x=>['get','create','replace','apply','wait','rollout','api-resources'].includes(x)),i=a.indexOf(verb),kind=a[i+1];
@@ -35,15 +41,20 @@ if(tool==='kubectl') {
 } else if(tool==='helm') {
  if(a[0]==='list')out(state.releases||[]);
  else if(a[0]==='status') {if(state.notReady)fail('NotReady');out({version:state.installedRevision??3,info:{status:'deployed'},chart:{metadata:{name:'lws',version:state.installedVersion||'1.0.0'}}});}
- else if(a[0]==='pull') {if(arg('--destination')==='mirrored'&&!state.mirrored)fail('manifest not found: 404');fs.mkdirSync(arg('--destination'),{recursive:true});fs.writeFileSync(path.join(arg('--destination'),'lws-1.0.0.tgz'),'chart');}
+ else if(a[0]==='pull') {if(arg('--destination')==='mirrored'){registryAuth();if(state.mirrorForbidden)fail('403 Anonymous users are only allowed read access on public repos');if(!state.mirrored)fail('manifest not found: 404');}fs.mkdirSync(arg('--destination'),{recursive:true});fs.writeFileSync(path.join(arg('--destination'),'lws-1.0.0.tgz'),'chart');}
  else if(a[0]==='show'){if(a[1]==='crds')out(state.crdBundle||[]);else out({name:'lws'});}
  else if(a[0]==='get'&&a[1]==='values')out(state.installedValues||{replicas:process.env.REPLICAS});
  else if(a[0]==='template'||a[0]==='get')out(state.manifest||{apiVersion:'apps/v1',kind:'Deployment',metadata:{name:'controller'}});
- else if(a[0]==='push')state.mirrored=true;
+ else if(a[0]==='push'){registryAuth();state.mirrored=true;}
  else if(a[0]==='uninstall'){state.uninstalled=true;state.releases=[];}
- else if(a[0]!=='registry')fail('Shell must not helm install/upgrade');
+ else fail('Unexpected Helm command, including Basic registry login or Shell install/upgrade');
 } else if(tool==='oci') {
- if(a[0]==='raw-request')out('temporary-token');
+ if(a[0]==='raw-request'){
+   if(a.includes('--query')||a.includes('--raw-output'))fail('raw-request wrapper must be parsed locally');
+   let data=Object.hasOwn(state,'tokenData')?state.tokenData:{token:state.emptyToken?'':'fixture.token.signature'};
+   if(state.tokenDataString)data=JSON.stringify(data);
+   out({status:state.tokenStatus??'200 OK',headers:{'content-type':'application/json'},data});
+ }
  else if(a[0]==='devops')out(state.previousState||'FAILED');
  else if(a.slice(0,4).join(' ')==='artifacts generic artifact upload-by-path'){if(!a.includes('--content-body'))fail('Missing OCI --content-body');if(state.failUpload)fail('Upload failed');state.results.push(JSON.parse(fs.readFileSync(arg('--content-body'),'utf8')));}
  else fail('unexpected OCI command');
@@ -90,10 +101,27 @@ test('explicit predefined-variable binding correlates prepare and finish; missin
     const missing=fixture();try{const r=missing.run('prepare',{OCI_DEPLOYMENT_ID:'',DELIVERY_DEPLOYMENT_ID:binding});assert.notEqual(r.status,0);assert.equal(r.state.calls.length,0);assert.match(r.stderr,/predefined OCI_DEPLOYMENT_ID/);}finally{missing.close();}
   }
 });
+test('registry direct access token uses private config, never leaks, and is removed after success or failure',()=>{
+  for(const [extra,ok] of [[{},true],[{tokenDataString:true},true],[{tokenStatus:200},true],[{mirrorForbidden:true},false],[{emptyToken:true},false],[{tokenStatus:'401 Unauthorized'},false],[{tokenData:null},false],[{tokenData:'malformed fixture.token.signature'},false],[{tokenData:{}},false],[{tokenData:{token:null}},false],[{tokenData:{token:'null'}},false],[{tokenData:{token:123}},false]]){
+    const f=fixture(extra);try{
+      const r=f.run('prepare');assert.equal(r.status===0,ok,r.stderr);
+      if(ok||extra.mirrorForbidden){assert(r.state.authChecks.length>0);assert(r.state.authChecks.every(x=>x.mode===0o600&&x.keys.join(',')==='registrytoken'&&!existsSync(x.path)));}else{assert(!r.state.authChecks?.length);}
+      assert(!readdirSync(f.dir).some(name=>name.startsWith('.delivery-registry')));
+      assert(!JSON.stringify({stdout:r.stdout,stderr:r.stderr,calls:r.state.calls,results:r.state.results}).includes('fixture.token.signature'));
+      assert(!r.state.calls.some(x=>x.tool==='helm'&&x.args[0]==='registry'));
+      if(r.status!==0)assert.equal(r.state.lease.spec.holderIdentity,'');
+    }finally{f.close();}
+  }
+});
 test('foreign release is not adopted and reuse validates without lock or install',()=>{
   const f=fixture({releases:[{name:'lws'}]});try{
     let r=f.run('prepare');assert.notEqual(r.status,0);assert.equal(r.state.lease.spec.holderIdentity,'');assert(!r.state.mirrored);
     f.set({calls:[],results:[],releases:[{name:'lws'}]});r=f.run('reuse');assert.equal(r.status,0,r.stderr);assert.equal(r.state.lease,undefined);assert.equal(r.state.owner,undefined);assert.equal(r.state.results.at(-1).status,'ready');
+  }finally{f.close();}
+});
+test('reuse fails when evidence upload fails inside the EXIT trap',()=>{
+  const f=fixture({failUpload:true,releases:[{name:'lws'}]});try{
+    const r=f.run('reuse');assert.notEqual(r.status,0);assert.equal(r.state.results.length,0);assert.equal(r.state.owner,undefined);assert.equal(r.state.lease,undefined);assert(r.state.calls.some(x=>x.tool==='oci'&&x.args.slice(0,4).join(' ')==='artifacts generic artifact upload-by-path'));
   }finally{f.close();}
 });
 test('finish rejects changed arguments, wrong installed versions and mismatched native Helm values',()=>{

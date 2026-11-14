@@ -31,6 +31,8 @@ keep_lock=false
 status=failed
 helm_revision=""
 result_uploaded=false
+registry_config=""
+registry_token_file=""
 message="Operation did not complete"
 
 evidence() {
@@ -43,12 +45,15 @@ evidence() {
   version="$(date -u +%Y%m%dT%H%M%SZ)-${RANDOM}-${RANDOM}"
   oci artifacts generic artifact upload-by-path --repository-id "$DELIVERY_RESULT_REPOSITORY" \
     --artifact-path "$platform/components/$component/$DELIVERY_GENERATION/$OCI_DEPLOYMENT_ID/$DELIVERY_OPERATION.json" \
-    --artifact-version "$version" --content-body result.json >/dev/null
+    --artifact-version "$version" --content-body result.json >/dev/null || return $?
   result_uploaded=true
 }
 finish() {
   local code=$?
   trap - EXIT
+  # Registry bearer tokens never belong in artifacts, evidence or command args.
+  if [[ -n $registry_token_file ]]; then rm -f "$registry_token_file" || code=1; fi
+  if [[ -n $registry_config ]]; then rm -f "$registry_config" || code=1; fi
   if (( code != 0 )); then status=failed; result_uploaded=false; fi
   if [[ $result_uploaded != true ]]; then evidence "$code" || code=1; fi
   # A failed native stage never reaches finish; its lock remains deliberately.
@@ -143,7 +148,7 @@ render_values() {
   ! grep -Eq '\$\{[A-Za-z_][A-Za-z0-9_]*\}' effective-values.yaml || { message="Unresolved values placeholder"; return 2; }
 }
 mirror_chart() {
-  local repository chart mirror archive token existing
+  local repository chart mirror archive existing
   repository=$(jq -er .chart.repository specification.json)
   chart=$(jq -er .chart.name specification.json)
   mirror=$(jq -er .mirror_url specification.json)
@@ -160,11 +165,22 @@ mirror_chart() {
   [[ $(helm show chart "$archive" | yq -r .name) == "$chart" ]] || { message="Upstream chart name mismatch"; return 2; }
   helm template "$release" "$archive" --namespace "$namespace" --values effective-values.yaml > rendered-chart.yaml
   retention_guard rendered-chart.yaml
-  token=$(oci raw-request --http-method GET --target-uri "https://$DELIVERY_REGISTRY_HOST/20180419/docker/token" --query data.token --raw-output)
-  [[ -n $token && $token != null ]] || return 2
-  printf '%s' "$token" | helm registry login "$DELIVERY_REGISTRY_HOST" --username BEARER_TOKEN --password-stdin
-  unset token
-  if helm pull "$mirror" --version "$CHART_VERSION" --destination mirrored 2> mirror-pull-error.txt; then
+  registry_config=$(mktemp "$PWD/.delivery-registry.XXXXXX")
+  registry_token_file=$(mktemp "$PWD/.delivery-registry-token.XXXXXX")
+  # raw-request retains its {status,headers,data} wrapper; applying a CLI query
+  # here can filter the body instead of extracting a token from that wrapper.
+  oci raw-request --http-method GET --target-uri "https://$DELIVERY_REGISTRY_HOST/20180419/docker/token" > "$registry_token_file"
+  # ORAS v2 reads registrytoken as an access token and sends it directly. A
+  # username/password login would exchange the OCI-issued bearer token again.
+  if ! jq -e --arg host "$DELIVERY_REGISTRY_HOST" \
+    'select((.status|tostring|split(" ")[0])=="200") | (.data|if type=="string" then (try fromjson catch empty) else . end) | select(type=="object") | .token | select(type=="string" and length>0 and .!="null") | {auths:{($host):{registrytoken:.}}}' \
+    "$registry_token_file" > "$registry_config" 2>/dev/null; then
+    message="OCIR authentication did not return HTTP 200 with a nonempty token"; return 2
+  fi
+  rm -f "$registry_token_file"
+  registry_token_file=""
+  export HELM_REGISTRY_CONFIG="$registry_config"
+  if helm pull "$mirror" --version "$CHART_VERSION" --destination mirrored --registry-config "$registry_config" 2> mirror-pull-error.txt; then
     local copies=(mirrored/*.tgz)
     [[ ${#copies[@]} == 1 && -f ${copies[0]} ]] || return 2
     existing=${copies[0]}
@@ -173,7 +189,7 @@ mirror_chart() {
     # An unreadable mirror does not authorize an overwrite. Only an explicit
     # registry not-found response permits initial publication.
     grep -Eqi 'not found|manifest_unknown|404' mirror-pull-error.txt || { cat mirror-pull-error.txt >&2; return 2; }
-    helm push "$archive" "${mirror%/*}"
+    helm push "$archive" "${mirror%/*}" --registry-config "$registry_config"
   fi
 }
 
