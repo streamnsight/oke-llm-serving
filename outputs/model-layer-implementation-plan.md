@@ -4,7 +4,7 @@ Licensed under the Universal Permissive License v 1.0 as shown at http://oss.ora
 -->
 # Discovery presentation and model deployment workflow
 
-Status: implementation in progress. This feature builds on the CPU-validated component foundation. GPU allocation, pool resizing/cycling/deletion and model workload execution are not authorized for validation. Preserve the user's staged AGENTS.md and untracked discovery review.
+Status: implemented and validated through live RMS pipeline creation; GPU runtime validation remains deferred. This feature builds on the CPU-validated component foundation. GPU allocation, pool resizing/cycling/deletion and model workload execution are not authorized for this validation. Preserve the user's staged AGENTS.md and untracked discovery review. See [the validation record](model-deployment-validation-2026-11-13.md).
 
 ## Outcome and boundaries
 
@@ -27,10 +27,10 @@ The current pass must create the model stack and its pipeline resources in RMS w
 
 1. [x] Reorganize module/template paths and document ownership. Verify relative references, Terraform roots and package closure; commit this mechanical change independently.
 2. [x] Replace redundant discovery output with compact model summary and all confirmed option rows, including links and supply/allocation/replica/memory distinctions. Test unavailable/unknown exclusions, AD granularity, units and correct total-GPU ranking.
-3. [ ] Build model-only configuration/chart and artifact-backed deploy/validate/benchmark/undeploy pipelines. Test recipe argument preservation, single-node/replica/LWS renderings, namespace/ownership, retained data and no infrastructure resources/permissions.
-4. [ ] Bind and publish the model stack from infrastructure with matching editable defaults, existing-project/environment/repository references and small RMS input requirements. Validate extracted root ZIPs and configured defaults.
-5. [ ] Run Terraform/script/render/package checks and RMS Plan/Apply for pipeline creation only. Programmatically reject pool, Compute, reservation or shared-platform destruction; do not run model deployment/benchmark pipelines.
-6. [ ] Document exact supported adapters, missing infrastructure/model/API capabilities and validation limits; clean generated development assets, commit feature changes and preserve user edits. Main integration requires the relevant end-to-end validation.
+3. [x] Build model-only configuration/chart and artifact-backed deploy/validate/benchmark/undeploy pipelines. Test recipe argument preservation, single-node/replica/LWS renderings, namespace/ownership, retained data and no infrastructure resources/permissions.
+4. [x] Bind and publish the model stack from infrastructure with matching editable defaults, existing-project/environment/repository references and small RMS input requirements. Validate extracted root ZIPs and configured defaults.
+5. [x] Run Terraform/script/render/package checks and RMS Plan/Apply for pipeline creation only. Programmatically reject pool, Compute, reservation or shared-platform destruction; do not run model deployment/benchmark pipelines.
+6. [x] Document exact supported adapters, missing infrastructure/model/API capabilities and validation limits; clean generated development assets, commit feature changes and preserve user edits. Main integration requires the relevant end-to-end validation, now completed for the scoped pipeline-creation workflow.
 
 ## Discovery simplicity pass
 
@@ -40,4 +40,7 @@ The current pass must create the model stack and its pipeline resources in RMS w
 - [x] Reuse the subscription response after discovering the home region.
 - [x] Narrow later native allocation admission to the selected AD and shape; remove its unused subscription lookup. Require evidence for every shape quota, including regional/global quotas.
 - [x] Skip limit-list calls in regions with no relevant GPU quota names.
-- [ ] Verify request counts, confirmed-only eligibility, consolidated output and extracted entry ZIP. Do not allocate GPUs or run a new live capacity scan for this cleanup.
+- [x] Skip hardware recipe/image rendering when no observation can cover even one whole host; retain local exclusion diagnostics.
+- [x] Verify request counts, confirmed-only eligibility, consolidated output and extracted entry ZIP. No GPUs allocated or new live capacity scan run for this cleanup.
+
+Verification: 14 CLI/report JavaScript tests, 10 inventory mocks, 24 allocation mocks, 46 planner mocks, 10 root mocks and 9 report tests passed. The packaged discovery root and both embedded template roots passed native validation with Terraform 1.5.7. Original discovery state and variable files are unchanged. No runtime-speedup percentage is claimed; tests establish reduced configured requests, not a production timing benchmark.

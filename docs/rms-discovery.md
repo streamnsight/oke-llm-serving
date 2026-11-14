@@ -40,7 +40,7 @@ No large JSON is pasted into downstream RMS variables. Discovery publishes confi
 
 ## Required work, without duplicate scans
 
-The root owns one recipe metadata response and supplies it to model profiling, serving resolution and hardware planning. Identical hardware render queries share one request; an already-resolved exact image tag/SHA is reused. Unselected nightly/cache alternatives are not fetched. Missing recipes preserve explicit uncertainty rather than probing guessed paths.
+The root owns one recipe metadata response and supplies it to model profiling, serving resolution and hardware planning. Hardware render queries run only for GPU types with positive reported capacity and entitlement for at least one whole host. Identical queries share one request; an already-resolved exact image tag/SHA is reused. Unselected nightly/cache alternatives are not fetched. Missing recipes preserve explicit uncertainty rather than probing guessed paths.
 
 Regional discovery invokes one module-owned OCI CLI/Bash/jq scanner. One subscription response supplies both the home region and the region list. Each region lists limits once, queries each relevant quota/scope once and batches all assessed shapes into one capacity report per AD. Shape listings for the target compartment and tenancy root have different visibility purposes; when they are the same compartment, the response is reused.
 

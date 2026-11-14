@@ -21,7 +21,9 @@ locals {
   api_variant_metadata = try(local.api.variants[local.api_variant], {})
   # A10 is absent from the API taxonomy. Adapt only the portable BF16 baseline,
   # never a quantized profile whose kernels may require a different architecture.
-  api_targets       = { for row in local.sizing_rows : row.hardware => lookup({ a10 = "h100", "a100-40gb" = "h100", "a100-80gb" = "h100", l40s = "h100", "rtx-pro-6000-blackwell" = "rtx_pro_6000" }, row.hardware, row.hardware)... if var.recipe_api_enabled && local.api_variant != null && try(row.gpu.compute_capability >= 80, false) }
+  api_targets = { for row in local.sizing_rows : row.hardware => lookup({ a10 = "h100", "a100-40gb" = "h100", "a100-80gb" = "h100", l40s = "h100", "rtx-pro-6000-blackwell" = "rtx_pro_6000" }, row.hardware, row.hardware)... if var.recipe_api_enabled && local.api_variant != null && try(
+    row.gpu.compute_capability >= 80 && row.capacity_status == "positive" && row.capacity.available_instances >= 1 && row.limit_status == "positive" && row.entitled_instances >= 1, false
+  ) }
   api_hardware      = { for hardware, targets in local.api_targets : hardware => targets[0] if !contains(["a10", "a100-40gb", "a100-80gb", "l40s"], hardware) || try(local.api_variant_metadata.precision == "bf16", false) }
   rendering_queries = { for hardware, target in local.api_hardware : hardware => "hardware=${urlencode(target)}&variant=${urlencode(local.api_variant)}&strategy=single_node_tp" }
 }

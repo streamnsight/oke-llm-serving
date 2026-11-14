@@ -164,6 +164,10 @@ run "exclude_zero_physical_capacity" {
  condition=length(output.assessment.suggestions)==0 && length(output.assessment.sizing_options)==0 && output.assessment.recommended_selection_id==null && length(output.assessment.shape_observations)>0
  error_message="Unavailable or unconfirmed hardware must remain diagnostic, never selectable."
  }
+ assert {
+  condition=length(data.http.recipe_rendering)==0 && length(data.http.recipe_image)==0 && length(data.http.cache_option)==0
+  error_message="No hardware renderer, image or cache lookup is needed when physical capacity is zero."
+ }
 }
 
 run "exclude_missing_physical_capacity" {
@@ -181,6 +185,10 @@ run "exclude_insufficient_GPU_headroom" {
  assert {
  condition=length(output.assessment.suggestions)==0 && length(output.assessment.sizing_options)==0 && output.assessment.recommended_selection_id==null && length(output.assessment.shape_observations)>0
  error_message="Unavailable or unconfirmed hardware must remain diagnostic, never selectable."
+ }
+ assert {
+  condition=length(data.http.recipe_rendering)==0 && length(data.http.recipe_image)==0
+  error_message="Do not resolve configurations for hardware whose entitlement cannot cover one complete host."
  }
 }
 
