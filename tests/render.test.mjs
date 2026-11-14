@@ -9,9 +9,9 @@ import { resolve } from 'node:path';
 import { parseAllDocuments, parse } from 'yaml';
 const root = resolve(import.meta.dirname, '..');
 const engineImage = `vllm/vllm-openai@sha256:${"e".repeat(64)}`;
-const components = JSON.parse(readFileSync(`${root}/modules/devops-serving/data/components.json`));
+const components = JSON.parse(readFileSync(`${root}/modules/llm-deployment/devops-serving/data/components.json`));
 const base = { specification_hash:'b'.repeat(64),name:'fixture',namespace:'fixture',model:'org/model',model_revision:'a'.repeat(40),engine_image:engineImage,engine_version:'0.33.0',kv_dtype:'bfloat16',tensor_parallel_size:1,pipeline_parallel_size:1,replicas:1,context_length:4096,concurrency:4,requires_rdma:false,components,job_name:'fixture-test' };
-const render = config => JSON.parse(execFileSync('jq', ['-f', `${root}/modules/devops-serving/scripts/render.jq`], { input:JSON.stringify(config), encoding:'utf8' }));
+const render = config => JSON.parse(execFileSync('jq', ['-f', `${root}/modules/llm-deployment/devops-serving/scripts/render.jq`], { input:JSON.stringify(config), encoding:'utf8' }));
 test('release packaging publishes only the entry discovery archive',()=>{
   const workflow=parse(readFileSync(`${root}/.github/workflows/package-stacks.yaml`,'utf8'));
   const uploads=workflow.jobs.package.steps.filter(s=>s.uses?.startsWith('actions/upload-artifact@'));

@@ -12,7 +12,7 @@ locals {
   published_at = local.enabled ? terraform_data.publication[0].output : ""
   # Explicit dependency closure for the GPU-only template; no publisher or
   # parent templates enter a child archive. Extracted-root validation checks it.
-  dependencies = toset(["gpu-allocation", "accelerator-inventory", "capacity-assessment", "deployment-target", "oke-node-image", "platform-bootstrap", "component-delivery", "model-storage"])
+  dependencies = toset(["infrastructure/gpu-allocation", "discovery/accelerator-inventory", "discovery/capacity-assessment", "infrastructure/deployment-target", "infrastructure/oke-node-image", "cluster-add-ons/platform-bootstrap", "shared/component-delivery", "llm-deployment/model-storage"])
   module_files = merge([for dependency in local.dependencies : {
     for relative in fileset("${var.modules_dir}/${dependency}", "**") : "modules/${dependency}/${relative}" => file("${var.modules_dir}/${dependency}/${relative}")
     if !startswith(relative, ".") && !startswith(relative, "tests/") && !startswith(relative, "work/") && !startswith(relative, "__pycache__/") && !strcontains(relative, "/__pycache__/") && !startswith(relative, "node_modules/") && !strcontains(relative, "/.") &&

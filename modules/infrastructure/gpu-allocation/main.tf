@@ -18,7 +18,7 @@ data "oci_containerengine_node_pools" "owned" {
   cluster_id     = var.cluster_id
 }
 module "inventory" {
-  source         = "../accelerator-inventory"
+  source         = "../../discovery/accelerator-inventory"
   tenancy_ocid   = var.tenancy_ocid
   compartment_id = var.compartment_id
   region         = var.region
@@ -50,7 +50,7 @@ locals {
 }
 
 module "capacity" {
-  source              = "../capacity-assessment"
+  source              = "../../discovery/capacity-assessment"
   tenancy_ocid        = var.tenancy_ocid
   region              = var.region
   availability_domain = var.availability_domain

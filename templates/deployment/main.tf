@@ -11,14 +11,14 @@ provider "oci" {
   alias  = "home"
   region = one([for region in data.oci_identity_regions.available.regions : region.name if region.key == data.oci_identity_tenancy.target.home_region_key])
 }
-module "control_plane" { source = "../../modules/control-plane-sizing" }
+module "control_plane" { source = "../../modules/discovery/control-plane-sizing" }
 module "serving_runtime" {
   count  = var.provision_resources || var.inspect_serving_image ? 1 : 0
-  source = "../../modules/serving-image-metadata"
+  source = "../../modules/discovery/serving-image-metadata"
   image  = local.engine_image
 }
 module "target" {
-  source              = "../../modules/deployment-target"
+  source              = "../../modules/infrastructure/deployment-target"
   cluster_id          = var.cluster_id
   availability_domain = local.availability_domain
   gpu_shape           = local.gpu_shape
@@ -32,7 +32,7 @@ module "target" {
   overrides           = { for k, v in { gpu_image_id = var.gpu_image_id, cpu_image_id = var.cpu_image_id, subnet_id = var.subnet_id, cpu_subnet_id = var.cpu_subnet_id, devops_subnet_id = var.devops_subnet_id, pod_subnet_id = var.pod_subnet_id } : k => try(trimspace(v) != "" ? trimspace(v) : null, null) }
 }
 module "model_profile" {
-  source         = "../../modules/model-profile"
+  source         = "../../modules/discovery/model-profile"
   model          = local.model
   revision       = local.model_revision
   context_length = local.context_length
@@ -46,7 +46,7 @@ locals {
   engine_args          = var.engine_args != null ? var.engine_args : try(tolist(local.serving_configuration.recipe.args), [])
   engine_env           = var.engine_env != null ? var.engine_env : try(tomap(local.serving_configuration.recipe.env), {})
   managed_flags        = ["--model", "--revision", "--served-model-name", "--host", "--port", "--tensor-parallel-size", "-tp", "--pipeline-parallel-size", "-pp", "--max-model-len", "--max-num-seqs", "--dtype", "--kv-cache-dtype", "--gpu-memory-utilization", "--distributed-executor-backend", "--nnodes", "--node-rank", "--master-addr", "--headless"]
-  gpu                  = try(jsondecode(file("${path.module}/../../modules/accelerator-inventory/data/gpus.json")).shapes[local.gpu_shape], null)
+  gpu                  = try(jsondecode(file("${path.module}/../../modules/discovery/accelerator-inventory/data/gpus.json")).shapes[local.gpu_shape], null)
   profile              = module.model_profile.profile
   a                    = local.profile.architecture.attention
   selected_rank_budget = try(local.suggested ? local.selected.estimated_rank_bytes : null, null)
@@ -57,7 +57,7 @@ locals {
   ) * (1 + local.profile.memory.assumptions.safety_margin_fraction)), null)
 }
 module "engine_check" {
-  source  = "../../modules/deployment-planner"
+  source  = "../../modules/discovery/deployment-planner"
   profile = local.profile
   regions = []
 }
@@ -136,7 +136,7 @@ resource "terraform_data" "specification" {
     precondition {
       condition = try(contains([1, 2, 4, 8], local.tp) && local.tp <= local.gpu.gpus && local.pp >= 1 && floor(local.pp) == local.pp && local.replicas >= 1 && floor(local.replicas) == local.replicas && local.node_count == local.pp * local.replicas &&
         (var.expert_configuration || (local.pp <= local.a.layers && local.a.heads % local.tp == 0 && (local.a.kv_heads % local.tp == 0 || local.tp % local.a.kv_heads == 0))) &&
-      (local.pp == 1 || local.engine.multi_node_backend == "mp") && (!local.requires_rdma || (local.gpu.compute_cluster_supported && contains(jsondecode(file("${path.module}/../../modules/accelerator-inventory/data/gpus.json")).compute_cluster_regions, local.region))), false)
+      (local.pp == 1 || local.engine.multi_node_backend == "mp") && (!local.requires_rdma || (local.gpu.compute_cluster_supported && contains(jsondecode(file("${path.module}/../../modules/discovery/accelerator-inventory/data/gpus.json")).compute_cluster_regions, local.region))), false)
       error_message = "TP must fit the GPU host, PP/replicas must match node count, and RDMA must be supported. Expert mode does not bypass allocation geometry."
     }
     precondition {
@@ -179,7 +179,7 @@ resource "terraform_data" "specification" {
 module "allocation" {
   providers           = { oci = oci, oci.home = oci.home }
   count               = var.provision_resources ? 1 : 0
-  source              = "../../modules/gpu-allocation"
+  source              = "../../modules/infrastructure/gpu-allocation"
   tenancy_ocid        = var.tenancy_ocid
   compartment_id      = local.compartment_id
   cluster_id          = var.cluster_id
@@ -207,7 +207,7 @@ module "allocation" {
 }
 module "delivery" {
   count          = var.provision_resources ? 1 : 0
-  source         = "../../modules/devops-serving"
+  source         = "../../modules/llm-deployment/devops-serving"
   tenancy_ocid   = var.tenancy_ocid
   compartment_id = local.compartment_id
   subnet_id      = module.target.target.devops_subnet_id

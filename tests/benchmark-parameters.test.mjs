@@ -4,7 +4,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {spawnSync} from 'node:child_process';
 import {resolve} from 'node:path';
-const script=resolve(import.meta.dirname,'../modules/devops-serving/scripts/benchmark-parameters.jq');
+const script=resolve(import.meta.dirname,'../modules/llm-deployment/devops-serving/scripts/benchmark-parameters.jq');
 const config={benchmark_requests:50,benchmark_input_tokens:256,benchmark_output_tokens:128,context_length:1024};
 const run=args=>spawnSync('jq',['-f',script],{input:JSON.stringify({config,arguments:args}),encoding:'utf8'});
 test('DevOps benchmark overrides are numeric data with bounded context',()=>{

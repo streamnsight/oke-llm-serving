@@ -9,16 +9,16 @@ staging=$(mktemp -d)
 trap 'rm -rf "$staging"' EXIT
 unzip -tq "$archive"
 unzip -q "$archive" -d "$staging"
-for required in main.tf variables.tf schema.yaml .terraform.lock.hcl modules modules/oci-discovery/scripts/discover-oci.sh modules/oci-discovery/scripts/lib/oci-discovery.jq modules/accelerator-inventory/data/gpus.json modules/devops-serving/data/components.json modules/devops-serving/scripts/run.sh modules/devops-serving/scripts/render.jq modules/devops-serving/scripts/benchmark.sh modules/devops-serving/scripts/node-capabilities.jq modules/devops-serving/scripts/benchmark-parameters.jq modules/deployment-target/main.tf modules/oke-node-image/main.tf modules/deployment-handoff/main.tf modules/control-plane-sizing/main.tf modules/serving-image-metadata/main.tf; do
+for required in main.tf variables.tf schema.yaml .terraform.lock.hcl modules modules/discovery/oci-discovery/scripts/discover-oci.sh modules/discovery/oci-discovery/scripts/lib/oci-discovery.jq modules/discovery/accelerator-inventory/data/gpus.json modules/llm-deployment/devops-serving/data/components.json modules/llm-deployment/devops-serving/scripts/run.sh modules/llm-deployment/devops-serving/scripts/render.jq modules/llm-deployment/devops-serving/scripts/benchmark.sh modules/llm-deployment/devops-serving/scripts/node-capabilities.jq modules/llm-deployment/devops-serving/scripts/benchmark-parameters.jq modules/infrastructure/deployment-target/main.tf modules/infrastructure/oke-node-image/main.tf modules/discovery/deployment-handoff/main.tf modules/discovery/control-plane-sizing/main.tf modules/discovery/serving-image-metadata/main.tf; do
   [[ -e "$staging/$required" ]] || { echo "Missing package asset: $required" >&2; exit 1; }
 done
-for required in modules/platform-bootstrap/main.tf modules/platform-bootstrap/data/components.json modules/platform-bootstrap/scripts/platform.sh modules/component-delivery/main.tf modules/component-delivery/scripts/component.sh modules/component-delivery/scripts/lock.sh modules/component-delivery/scripts/tools.sh modules/model-storage/main.tf modules/model-storage/scripts/download.sh modules/platform-bootstrap/scripts/readiness.jq; do
+for required in modules/cluster-add-ons/platform-bootstrap/main.tf modules/cluster-add-ons/platform-bootstrap/data/components.json modules/cluster-add-ons/platform-bootstrap/scripts/platform.sh modules/shared/component-delivery/main.tf modules/shared/component-delivery/scripts/component.sh modules/shared/component-delivery/scripts/lock.sh modules/shared/component-delivery/scripts/tools.sh modules/llm-deployment/model-storage/main.tf modules/llm-deployment/model-storage/scripts/download.sh modules/cluster-add-ons/platform-bootstrap/scripts/readiness.jq; do
   [[ -e "$staging/$required" ]] || { echo "Missing platform asset: $required" >&2; exit 1; }
 done
 for obsolete in terraform catalogs scripts devops; do
   [[ ! -e "$staging/$obsolete" ]] || { echo "Package contains obsolete root directory: $obsolete" >&2; exit 1; }
 done
-[[ -f "$staging/modules/infrastructure-publisher/main.tf" ]] || { echo 'Missing infrastructure publisher' >&2; exit 1; }
+[[ -f "$staging/modules/discovery/infrastructure-publisher/main.tf" ]] || { echo 'Missing infrastructure publisher' >&2; exit 1; }
 if find "$staging" \( -name .terraform -o -name node_modules -o -name .git -o -name work -o -name tests -o -name '*.tfstate*' -o -name '*.tfplan' -o -name '*.tfvars' -o -name '*.tfvars.json' \) -print | grep -q .; then
   echo 'Package contains development/private artifacts' >&2; exit 1
 fi

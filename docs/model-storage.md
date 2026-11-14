@@ -2,7 +2,7 @@
 <!-- Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl. -->
 # Optional model weight staging
 
-`modules/model-storage` distinguishes model data from DevOps artifacts. The default `direct_huggingface` mode creates **no bucket, pipeline, artifacts or IAM**. The later model deployment downloads its pinned snapshot directly from Hugging Face into its model cache. There is no infrastructure-time model download.
+`modules/llm-deployment/model-storage` distinguishes model data from DevOps artifacts. The default `direct_huggingface` mode creates **no bucket, pipeline, artifacts or IAM**. The later model deployment downloads its pinned snapshot directly from Hugging Face into its model cache. There is no infrastructure-time model download.
 
 The optional `object_storage` adapter creates a private, versioned Standard Object Storage bucket, retained by Terraform `prevent_destroy`, and a manually invoked DevOps Shell pipeline in the supplied project. Generic Artifact Registry holds only scripts, the pinned file specification and small execution reports. Weight shards and their completion manifest belong in the model bucket. Discovery's RMS ZIP/PAR bucket is a separate concern.
 
@@ -26,7 +26,7 @@ The default Job deadline is four hours; its maximum is seven hours, with an eigh
 ```sh
 docker build --platform linux/amd64 \
   --build-arg OCI_CLI_BASE=ghcr.io/oracle/oci-cli@sha256:<reviewed-base-digest> \
-  -t <your-registry>/model-stager:<version> modules/model-storage/image
+  -t <your-registry>/model-stager:<version> modules/llm-deployment/model-storage/image
 ```
 
 Publish the image and pass its resulting digest as `staging_image`. The Dockerfile checks that the installed CLI advertises workload identity support; a real enhanced-cluster run must still validate IAM, image access and network connectivity. Oracle publishes the [OCI CLI image source](https://github.com/oracle/docker-images/tree/main/OracleCloudInfrastructure/oci-cli); the [CLI authentication reference](https://docs.oracle.com/en-us/iaas/tools/oci-cli/latest/oci_cli_docs/oci.html) includes `oke_workload_identity`.
@@ -64,10 +64,10 @@ Plan cache capacity for the full selected snapshot, update headroom and replicat
 Local checks:
 
 ```sh
-terraform -chdir=modules/model-storage init -backend=false
-terraform -chdir=modules/model-storage test
-node --test modules/model-storage/tests/*.test.mjs
-bash -n modules/model-storage/scripts/*.sh
+terraform -chdir=modules/llm-deployment/model-storage init -backend=false
+terraform -chdir=modules/llm-deployment/model-storage test
+node --test modules/llm-deployment/model-storage/tests/*.test.mjs
+bash -n modules/llm-deployment/model-storage/scripts/*.sh
 ```
 
 The Terraform tests use mocked providers, and the Bash integration tests use fake OCI/HTTP clients. They allocate no cloud resources or GPUs. Live image pull, OKE workload identity, Vault access, storage binding, large-file network retries and model-loader integration still require environment validation.

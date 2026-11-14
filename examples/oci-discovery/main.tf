@@ -44,7 +44,7 @@ variable "observation_id" {
 }
 
 module "inventory" {
-  source         = "../../modules/accelerator-inventory"
+  source         = "../../modules/discovery/accelerator-inventory"
   tenancy_ocid   = var.tenancy_ocid
   region         = var.region
   compartment_id = var.compartment_id
@@ -53,7 +53,7 @@ module "inventory" {
 
 module "capacity" {
   count               = var.availability_domain == null ? 0 : 1
-  source              = "../../modules/capacity-assessment"
+  source              = "../../modules/discovery/capacity-assessment"
   tenancy_ocid        = var.tenancy_ocid
   region              = var.region
   availability_domain = var.availability_domain

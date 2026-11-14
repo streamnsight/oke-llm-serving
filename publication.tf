@@ -9,7 +9,7 @@ locals {
 }
 module "infrastructure_publication" {
   count               = var.publish_infrastructure_bundles ? 1 : 0
-  source              = "./modules/infrastructure-publisher"
+  source              = "./modules/discovery/infrastructure-publisher"
   tenancy_ocid        = var.tenancy_ocid
   compartment_id      = coalesce(var.artifact_compartment_id, var.compartment_ocid, var.compartment_id, var.tenancy_ocid)
   region              = try(coalesce(var.region, local.oci_discovery.home_region), null)

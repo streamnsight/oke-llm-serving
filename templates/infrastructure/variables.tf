@@ -165,7 +165,7 @@ variable "model_storage_mode" {
   }
 }
 variable "model_staging_image" {
-  description = "Digest-pinned CPU image built from modules/model-storage/image/Dockerfile; needed only for optional Object Storage staging."
+  description = "Digest-pinned CPU image built from modules/llm-deployment/model-storage/image/Dockerfile; needed only for optional Object Storage staging."
   type        = string
   default     = null
 }

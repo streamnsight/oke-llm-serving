@@ -72,7 +72,7 @@ jobs:
       - name: Run Terraform tests
         run: terraform test -no-color
       - name: Verify the actually rendered infrastructure ZIP
-        if: matrix.directory == 'modules/infrastructure-publisher'
+        if: matrix.directory == 'modules/discovery/infrastructure-publisher'
         run: bash "$GITHUB_WORKSPACE/scripts/check-generated-infrastructure.sh" "$PWD/.generated/infrastructure-selected.zip"
   scripts:
     name: JavaScript and shell tests

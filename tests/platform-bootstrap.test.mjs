@@ -8,7 +8,7 @@ import {tmpdir} from 'node:os';
 import {resolve} from 'node:path';
 import {createHash} from 'node:crypto';
 const root=resolve(import.meta.dirname,'..');
-const modulePath=`${root}/modules/platform-bootstrap`;
+const modulePath=`${root}/modules/cluster-add-ons/platform-bootstrap`;
 const components=JSON.parse(readFileSync(`${modulePath}/data/components.json`));
 const gpu={metadata:{name:'gpu',labels:{'node.kubernetes.io/instance-type':'BM.GPU.A10.4'}},spec:{},status:{conditions:[{type:'Ready',status:'True'}],allocatable:{'nvidia.com/gpu':'4'}}};
 const cpu={metadata:{name:'existing-cpu',labels:{'node.kubernetes.io/instance-type':'VM.Standard.E4.Flex'}},spec:{},status:{conditions:[{type:'Ready',status:'True'}],allocatable:{cpu:'8',memory:'22Gi'}}};

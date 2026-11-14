@@ -50,7 +50,7 @@ test("selected upstream charts render with the platform adapter values", {
 }, async (t) => {
   const directory = mkdtempSync(join(tmpdir(), "oke-platform-charts-"));
   t.after(() => rmSync(directory, { recursive: true, force: true }));
-  const moduleDirectory = join(root, "modules/platform-bootstrap");
+  const moduleDirectory = join(root, "modules/cluster-add-ons/platform-bootstrap");
   const componentSource = readFileSync(join(moduleDirectory, "components.tf"), "utf8");
   const moduleStart = componentSource.indexOf('\nmodule "components"');
   assert.ok(moduleStart > 0, "Expected chart locals before the component-delivery module");

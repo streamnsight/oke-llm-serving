@@ -28,7 +28,7 @@ resource "terraform_data" "requirements" {
     }
     precondition {
       condition     = var.staging_image != null
-      error_message = "Set staging_image to a tested digest-pinned image built from modules/model-storage/image/Dockerfile. No unverified default image is assumed."
+      error_message = "Set staging_image to a tested digest-pinned image built from modules/llm-deployment/model-storage/image/Dockerfile. No unverified default image is assumed."
     }
     precondition {
       condition     = length(var.cpu_node_selector) > 0 && length(jsonencode(local.model)) < 262144

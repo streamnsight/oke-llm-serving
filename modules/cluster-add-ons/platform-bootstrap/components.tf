@@ -85,7 +85,7 @@ locals {
   }
 }
 module "components" {
-  source                        = "../component-delivery"
+  source                        = "../../shared/component-delivery"
   name                          = var.name
   project_id                    = oci_devops_project.platform.id
   compartment_id                = var.compartment_id

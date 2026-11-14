@@ -6,7 +6,7 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { mkdtempSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
-const script=resolve(import.meta.dirname,'../modules/devops-serving/scripts/benchmark.sh');
+const script=resolve(import.meta.dirname,'../modules/llm-deployment/devops-serving/scripts/benchmark.sh');
 test('official benchmark receives frozen tokenizer, bounded load and native result options',()=>{
   const dir=mkdtempSync(`${tmpdir()}/oke-benchmark-command-`);
   try {

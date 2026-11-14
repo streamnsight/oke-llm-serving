@@ -14,7 +14,7 @@ provider "oci" {
 locals {
   home_region    = one([for region in data.oci_identity_regions.available.regions : region.name if region.key == data.oci_identity_tenancy.target.home_region_key])
   compartment_id = coalesce(var.compartment_id, var.compartment_ocid, var.tenancy_ocid)
-  catalog        = jsondecode(file("${path.module}/../../modules/accelerator-inventory/data/gpus.json"))
+  catalog        = jsondecode(file("${path.module}/../../modules/discovery/accelerator-inventory/data/gpus.json"))
   gpu            = try(local.catalog.shapes[var.gpu_shape], null)
   requires_rdma  = var.rdma_mode == "auto" ? try(local.selected_specification.selection.platform_plan.topology.rdma_required, local.selected_specification.selection.requires_rdma, false) : var.rdma_mode == "rdma"
   nsg_overrides = {
@@ -45,7 +45,7 @@ locals {
   }
 }
 module "target" {
-  source              = "../../modules/deployment-target"
+  source              = "../../modules/infrastructure/deployment-target"
   cluster_id          = var.cluster_id
   availability_domain = var.availability_domain
   gpu_shape           = var.gpu_shape
@@ -83,7 +83,7 @@ resource "terraform_data" "specification" {
 module "allocation" {
   providers           = { oci = oci, oci.home = oci.home }
   count               = var.skip_gpu_allocation ? 0 : 1
-  source              = "../../modules/gpu-allocation"
+  source              = "../../modules/infrastructure/gpu-allocation"
   tenancy_ocid        = var.tenancy_ocid
   compartment_id      = local.compartment_id
   cluster_id          = var.cluster_id
@@ -105,7 +105,7 @@ module "allocation" {
 }
 module "bootstrap" {
   providers      = { oci = oci, oci.home = oci.home }
-  source         = "../../modules/platform-bootstrap"
+  source         = "../../modules/cluster-add-ons/platform-bootstrap"
   tenancy_ocid   = var.tenancy_ocid
   compartment_id = local.compartment_id
   name           = var.platform_name

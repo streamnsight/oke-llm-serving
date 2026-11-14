@@ -51,7 +51,7 @@ variables:
   model_staging_image:
     type: string
     title: Optional model stager image digest
-    description: Required for Object Storage staging. Build and validate modules/model-storage/image/Dockerfile, then provide its image@sha256 digest.
+    description: Required for Object Storage staging. Build and validate modules/llm-deployment/model-storage/image/Dockerfile, then provide its image@sha256 digest.
   model_staging_cpu_shape:
     type: string
     title: Optional existing CPU shape for download jobs

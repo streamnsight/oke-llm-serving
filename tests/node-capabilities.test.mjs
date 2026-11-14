@@ -4,7 +4,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
 import {resolve} from 'node:path';
-const script=resolve(import.meta.dirname,'../modules/devops-serving/scripts/node-capabilities.jq');
+const script=resolve(import.meta.dirname,'../modules/llm-deployment/devops-serving/scripts/node-capabilities.jq');
 const node=(resources={},ready=true)=>({status:{conditions:[{type:'Ready',status:ready?'True':'False'}],allocatable:resources}});
 function assess(nodes,config={}) {
  return JSON.parse(execFileSync('jq',['-f',script],{input:JSON.stringify({nodes:{items:nodes},config:{tensor_parallel_size:4,node_count:1,requires_rdma:false,...config}}),encoding:'utf8'}));

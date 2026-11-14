@@ -5,7 +5,7 @@ Licensed under the Universal Permissive License v 1.0 as shown at http://oss.ora
 
 # Native Terraform model profile
 
-`modules/model-profile` reads the Hugging Face Hub API and the resolved revision's `config.json` using `hashicorp/http`. Terraform expressions calculate the memory estimate. There is no external program, Bash, Python, OCI SDK or precomputed-profile requirement.
+`modules/discovery/model-profile` reads the Hugging Face Hub API and the resolved revision's `config.json` using `hashicorp/http`. Terraform expressions calculate the memory estimate. There is no external program, Bash, Python, OCI SDK or precomputed-profile requirement.
 
 ## Inputs and execution
 
@@ -42,8 +42,8 @@ The aggregate recommendation is `(weights + KV + runtime allowance) × (1 + marg
 RMS must reach Hugging Face over HTTPS and install the HTTP provider from the Terraform Registry. No shell/runtime bootstrap is needed. The implementation is tested locally with native Terraform mocks and public-model lookup; actual RMS job validation remains pending.
 
 ```sh
-terraform -chdir=modules/model-profile init -backend=false
-terraform -chdir=modules/model-profile test
+terraform -chdir=modules/discovery/model-profile init -backend=false
+terraform -chdir=modules/discovery/model-profile test
 ```
 
 References: [Hub API](https://huggingface.co/docs/hub/en/api), [ModelInfo metadata](https://huggingface.co/docs/huggingface_hub/package_reference/hf_api#huggingface_hub.hf_api.ModelInfo), [HTTP provider](https://registry.terraform.io/providers/hashicorp/http/latest/docs/data-sources/http), [RMS provider sourcing](https://docs.oracle.com/en-us/iaas/Content/ResourceManager/Concepts/providers.htm).

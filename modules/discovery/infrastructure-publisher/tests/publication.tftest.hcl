@@ -26,8 +26,8 @@ variables {
   compartment_id = "artifacts"
   region         = "us-ashburn-1"
   model          = { repository = "org/model", revision = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", checkpoint_download_bytes = 107374182400 }
-  template_dir   = "../../templates/infrastructure"
-  modules_dir    = ".."
+  template_dir   = "../../../templates/infrastructure"
+  modules_dir    = "../.."
   options = { selected = {
     region       = "us-phoenix-1", availability_domain = "AD-1", gpu_shape = "BM.GPU.A10.4", node_count = 1,
     availability = "available_at_scan", capacity_observed_at = "2026-11-12T18:00:00Z", configuration_status = "suggested_untested", expert_evidence = join("", [for i in range(900) : "0123456789"])
@@ -66,7 +66,7 @@ run "apply_renders_zip_and_creates_scoped_links" {
     error_message = "Keep recommendations editable, size disk from checkpoint bytes and preserve the actual RMS region input."
   }
   assert {
-    condition     = alltrue([for name in keys(local.files["selected"]) : !startswith(name, "templates/") && !startswith(name, "modules/infrastructure-publisher/") && !strcontains(name, "/.terraform/") && !strcontains(name, "/tests/")])
+    condition     = alltrue([for name in keys(local.files["selected"]) : !startswith(name, "templates/") && !startswith(name, "modules/discovery/infrastructure-publisher/") && !strcontains(name, "/.terraform/") && !strcontains(name, "/tests/")])
     error_message = "Child ZIPs must exclude parents, publisher, tests, provider caches and private state."
   }
 }
@@ -150,7 +150,7 @@ run "component_and_transport_choices_reach_both_editable_defaults" {
     } }
   }
   assert {
-    condition     = local.defaults.configured.enable_lws && local.defaults.configured.enable_disaggregated_set && !local.defaults.configured.monitoring_enabled && local.defaults.configured.autoscaling_enabled && local.defaults.configured.rdma_mode == "rdma" && alltrue([for key, value in local.defaults.configured : jsondecode(local.files.configured["recommendations_override.tf.json"]).variable[key].default == value && yamldecode(local.files.configured["schema.yaml"]).variables[key].default == value]) && contains(keys(local.files.configured), "modules/component-delivery/scripts/component.sh") && contains(keys(local.files.configured), "modules/model-storage/scripts/download.sh")
+    condition     = local.defaults.configured.enable_lws && local.defaults.configured.enable_disaggregated_set && !local.defaults.configured.monitoring_enabled && local.defaults.configured.autoscaling_enabled && local.defaults.configured.rdma_mode == "rdma" && alltrue([for key, value in local.defaults.configured : jsondecode(local.files.configured["recommendations_override.tf.json"]).variable[key].default == value && yamldecode(local.files.configured["schema.yaml"]).variables[key].default == value]) && contains(keys(local.files.configured), "modules/shared/component-delivery/scripts/component.sh") && contains(keys(local.files.configured), "modules/llm-deployment/model-storage/scripts/download.sh")
     error_message = "Generated ZIPs must carry selected component/network defaults in both HCL and RMS and contain every new module dependency."
   }
 }

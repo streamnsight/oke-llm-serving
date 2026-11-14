@@ -7,7 +7,7 @@ import {mkdtempSync,mkdirSync,readFileSync,writeFileSync,rmSync,copyFileSync,exi
 import {tmpdir} from 'node:os';
 import {resolve} from 'node:path';
 
-const modulePath=resolve(import.meta.dirname,'../modules/component-delivery');
+const modulePath=resolve(import.meta.dirname,'../modules/shared/component-delivery');
 const spec={component:'lws',platform:'fixture',cluster_id:'cluster',region:'eu-frankfurt-1',mode:'managed',namespace:'lws-system',release_name:'lws',ownership_token:'stable-platform-owner',chart:{repository:'oci://registry.k8s.io/lws/charts',name:'lws',version:'1.0.0'},mirror_url:'oci://eu-frankfurt-1.ocir.io/fixture/lws',lock_name:'fixture-lock',lock_duration_seconds:3600,timeout_seconds:600,parameters:{REPLICAS:'2'},values_yaml:'{"replicas":"${REPLICAS}"}',dependencies:[],crd_names:['leaderworkersets.example.org'],deployment_names:['controller'],blocker_kinds:['leaderworkersets.example.org']};
 // Only external services/tool installation are simulated. The production Bash,
 // ownership/retention guards, CAS lease logic and evidence construction run.

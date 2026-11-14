@@ -9,7 +9,7 @@ locals {
 }
 module "model_storage" {
   providers              = { oci = oci, oci.home = oci.home }
-  source                 = "../../modules/model-storage"
+  source                 = "../../modules/llm-deployment/model-storage"
   mode                   = var.model_storage_mode
   name                   = "${substr(var.platform_name, 0, 24)}-model"
   tenancy_ocid           = var.tenancy_ocid

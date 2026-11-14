@@ -37,7 +37,7 @@ function run(scenario='',overrides={},extraEnv={}) {
  try {
   mkdirSync(`${dir}/bin`);writeFileSync(`${dir}/bin/oci`,fake,{mode:0o755});
   const q={tenancy_ocid:'tenancy',compartment_id:'target',region:'bootstrap',regions:'[]',shape_names:'[]',query_resource_availability:'true',only_shapes_with_limits:'false',observation_id:'test',gpu_catalog:JSON.stringify({source:'fixture',shapes:{'VM.GPU.A10.1':{memory_bytes_per_gpu:24000000000}}}),...overrides};
-  const proc=spawnSync('bash',[`${root}/modules/oci-discovery/scripts/discover-oci.sh`],{input:JSON.stringify(q),encoding:'utf8',env:{...process.env,TF_VAR_auth:'',OCI_AUTH:'',OCI_RESOURCE_PRINCIPAL_VERSION:'',OCI_CLI_AUTH:'',PATH:`${dir}/bin:${process.env.PATH}`,CLI_TEST_LOG:`${dir}/calls`,CLI_TEST_SCENARIO:scenario,...extraEnv}});
+  const proc=spawnSync('bash',[`${root}/modules/discovery/oci-discovery/scripts/discover-oci.sh`],{input:JSON.stringify(q),encoding:'utf8',env:{...process.env,TF_VAR_auth:'',OCI_AUTH:'',OCI_RESOURCE_PRINCIPAL_VERSION:'',OCI_CLI_AUTH:'',PATH:`${dir}/bin:${process.env.PATH}`,CLI_TEST_LOG:`${dir}/calls`,CLI_TEST_SCENARIO:scenario,...extraEnv}});
   const calls=(()=>{try{return readFileSync(`${dir}/calls`,'utf8').trim().split('\n').map(JSON.parse);}catch{return [];}})();
   const result=proc.status===0?JSON.parse(JSON.parse(proc.stdout).result):null;
   return {...proc,result,calls};

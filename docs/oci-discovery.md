@@ -25,7 +25,7 @@ provider "oci" {
 }
 
 module "inventory" {
-  source         = "../../modules/accelerator-inventory"
+  source         = "../../modules/discovery/accelerator-inventory"
   tenancy_ocid   = var.tenancy_ocid
   region         = var.region
   compartment_id = var.compartment_id
@@ -98,12 +98,12 @@ For RMS, use the combined native stack at .. Hugging Face model lookup also uses
 Run Terraform native-provider tests:
 
 ```sh
-terraform -chdir=modules/accelerator-inventory init -backend=false
-terraform -chdir=modules/accelerator-inventory test
-terraform -chdir=modules/capacity-assessment init -backend=false
-terraform -chdir=modules/capacity-assessment test
-terraform -chdir=modules/model-profile init -backend=false
-terraform -chdir=modules/model-profile test
+terraform -chdir=modules/discovery/accelerator-inventory init -backend=false
+terraform -chdir=modules/discovery/accelerator-inventory test
+terraform -chdir=modules/discovery/capacity-assessment init -backend=false
+terraform -chdir=modules/discovery/capacity-assessment test
+terraform -chdir=modules/discovery/model-profile init -backend=false
+terraform -chdir=modules/discovery/model-profile test
 ```
 
 Terraform's mock-provider tests require Terraform 1.7+; modules themselves require 1.5+. See the [validation record](../outputs/oci-discovery-validation.md) for live checks. Actual RMS execution, additional authentication modes and target-child-compartment checks remain to be validated there.

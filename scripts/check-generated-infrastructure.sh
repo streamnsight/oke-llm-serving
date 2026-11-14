@@ -12,7 +12,7 @@ unzip -q "$1" -d "$staging"
 for required in main.tf schema.yaml .terraform.lock.hcl recommendations_override.tf.json inputs/infrastructure-spec.json bundle-manifest.json; do
   [[ -f "$staging/$required" ]] || { echo "Missing rendered asset: $required" >&2; exit 1; }
 done
-[[ ! -d "$staging/templates" && ! -d "$staging/modules/infrastructure-publisher" ]]
+[[ ! -d "$staging/templates" && ! -d "$staging/modules/discovery/infrastructure-publisher" ]]
 if find "$staging" \( -name .terraform -o -name tests -o -name '*.tfstate*' -o -name '*.tfvars*' \) -print | grep -q .; then
   echo 'Rendered ZIP contains development/private files or tfvars that shadow Console edits.' >&2; exit 1
 fi
