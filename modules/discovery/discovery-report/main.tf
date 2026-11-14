@@ -87,14 +87,16 @@ locals {
     checkpoint_tensors  = try(var.profile.weights.tensor_data_bytes, null),
     resident_weights    = try(var.profile.memory.weight_bytes, null),
     kv_per_replica      = try(var.profile.memory.kv_bytes, null),
+    full_attention_kv   = try(var.profile.memory.partial.full_attention_kv_bytes, null),
     runtime_allowance   = try(var.profile.memory.runtime_allowance_bytes, null),
     total_estimated     = try(var.profile.memory.recommended_aggregate_bytes, null)
   }
   option_recipes = { for id, option in var.options : id => try(option.serving_configuration.recipe, var.serving_configuration.recipe, {}) }
   option_engines = { for id, option in var.options : id => try(option.serving_configuration.engine, option.engine, var.serving_configuration.engine, {}) }
   choices = { for id, option in var.options : id => {
-    region   = option.region, availability_domain = option.availability_domain, gpu_shape = option.gpu_shape,
-    gpu_type = try(one([for row in local.inventory_rows : row.gpu_description if row.region == option.region && row.ad == option.availability_domain && row.shape == option.gpu_shape]), null),
+    region         = option.region, availability_domain = option.availability_domain, gpu_shape = option.gpu_shape,
+    gpu_type       = try(one([for row in local.inventory_rows : row.gpu_description if row.region == option.region && row.ad == option.availability_domain && row.shape == option.gpu_shape]), null),
+    recommendation = try(option.recommendation, null),
     capacity = {
       observed_at                  = try(option.capacity_observed_at, null),
       ad_available_hosts           = try(option.available_instances, null),
@@ -169,12 +171,14 @@ locals {
       memory_gb               = { for name, bytes in local.memory_bytes : name => bytes == null ? null : bytes / 1e9 },
       safety_margin_fraction  = try(var.profile.memory.assumptions.safety_margin_fraction, null)
       memory_assumptions      = try(var.profile.memory.assumptions, {}), recipe_memory_budget_gb = try(var.assessment.recipe_options.memory_budget_bytes / 1e9, null)
+      partial_memory          = try(var.profile.memory.partial, {}), planning_memory = try(var.assessment.recipe_options.memory_budget_breakdown, {})
     },
     recommended_option_id = try(var.assessment.recommended_selection_id, null),
     recommendation_basis  = try(var.assessment.recommendation_basis, "not_established"),
+    recommendation_policy = try(var.assessment.recommendation_policy, null),
     option_count          = length(local.choices), published_option_count = length(var.publications),
     options               = local.choices,
-    regional_capacity     = [for key in sort(keys(local.regional_capacity)) : { for field, value in local.regional_capacity[key] : field => value if field != "gpu_counts" }],
+    regional_capacity     = [for key in sort(keys(local.regional_capacity)) : { for field, value in local.regional_capacity[key] : field => value if field != "gpu_counts" } if local.regional_capacity[key].known_reported_hosts > 0],
     status                = length(local.choices) > 0 ? "confirmed_capacity_options_available" : "no_confirmed_options",
     failure_summary = length(local.choices) > 0 ? [] : distinct(concat(
       try(var.assessment.blocking_reasons, []),

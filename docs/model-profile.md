@@ -53,3 +53,22 @@ References: [Hub API](https://huggingface.co/docs/hub/en/api), [ModelInfo metada
 The profile exposes structured attention dimensions, chat-template presence, and bounded regex matches for explicit vLLM/SGLang version statements in the pinned model card. Matches include source lines; they are evidence for review, not executable deployment instructions. Missing matches do not establish compatibility. The deployment planner compares supported architectures and simple stable-version constraints against the reviewed engine catalog.
 
 `weights.tensor_data_bytes` describes checkpoint storage. `memory.weight_bytes` reserves at least two bytes per published element for float16/bfloat16 compute, or four for float32, while retaining a larger checkpoint estimate. The initial recipe sets compute dtype from `kv_dtype` and leaves vLLM KV dtype at `auto`. The deployment planner applies the runtime allowance to each GPU rank and accounts conservatively for uneven pipeline stages, embeddings and KV-head replication. Estimates still require runtime validation.
+
+## Partial hybrid estimates and the planning budget
+
+Estimator `terraform-metadata-0.2.0` keeps the weight estimate when a complete architecture estimate is unavailable, provided canonical, consistent unquantized Hub counts exist. Complete `memory.status` remains unsupported, so publishing known weights does not admit an analytical layout automatically.
+
+For Qwen/Qwen3.8-27B at revision `37561816e66b5b9153b1b64c10968c18c1e6f4a0`, 4,096 context tokens and four sequences:
+
+| Component | Estimate | Meaning |
+|---|---:|---|
+| Resident BF16 weights | 55.56 GB | Hub-published 27,781,427,952 elements × 2 bytes |
+| Full-attention KV payload | 1.07 GB | 2 × 16 full-attention layers × 4 KV heads × 256 dimensions × 2 bytes × 4,096 × 4 |
+| Linear-attention cache / vision workspace | Unknown | 48 linear layers need engine-specific cache/state handling; media dimensions/batch are not profiled |
+| KV surrogate used for planning | 4.29 GB | Deliberately treats all 64 text layers as full attention; not the actual hybrid cache allocation |
+| Planning payload budget | 71.83 GB | max(recipe minimum 67 GB, analytical/fallback estimate if supported, (55.56 + 4.29) × 1.20) |
+| Additional runtime allowance | 2.15 GB per GPU | Added after approximately dividing the planning payload across TP ranks |
+
+The sizing check is `payload budget / TP + runtime allowance <= 90% of device VRAM` for recipe suggestions. Under these assumptions it selects TP4 on A10 24 GB and A100 40 GB, and TP2 on A100 80 GB. An eight-GPU A100 host therefore packs two or four complete replicas respectively. This does not assert that these shapes have capacity in a particular region, that the model is evenly sharded, or that runtime fit has been validated.
+
+The all-layer KV surrogate supplies heuristic planning space; it is **not a bound on recurrent-state, cache-page padding, vision or CUDA graph memory**. The report shows the known full-attention payload and the planning surrogate separately, and keeps the complete runtime estimate unestablished. [vLLM hybrid allocation](https://docs.vllm.ai/en/latest/design/hybrid_kv_cache_manager/) explains why state grouping/padding and prefix-cache checkpoints depend on the engine. Unknown layer types do not inherit the Qwen partial formula. Quantized weights keep their dedicated-estimator requirement.

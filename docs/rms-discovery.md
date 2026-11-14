@@ -13,11 +13,13 @@ The only Terraform output is `comparison_report_url`. `schema.yaml` declares it 
 The page contains:
 
 1. Model identity, revision, type/architecture, layer and attention dimensions, Hub-published parameter/dtype counts, checkpoint formats/download size, license and source link.
-2. Resident-weight, KV-cache, runtime and total-memory estimates for the entered context/concurrency, with dtype/margin assumptions. Unsupported estimates remain unknown; recipe budgets are labeled heuristic.
+2. Known resident-weight and KV-payload components for the entered context/concurrency, with dtype/margin assumptions. Complete estimates remain unknown where unsupported; the visible planning payload budget and its expandable formula are explicitly separate from hybrid cache/vision allocation.
 3. Collapsed deployment options showing region/AD, exact GPU shape, observed supply, GPUs per replica, allocated hosts, packed replicas and unused GPUs. Expanded details include image, planned command, original upstream command, provenance, component requirements and separate infrastructure/model PAR and RMS links.
-4. Regional capacity and per-AD entitlement evidence, including potential limit-increase requests where physical hosts exist. Aggregate-memory lower bounds do not establish a valid model layout or runtime. Zero physical capacity is not a limit-increase opportunity.
+4. Positive reported regional capacity and per-AD entitlement evidence, including potential limit-increase requests where physical hosts exist even with zero quota. Zero-host and unknown-only rows stay in optional diagnostics. Aggregate-memory lower bounds do not establish a valid model layout or runtime. Zero physical capacity is not a limit-increase opportunity.
 
 Counts for alternative shapes are not added together. Regional totals require unique complete whole-AD reports for the same exact shape; partial/conflicting coverage remains unknown. A positive report is a snapshot, not a reservation. All generated serving configurations still require runtime validation.
+
+Recommendations use hardware fit first: more VRAM per GPU, less per-replica sharding, RDMA-capable hardware, then additional complete replicas covered by both capacity and entitlement in the selected AD. Regional physical supply and fewer allocated GPUs break later ties. Display sorting is independent of this policy. VRAM is a fit proxy; bandwidth, compute and actual throughput still require hardware validation. No future capacity or RDMA placement is reserved.
 
 Report JSON, scripts and Redwood styling are embedded in the page. Opening, filtering or expanding it makes no new discovery requests. `include_diagnostics=true` adds a collapsed evidence section, without enabling unused engine/cache lookups. There are no duplicate public JSON outputs.
 

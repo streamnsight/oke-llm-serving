@@ -57,7 +57,7 @@ run "declared_non_text_recipe_tasks_are_preserved_without_a_false_smoke_claim" {
   error_message="A supplied recipe rendering must not be rejected solely because it lacks the text task, or claim text smoke tests validate other modalities."
  }
 }
-run "shared_full_queries_are_requested_once_and_ranking_uses_total_allocated_gpus" {
+run "shared_full_queries_are_requested_once_with_hardware_fit_ranking" {
  command=plan
  variables {
   replicas=5
@@ -78,7 +78,7 @@ run "shared_full_queries_are_requested_once_and_ranking_uses_total_allocated_gpu
  }
  assert {
   condition=length(data.http.recipe_rendering)==1 && length(data.http.cache_option)==2 && length(output.assessment.suggestions)==2 && output.assessment.suggestions[0].gpu_shape=="BM.GPU.H100.8" && output.assessment.suggestions[0].node_count==1 && output.assessment.suggestions[1].node_count==5
-  error_message="A10 and H100 share one exact render request and two distinct cache queries. Ranking must prefer eight total allocated GPUs over twenty, rather than comparing GPUs per host."
+  error_message="A10 and H100 share one exact render request and two distinct cache queries. Hardware fit prefers the larger-memory H100; request deduplication must remain unchanged."
  }
 }
 run "an_exact_previously_resolved_image_tag_does_not_repeat_registry_lookup" {
@@ -240,5 +240,77 @@ run "recipe_companions_and_unknown_features_remain_explicit_in_the_platform_plan
   assert {
     condition     = contains([for d in output.assessment.suggestions[0].platform_plan.diagnostics : d.code], "recipe_companion_adapter_required") && contains([for d in output.assessment.suggestions[0].platform_plan.diagnostics : d.code], "feature_integration_unclassified") && output.assessment.suggestions[0].platform_plan.storage_budget.kv_offload_bytes == null
     error_message = "Unsupported companion integration and unclassified features must produce explicit diagnostics and unknown sizing."
+  }
+}
+
+run "hardware_fit_can_prefer_eight_A100s_over_four_A10s" {
+  command = plan
+  variables {
+    regions = [{ "inventory" : { "region" : "region-one", "availability_domains" : [{ "name" : "AD-1", "shapes" : [{ "shape" : "BM.GPU.A10.4", "gpus" : 4, "rdma_ports" : 0, "quota_names" : ["gpu-count"] }, { "shape" : "BM.GPU.A100-v2.8", "gpus" : 8, "rdma_ports" : 1, "quota_names" : ["gpu-count"] }] }], "limits" : [{ "name" : "gpu-count", "description" : "GPUs for test instances", "scope_type" : "AD", "availability_domain" : "AD-1", "tenancy_limit" : 64, "resource_availability" : { "status" : "observed", "available" : 64 } }] }, "capacity" : { "region" : "region-one", "availability_domains" : [{ "name" : "AD-1", "assessment" : { "observed_at" : "test", "shapes" : [{ "shape" : "BM.GPU.A10.4", "available_instances" : 5, "availability_status" : "AVAILABLE" }, { "shape" : "BM.GPU.A100-v2.8", "available_instances" : 1, "availability_status" : "AVAILABLE" }] } }] } }]
+
+  }
+  assert {
+    condition     = output.assessment.suggestions[0].gpu_shape == "BM.GPU.A100-v2.8" && output.assessment.suggestions[0].recommendation.gpu_memory_bytes == 80000000000
+    error_message = "GPU count is not a performance/cost metric: a larger-memory A100 allocation may rank before four A10s."
+  }
+}
+
+run "same_hardware_prefers_more_confirmed_growth" {
+  command = plan
+  variables {
+    regions = [{ "inventory" : { "region" : "small", "availability_domains" : [{ "name" : "AD-1", "shapes" : [{ "shape" : "BM.GPU.A10.4", "gpus" : 4, "rdma_ports" : 0, "quota_names" : ["gpu-count"] }] }], "limits" : [{ "name" : "gpu-count", "description" : "GPUs for test instances", "scope_type" : "AD", "availability_domain" : "AD-1", "tenancy_limit" : 64, "resource_availability" : { "status" : "observed", "available" : 64 } }] }, "capacity" : { "region" : "small", "availability_domains" : [{ "name" : "AD-1", "assessment" : { "observed_at" : "test", "shapes" : [{ "shape" : "BM.GPU.A10.4", "available_instances" : 2, "availability_status" : "AVAILABLE" }] } }] } }, { "inventory" : { "region" : "large", "availability_domains" : [{ "name" : "AD-1", "shapes" : [{ "shape" : "BM.GPU.A10.4", "gpus" : 4, "rdma_ports" : 0, "quota_names" : ["gpu-count"] }] }], "limits" : [{ "name" : "gpu-count", "description" : "GPUs for test instances", "scope_type" : "AD", "availability_domain" : "AD-1", "tenancy_limit" : 64, "resource_availability" : { "status" : "observed", "available" : 64 } }] }, "capacity" : { "region" : "large", "availability_domains" : [{ "name" : "AD-1", "assessment" : { "observed_at" : "test", "shapes" : [{ "shape" : "BM.GPU.A10.4", "available_instances" : 6, "availability_status" : "AVAILABLE" }] } }] } }]
+
+  }
+  assert {
+    condition     = output.assessment.suggestions[0].region == "large" && output.assessment.suggestions[0].recommendation.ad_additional_replicas == 5
+    error_message = "Within the same hardware, greater quantity-confirmed AD growth ranks first."
+  }
+}
+
+run "growth_is_capped_by_entitlement_not_just_physical_hosts" {
+  command = plan
+  variables {
+    regions = [{ "inventory" : { "region" : "usable", "availability_domains" : [{ "name" : "AD-1", "shapes" : [{ "shape" : "BM.GPU.A10.4", "gpus" : 4, "rdma_ports" : 0, "quota_names" : ["gpu-count"] }] }], "limits" : [{ "name" : "gpu-count", "description" : "GPUs for test instances", "scope_type" : "AD", "availability_domain" : "AD-1", "tenancy_limit" : 64, "resource_availability" : { "status" : "observed", "available" : 64 } }] }, "capacity" : { "region" : "usable", "availability_domains" : [{ "name" : "AD-1", "assessment" : { "observed_at" : "test", "shapes" : [{ "shape" : "BM.GPU.A10.4", "available_instances" : 4, "availability_status" : "AVAILABLE" }] } }] } }, { "inventory" : { "region" : "physical-only", "availability_domains" : [{ "name" : "AD-1", "shapes" : [{ "shape" : "BM.GPU.A10.4", "gpus" : 4, "rdma_ports" : 0, "quota_names" : ["gpu-count"] }] }], "limits" : [{ "name" : "gpu-count", "description" : "GPUs for test instances", "scope_type" : "AD", "availability_domain" : "AD-1", "tenancy_limit" : 64, "resource_availability" : { "status" : "observed", "available" : 8 } }] }, "capacity" : { "region" : "physical-only", "availability_domains" : [{ "name" : "AD-1", "assessment" : { "observed_at" : "test", "shapes" : [{ "shape" : "BM.GPU.A10.4", "available_instances" : 10, "availability_status" : "AVAILABLE" }] } }] } }]
+
+  }
+  assert {
+    condition     = output.assessment.suggestions[0].region == "usable" && output.assessment.suggestions[0].recommendation.ad_max_replicas == 4 && output.assessment.suggestions[1].recommendation.ad_max_replicas == 2
+    error_message = "Ten physical hosts with entitlement for two must not outrank four currently usable hosts."
+  }
+}
+
+run "same_GPU_prefers_RDMA_capability" {
+  command = plan
+  variables {
+    regions     = [{ "inventory" : { "region" : "region-one", "availability_domains" : [{ "name" : "AD-1", "shapes" : [{ "shape" : "GPU.PCIE", "gpus" : 8, "rdma_ports" : 0, "quota_names" : ["gpu-count"] }, { "shape" : "GPU.RDMA", "gpus" : 8, "rdma_ports" : 1, "quota_names" : ["gpu-count"] }] }], "limits" : [{ "name" : "gpu-count", "description" : "GPUs for test instances", "scope_type" : "AD", "availability_domain" : "AD-1", "tenancy_limit" : 64, "resource_availability" : { "status" : "observed", "available" : 64 } }] }, "capacity" : { "region" : "region-one", "availability_domains" : [{ "name" : "AD-1", "assessment" : { "observed_at" : "test", "shapes" : [{ "shape" : "GPU.PCIE", "available_instances" : 8, "availability_status" : "AVAILABLE" }, { "shape" : "GPU.RDMA", "available_instances" : 1, "availability_status" : "AVAILABLE" }] } }] } }]
+    gpu_catalog = { "GPU.PCIE" : { "gpus" : 8, "memory_bytes_per_gpu" : 80000000000, "compute_capability" : 80, "recipe_hardware" : "a100-80gb", "cpu_architecture" : "amd64", "compute_cluster_supported" : false, "rdma" : false }, "GPU.RDMA" : { "gpus" : 8, "memory_bytes_per_gpu" : 80000000000, "compute_capability" : 80, "recipe_hardware" : "a100-80gb", "cpu_architecture" : "amd64", "compute_cluster_supported" : false, "rdma" : true } }
+  }
+  assert {
+    condition     = output.assessment.suggestions[0].gpu_shape == "GPU.RDMA" && output.assessment.suggestions[0].recommendation.rdma_capable
+    error_message = "For the same GPU and sharding, prefer RDMA-capable hardware without claiming fabric placement is reserved."
+  }
+}
+
+run "budget_explains_hybrid_surrogate_instead_of_claiming_full_estimate" {
+  command = plan
+  variables {
+    regions = [{ "inventory" : { "region" : "region-one", "availability_domains" : [{ "name" : "AD-1", "shapes" : [{ "shape" : "BM.GPU.A10.4", "gpus" : 4, "rdma_ports" : 0, "quota_names" : ["gpu-count"] }] }], "limits" : [{ "name" : "gpu-count", "description" : "GPUs for test instances", "scope_type" : "AD", "availability_domain" : "AD-1", "tenancy_limit" : 64, "resource_availability" : { "status" : "observed", "available" : 64 } }] }, "capacity" : { "region" : "region-one", "availability_domains" : [{ "name" : "AD-1", "assessment" : { "observed_at" : "test", "shapes" : [{ "shape" : "BM.GPU.A10.4", "available_instances" : 1, "availability_status" : "AVAILABLE" }] } }] } }]
+    profile = { "model" : { "repository" : "Qwen/Qwen3.8-27B", "resolved_revision" : "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "pipeline_tag" : "image-text-to-text", "chat_template_available" : true }, "architecture" : { "architectures" : ["Qwen3_5ForConditionalGeneration"], "attention" : { "layers" : 64, "heads" : 24, "kv_heads" : 4, "head_dim" : 256 } }, "weights" : { "tensor_data_bytes" : 55562855904, "tensor_elements" : 27781427952 }, "memory" : { "status" : "unsupported", "runtime_allowance_bytes" : 2147483648, "assumptions" : { "context_length" : 4096, "concurrency" : 4, "kv_dtype" : "bfloat16", "safety_margin_fraction" : 0.2 }, "reasons" : ["hybrid allocation unknown"] } }
+  }
+  assert {
+    condition     = output.assessment.recipe_options.memory_budget_breakdown.weight_bytes == 55562855904 && output.assessment.recipe_options.memory_budget_breakdown.kv_surrogate_bytes == 4294967296 && output.assessment.recipe_options.memory_budget_bytes == 71829387840 && output.assessment.suggestions[0].tensor_parallel_size == 4
+    error_message = "Expose the exact conservative payload and KV surrogate used by GPU sizing; hybrid allocations remain unvalidated."
+  }
+}
+
+run "same_budget_explains_different_TP_and_replica_packing_on_A100_variants" {
+  command = plan
+  variables {
+    regions = [{ "inventory" : { "region" : "region-one", "availability_domains" : [{ "name" : "AD-1", "shapes" : [{ "shape" : "BM.GPU.A10.4", "gpus" : 4, "rdma_ports" : 0, "quota_names" : ["gpu-count"] }, { "shape" : "BM.GPU4.8", "gpus" : 8, "rdma_ports" : 1, "quota_names" : ["gpu-count"] }, { "shape" : "BM.GPU.A100-v2.8", "gpus" : 8, "rdma_ports" : 1, "quota_names" : ["gpu-count"] }] }], "limits" : [{ "name" : "gpu-count", "description" : "GPUs for test instances", "scope_type" : "AD", "availability_domain" : "AD-1", "tenancy_limit" : 64, "resource_availability" : { "status" : "observed", "available" : 64 } }] }, "capacity" : { "region" : "region-one", "availability_domains" : [{ "name" : "AD-1", "assessment" : { "observed_at" : "test", "shapes" : [{ "shape" : "BM.GPU.A10.4", "available_instances" : 1, "availability_status" : "AVAILABLE" }, { "shape" : "BM.GPU4.8", "available_instances" : 1, "availability_status" : "AVAILABLE" }, { "shape" : "BM.GPU.A100-v2.8", "available_instances" : 1, "availability_status" : "AVAILABLE" }] } }] } }]
+    profile = { "model" : { "repository" : "Qwen/Qwen3.8-27B", "resolved_revision" : "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "pipeline_tag" : "image-text-to-text", "chat_template_available" : true }, "architecture" : { "architectures" : ["Qwen3_5ForConditionalGeneration"], "attention" : { "layers" : 64, "heads" : 24, "kv_heads" : 4, "head_dim" : 256 } }, "weights" : { "tensor_data_bytes" : 55562855904, "tensor_elements" : 27781427952 }, "memory" : { "status" : "unsupported", "runtime_allowance_bytes" : 2147483648, "assumptions" : { "context_length" : 4096, "concurrency" : 4, "kv_dtype" : "bfloat16", "safety_margin_fraction" : 0.2 }, "reasons" : ["hybrid allocation unknown"] } }
+  }
+  assert {
+    condition     = length(output.assessment.suggestions) == 3 && output.assessment.suggestions[0].gpu_shape == "BM.GPU.A100-v2.8" && output.assessment.suggestions[0].tensor_parallel_size == 2 && output.assessment.suggestions[0].replicas == 4 && one([for option in output.assessment.suggestions : option.tensor_parallel_size if option.gpu_shape == "BM.GPU4.8"]) == 4 && one([for option in output.assessment.suggestions : option.replicas if option.gpu_shape == "BM.GPU4.8"]) == 2
+    error_message = "The same 71.83 GB budget needs TP4 on 24/40 GB devices and TP2 on 80 GB devices; pack complete replicas into the eight-GPU host."
   }
 }

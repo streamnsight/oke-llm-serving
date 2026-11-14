@@ -107,8 +107,6 @@ locals {
       local.platform_capabilities[id].pd_selected ? [{ code = "disaggregation_adapter_required", status = "requires_validation", message = "Selected P/D mode needs role-specific resources, a compatible KV-transfer connector, routing and network validation; LWS CRDs alone are insufficient." }] : []
     )
   } }
-  candidates           = [for option in local.raw_candidates : merge(option, { platform_plan = local.platform_plans[option.id] })]
-  suggestions          = [for option in local.raw_suggestions : merge(option, { platform_plan = local.platform_plans[option.id] })]
-  candidate_rank_index = { for option in local.candidates : format("%08d-%04d-%03d-%s", option.node_count * option.gpus_per_node, option.node_count, option.tensor_parallel_size, option.id) => option }
-  ranked_candidates    = [for key in sort(keys(local.candidate_rank_index)) : local.candidate_rank_index[key]]
+  candidates  = [for option in local.raw_candidates : merge(option, { platform_plan = local.platform_plans[option.id] })]
+  suggestions = [for option in local.raw_suggestions : merge(option, { platform_plan = local.platform_plans[option.id] })]
 }

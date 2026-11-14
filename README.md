@@ -22,6 +22,8 @@ The only RMS output is **Open discovery report**, a link to a self-contained HTM
 - Collapsed options with planned/upstream recipe commands, image/configuration provenance, required components and separate infrastructure/model PAR and regional RMS URLs.
 - Useful exclusions when no option is available; detailed diagnostics are opt-in.
 
+Recommendations prioritize hardware fit (VRAM and sharding), RDMA capability and quantity-confirmed growth headroom. GPU count is a later tie-breaker, with no throughput/cost prediction. Technical serving details appear below deployment actions; the capacity table shows only positive supply, including regions needing limit increases.
+
 Capacity is an observation, not a reservation. Counts for alternative shapes and repeated quota ceilings must not be added together. Unsupported memory remains unknown. GB and GiB are labeled distinctly.
 
 The page uses the supplied Redwood styling and embeds its JSON, styles and scripts. RMS opens it separately through an expiring read PAR; there are no additional JSON outputs. It is published even with zero viable options, showing regional capacity, entitlement and potential limit-increase reviews.
@@ -64,7 +66,7 @@ CI publishes only the discovery entry ZIP, containing both downstream templates.
 
 Useful documentation:
 
-- [Project status](outputs/project-status.md) and [active implementation plan](outputs/discovery-html-report-plan.md)
+- [Project status](outputs/project-status.md) and [active implementation plan](outputs/discovery-recommendations-plan.md)
 - [RMS discovery inputs](docs/rms-discovery.md) and [model profile arithmetic](docs/model-profile.md)
 - [Shared infrastructure/component lifecycle](docs/infrastructure-bootstrap.md)
 - [Optional weight staging and its validation limits](docs/model-storage.md)

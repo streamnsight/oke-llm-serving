@@ -62,8 +62,8 @@ run "zero_capacity_is_not_a_limit_increase_opportunity" {
     })]
   }
   assert {
-    condition = !output.summary.regional_capacity[0].limit_increase_possible
-    error_message = "Higher limits do not solve observed zero hardware capacity."
+    condition = length(output.summary.regional_capacity) == 0
+    error_message = "Zero physical capacity stays hidden even with zero limits."
   }
 }
 
@@ -117,7 +117,7 @@ run "fault_domain_counts_are_not_whole_ad_capacity" {
   command = plan
   variables { regions = [for region in var.regions : merge(region, { capacity = merge(region.capacity, { availability_domains = [for ad in region.capacity.availability_domains : merge(ad, { assessment = merge(ad.assessment, { shapes = [for shape in ad.assessment.shapes : merge(shape, { fault_domain = "FD-1" })] }) })] }) })] }
   assert {
-    condition     = output.summary.regional_capacity[0].coverage == "partial" && output.summary.regional_capacity[0].available_gpus == null && output.summary.regional_capacity[0].known_ads == 0
+    condition     = length(output.summary.regional_capacity) == 0
     error_message = "A fault-domain report must never be silently presented as full AD or regional capacity."
   }
 }

@@ -105,14 +105,22 @@ locals {
   checkpoint_download_bytes = try(length(local.checkpoint_file_sizes) > 0 && alltrue([for size in local.checkpoint_file_sizes : size > 0]) ? sum(local.checkpoint_file_sizes) : null, null)
   has_index                 = contains([for file in try(local.info.siblings, []) : file.rfilename], "model.safetensors.index.json")
   canonical                 = local.has_index || (length(local.root_checkpoints) == 1 && contains(local.root_checkpoints, "model.safetensors"))
+  weights_supported         = local.counts_valid && local.canonical && local.quantization == null
+  # Partial text KV payload is useful even when hybrid/vision allocations are unknown.
+  qwen_hybrid = try(local.model_type == "qwen3_5_text" && local.dimensions_valid && length(local.text.layer_types) == local.layers && alltrue([
+    for type in local.text.layer_types : contains(["full_attention", "linear_attention"], type)
+  ]) && try(var.context_length <= local.max_context, true), false)
+  full_attention_layers   = local.qwen_hybrid ? length([for type in local.text.layer_types : type if type == "full_attention"]) : null
+  linear_attention_layers = local.qwen_hybrid ? local.layers - local.full_attention_layers : null
+  partial_full_kv_bytes   = local.qwen_hybrid ? 2 * local.full_attention_layers * local.kv_heads * local.head_dim * (var.kv_dtype == "float32" ? 4 : 2) * var.context_length * var.concurrency : null
   reasons = compact([
     length(keys(local.config)) > 0 ? "" : "No config.json or explicit recipe fallback is available.",
-    local.conventional ? "" : "Architecture requires a dedicated estimator.",
+    local.conventional ? "" : local.qwen_hybrid ? "Hybrid recurrent/cache allocation requires an engine-specific profile; the full-attention KV payload is shown separately." : "Architecture requires a dedicated estimator.",
     local.counts_valid ? "" : "Hub safetensors counts are missing, inconsistent or use unsupported dtypes.",
     local.canonical ? "" : "No unambiguous canonical safetensors checkpoint is declared.",
     local.dimensions_valid ? "" : "Missing or unsupported attention dimensions.",
     local.quantization == null ? "" : "Quantized checkpoints need engine-specific resident-memory estimates.",
-    anytrue([for key in ["text_config", "vision_config", "auto_map"] : contains(keys(local.config), key)]) ? "Composite, multimodal or custom-code architecture requires a dedicated estimator." : "",
+    anytrue([for key in ["text_config", "vision_config", "auto_map"] : contains(keys(local.config), key)]) ? (local.qwen_hybrid && contains(keys(local.config), "vision_config") ? "Vision workspace depends on media dimensions and batch; those inputs have not been profiled." : "Composite, multimodal or custom-code architecture requires a dedicated estimator.") : "",
     try(var.context_length > local.max_context, false) ? "Requested context exceeds the declared maximum." : "",
   ])
   supported          = length(local.reasons) == 0
@@ -127,7 +135,7 @@ output "profile" {
   description = "Metadata-based profile; check memory.status before interpreting numeric estimates."
   value = {
     schema_version    = "1.0"
-    estimator_version = "terraform-metadata-0.1.0"
+    estimator_version = "terraform-metadata-0.2.0"
     model = {
       repository              = local.repository
       requested_revision      = var.revision
@@ -144,7 +152,7 @@ output "profile" {
     }
     architecture = {
       model_type              = local.model_type
-      kind                    = local.moe ? "moe" : local.conventional ? "dense" : "unknown"
+      kind                    = local.qwen_hybrid ? (local.moe ? "hybrid_moe" : "hybrid_dense") : local.moe ? "moe" : local.conventional ? "dense" : "unknown"
       experts                 = local.experts
       experts_per_token       = try(local.text.num_experts_per_tok, null)
       architectures           = try(local.config.architectures, [])
@@ -182,9 +190,16 @@ output "profile" {
       confidence        = "declared_metadata"
     }
     memory = {
-      status                      = local.supported ? "estimated" : "unsupported"
-      reasons                     = local.reasons
-      weight_bytes                = local.supported ? local.resident_weight_bytes : null
+      status        = local.supported ? "estimated" : "unsupported"
+      reasons       = local.reasons
+      weight_bytes  = local.weights_supported ? local.resident_weight_bytes : null
+      weight_status = local.weights_supported ? "estimated_from_hub_counts" : "unknown"
+      partial = {
+        full_attention_layers   = local.full_attention_layers, linear_attention_layers = local.linear_attention_layers,
+        full_attention_kv_bytes = local.partial_full_kv_bytes,
+        recurrent_cache_bytes   = null, vision_workspace_bytes = null,
+        interpretation          = "Text full-attention KV payload only; hybrid state checkpoints, cache-manager padding and vision workspace remain unprofiled. This is not the total cache allocation."
+      }
       kv_bytes_per_token          = local.kv_bytes_per_token
       kv_bytes                    = local.kv_bytes
       runtime_allowance_bytes     = local.runtime_bytes

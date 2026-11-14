@@ -62,11 +62,20 @@ data "http" "recipe_image" {
 locals {
   recipe_images = merge(local.resolved_recipe_images, { for image, response in data.http.recipe_image : image => { for platform in ["amd64", "arm64"] : "linux/${platform}" => "vllm/vllm-openai@${one([for i in try(jsondecode(response.response_body).images, []) : i.digest if i.os == "linux" && i.architecture == platform])}" if length([for i in try(jsondecode(response.response_body).images, []) : i if i.os == "linux" && i.architecture == platform && can(regex("^sha256:[a-f0-9]{64}$", i.digest))]) == 1 } })
   # Recipe guidelines are a heuristic budget, not a per-rank allocation proof.
-  heuristic_payload = try(local.api_variant_metadata.precision == "bf16" && local.profile.weights.tensor_data_bytes > 0 && alltrue([for n in [local.a.layers, local.a.kv_heads, local.a.head_dim] : n > 0]) ? (
-    max(local.profile.weights.tensor_data_bytes, local.profile.weights.tensor_elements * (local.profile.memory.assumptions.kv_dtype == "float32" ? 4 : 2)) +
-    2 * local.a.layers * local.a.kv_heads * local.a.head_dim * (local.profile.memory.assumptions.kv_dtype == "float32" ? 4 : 2) * local.profile.memory.assumptions.context_length * local.profile.memory.assumptions.concurrency
-  ) * (1 + try(local.profile.memory.assumptions.safety_margin_fraction, 0.2)) : null, null)
-  api_budget = try(max(local.api_variant_metadata.vram_minimum_gb * 1e9, coalesce(local.payload_estimate, 0), coalesce(local.heuristic_payload, 0)), null)
+  heuristic_weights = try(local.api_variant_metadata.precision == "bf16" && local.profile.weights.tensor_data_bytes > 0 ? max(local.profile.weights.tensor_data_bytes, local.profile.weights.tensor_elements * (local.profile.memory.assumptions.kv_dtype == "float32" ? 4 : 2)) : null, null)
+  heuristic_kv = try(local.heuristic_weights > 0 && alltrue([for n in [local.a.layers, local.a.kv_heads, local.a.head_dim] : n > 0]) ?
+  2 * local.a.layers * local.a.kv_heads * local.a.head_dim * (local.profile.memory.assumptions.kv_dtype == "float32" ? 4 : 2) * local.profile.memory.assumptions.context_length * local.profile.memory.assumptions.concurrency : null, null)
+  heuristic_payload = try((local.heuristic_weights + local.heuristic_kv) * (1 + try(local.profile.memory.assumptions.safety_margin_fraction, 0.2)), null)
+  api_budget        = try(max(local.api_variant_metadata.vram_minimum_gb * 1e9, coalesce(local.payload_estimate, 0), coalesce(local.heuristic_payload, 0)), null)
+  memory_budget_breakdown = {
+    weight_bytes                    = local.heuristic_weights, kv_surrogate_bytes = local.heuristic_kv,
+    safety_margin_fraction          = try(local.profile.memory.assumptions.safety_margin_fraction, 0.2),
+    recipe_minimum_bytes            = try(local.api_variant_metadata.vram_minimum_gb * 1e9, null),
+    analytical_or_fallback_bytes    = local.payload_estimate, heuristic_payload_bytes = local.heuristic_payload,
+    selected_payload_budget_bytes   = local.api_budget,
+    runtime_allowance_per_gpu_bytes = try(local.profile.memory.runtime_allowance_bytes, null),
+    status                          = "heuristic_requires_runtime_validation"
+  }
   suggestion_rows = [for row in local.sizing_rows : merge(row, {
     rendering  = local.valid_renderings[row.hardware]
     image      = local.recipe_images[local.valid_renderings[row.hardware].docker_image][row.platform]
@@ -109,10 +118,6 @@ locals {
   recipe_managed_flags = ["--tensor-parallel-size", "-tp", "--pipeline-parallel-size", "-pp", "--max-model-len", "--max-num-seqs", "--dtype", "--kv-cache-dtype", "--gpu-memory-utilization"]
 }
 
-locals {
-  suggestion_rank_index = { for s in local.suggestions : format("%08d-%04d-%03d-%s", s.gpus_per_node * s.node_count, s.node_count, s.tensor_parallel_size, s.id) => s }
-  ranked_suggestions    = [for key in sort(keys(local.suggestion_rank_index)) : local.suggestion_rank_index[key]]
-}
 
 # Companion services need Kubernetes resource/memory configuration. Retain their
 # complete API plans for review without silently enabling a second process.

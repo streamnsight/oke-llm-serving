@@ -61,7 +61,8 @@ function plannedCommand(row) {
 }
 const model = report.model;
 $("model-title").textContent = text(model.repository);
-$("report-subtitle").textContent = number(report.option_count) + " confirmed deployment " + (report.option_count === 1 ? "option" : "options") + " · " + number((report.scan.assessed_regions || []).length) + " regions assessed";
+$("report-subtitle").textContent = number(report.option_count) + " capacity-confirmed deployment " + (report.option_count === 1 ? "option" : "options") + " · " + number((report.scan.assessed_regions || []).length) + " regions assessed";
+$("recommendation-policy").textContent = report.recommendation_policy?.description || "";
 $("report-time").textContent = "Published: " + text(report.publication?.published_at) + " · Report and deployment links expire: " + text(report.publication?.expires_at);
 link($("model-links"), "View pinned model on Hugging Face", model.huggingface_url);
 const dimensions = model.dimensions || {};
@@ -82,7 +83,7 @@ if (model.experts > 0) facts($("model-details"), [["Experts / active per token",
 $("model-provenance").textContent = text(model.weights_source) + ". Checkpoint download size describes storage; it is separate from resident GPU memory.";
 const cachedTokens = model.context_length > 0 && model.concurrency_per_replica > 0 ? model.context_length * model.concurrency_per_replica : null;
 $("workload").textContent = number(model.context_length) + " context tokens × " + number(model.concurrency_per_replica) + " concurrent sequences per replica = " + number(cachedTokens) + " live cached tokens when all sequences reach the requested length.";
-for (const [name, value] of [["Resident weights", model.memory_gb.resident_weights], ["KV cache reservation / replica", model.memory_gb.kv_per_replica], ["Runtime allowance", model.memory_gb.runtime_allowance], ["Estimated total / replica", model.memory_gb.total_estimated]]) {
+for (const [name, value] of [["Resident weights", model.memory_gb.resident_weights], [model.memory_gb.kv_per_replica == null && model.memory_gb.full_attention_kv != null ? "Full-attention KV payload / replica" : "KV cache reservation / replica", model.memory_gb.kv_per_replica ?? model.memory_gb.full_attention_kv], ["Runtime allowance / GPU", model.memory_gb.runtime_allowance], [model.memory_gb.total_estimated == null && model.recipe_memory_budget_gb != null ? "Planning payload budget / replica" : "Estimated total / replica", model.memory_gb.total_estimated ?? model.recipe_memory_budget_gb]]) {
   const node = add($("memory-metrics"), "div", undefined, "metric"); add(node, "span", name); add(node, "strong", gb(value));
 }
 if (model.memory_status !== "estimated") {
@@ -90,6 +91,12 @@ if (model.memory_status !== "estimated") {
   add(note, "strong", "Complete memory estimate unavailable");
   add(note, "p", (model.memory_reasons || []).join(" ") || "This model architecture does not yet have a complete memory estimator.");
   if (model.recipe_memory_budget_gb != null) add(note, "p", "Recipe-based aggregate sizing budget: " + gb(model.recipe_memory_budget_gb) + ". This is heuristic guidance; per-rank fit and runtime use remain unvalidated.");
+  if (model.partial_memory?.linear_attention_layers > 0) add(note, "p", number(model.partial_memory.full_attention_layers) + " full-attention layers contribute the KV payload above. " + number(model.partial_memory.linear_attention_layers) + " linear-attention layers also need recurrent/cache state; cache-manager padding, cached state checkpoints and vision workspace are not included in that payload.");
+}
+if (model.planning_memory?.selected_payload_budget_bytes > 0) {
+  const budget = model.planning_memory, explanation = details($("memory-status"), "How GPU sizing uses this budget", "recipe-details");
+  facts(add(explanation, "dl", undefined, "facts"), [["Weights used in sizing", gb(budget.weight_bytes == null ? null : budget.weight_bytes / 1e9)], ["All-layer KV sizing surrogate", gb(budget.kv_surrogate_bytes == null ? null : budget.kv_surrogate_bytes / 1e9)], ["Recipe minimum", gb(budget.recipe_minimum_bytes == null ? null : budget.recipe_minimum_bytes / 1e9)], ["Payload safety margin", number(budget.safety_margin_fraction * 100) + "%"], ["Selected payload budget", gb(budget.selected_payload_budget_bytes / 1e9)], ["Additional runtime allowance per GPU", gb(budget.runtime_allowance_per_gpu_bytes / 1e9)]]);
+  add(explanation, "p", "Sizing takes the largest of the recipe minimum, any supported analytical estimate, and (weights + all-layer KV surrogate) × (1 + margin). It divides that payload approximately across TP ranks, adds the runtime allowance per GPU, and checks against 90% of device memory. The all-layer surrogate treats every text layer as full attention; it is not an estimate of actual hybrid-cache allocation or a bound on recurrent/vision memory. Validation and benchmarking establish the real fit.");
 }
 const assumptions = model.memory_assumptions || {};
 $("memory-assumptions").textContent = "Compute dtype: " + text(assumptions.weight_dtype) + " · KV dtype: " + text(assumptions.kv_dtype) + " · Safety margin: " + (model.safety_margin_fraction == null ? "Unknown" : number(model.safety_margin_fraction * 100) + "%") + ". Estimates use decimal GB. " + (assumptions.prefix_sharing === false ? "No prefix-sharing savings assumed. " : "") + (assumptions.offload === false ? "No offload savings assumed. " : "") + "These values are estimates, not measured GPU usage.";
@@ -131,6 +138,15 @@ function renderOptions() {
     add(allocation, "h3", "Allocation and replica packing");
     facts(add(allocation, "dl", undefined, "facts"), [["Shape / GPU type", row.gpu_shape + " / " + text(row.gpu_type)], ["Hosts / allocated GPUs", number(a.required_hosts) + " / " + number(a.allocated_gpus)], ["GPUs per replica · TP × PP", number(a.required_gpus_per_replica) + " · " + number(a.tensor_parallel_size) + " × " + number(a.pipeline_parallel_size)], ["Replicas / replicas per host", number(a.replicas) + " / " + number(a.replicas_per_host)], ["Unused GPUs", number(a.unused_gpus)], ["GPU memory per device", gb(row.memory_gb.per_gpu)], ["Estimated memory per rank", gb(row.memory_gb.estimated_per_gpu)], ["Transport", row.requires_rdma ? "RDMA required" : "Ethernet / within-host interconnect"]]);
     add(allocation, "p", "Selected AD: " + number(c.ad_available_gpus) + " GPUs / " + number(c.ad_available_hosts) + " hosts reported; entitlement covers " + number(c.entitled_hosts) + " hosts. Observed: " + text(c.observed_at) + ".", "muted");
+    if (row.recommendation) {
+      const r = row.recommendation;
+      add(allocation, "p", "Growth at scan time: capacity and entitlement cover " + number(r.ad_max_replicas) + " replicas with this layout in the selected AD (" + number(r.ad_additional_replicas) + " beyond this allocation). RDMA capability: " + (r.rdma_capable ? "supported by the shape; fabric placement still requires validation" : "not established") + ". Supply and limits are shared snapshots, not future reservations.", "muted");
+    }
+    const steps = add(body, "div", undefined, "deployment-steps");
+    deploymentStep(steps, "1. GPU pool and shared components", "Create this stack when you need a pool or shared controllers. Reuse an existing compatible platform for additional models.", row.links.launch_url, row.links.download_url, row.links.expires_at);
+    const modelLinks = row.links.model_deployment || {};
+    deploymentStep(steps, "2. Model project and pipelines", "Create an independent DevOps project for this model. Select the cluster; matching pool, networking and shared components are inferred. Model execution waits for readiness and namespace onboarding.", modelLinks.launch_url, modelLinks.download_url, modelLinks.expires_at);
+    if (row.skip_gpu_allocation) add(body, "p", "Debug default: the infrastructure stack skips GPU allocation while creating CPU platform delivery resources.", "muted");
     const config = add(body, "section"); add(config, "h3", "Serving configuration"); badge(config, label(row.configuration_status), true);
     add(config, "p", "Runtime validation: " + label(row.runtime_validation) + ". Memory method: " + label(row.memory_method) + ".", "muted");
     facts(add(config, "dl", undefined, "facts"), [["Serving framework / version", text(serving.framework) + " / " + text(serving.version)], ["Container platform", serving.platform], ["Recipe GPU family", serving.source_hardware], ["Planned GPU family", serving.selected_hardware]]);
@@ -149,16 +165,11 @@ function renderOptions() {
     const requirements = [...(row.warnings || []), ...(row.deployment_requirements || []), ...(row.integration_requirements || []).map(label)];
     if (requirements.length) list(details(config, "Configuration notes and remaining checks", "recipe-details"), requirements);
     if ((serving.dependencies || []).length || (serving.companions || []).length) code(details(config, "Recipe dependency and companion details", "recipe-details"), JSON.stringify({dependencies: serving.dependencies || [], companions: serving.companions || []}, null, 2));
-    const steps = add(body, "div", undefined, "deployment-steps");
-    deploymentStep(steps, "1. GPU pool and shared components", "Create this stack when you need a pool or shared controllers. Reuse an existing compatible platform for additional models.", row.links.launch_url, row.links.download_url, row.links.expires_at);
-    const modelLinks = row.links.model_deployment || {};
-    deploymentStep(steps, "2. Model project and pipelines", "Create an independent DevOps project for this model. Select the cluster; matching pool, networking and shared components are inferred. Model execution waits for readiness and namespace onboarding.", modelLinks.launch_url, modelLinks.download_url, modelLinks.expires_at);
-    if (row.skip_gpu_allocation) add(body, "p", "Debug default: the infrastructure stack skips GPU allocation while creating CPU platform delivery resources.", "muted");
   }
 }
 function renderCapacity() {
   const filter = $("capacity-search").value.toLowerCase();
-  const rows = (report.regional_capacity || []).filter(row => [row.region, row.gpu_shape].join(" ").toLowerCase().includes(filter));
+  const rows = (report.regional_capacity || []).filter(row => (row.available_hosts > 0 || row.known_reported_hosts > 0) && [row.region, row.gpu_shape].join(" ").toLowerCase().includes(filter));
   $("capacity").replaceChildren(); $("capacity-empty").hidden = rows.length > 0;
   for (const row of rows) {
     const tr = add($("capacity"), "tr"), cells = Array.from({length: 5}, () => add(tr, "td"));
@@ -171,7 +182,7 @@ function renderCapacity() {
     else add(cells[4], "div", "See AD entitlement");
     add(cells[4], "small", row.minimum_model_hosts == null ? "Model sizing unknown; validate before requesting limits." : "Aggregate-memory lower bound: " + number(row.minimum_model_hosts) + " hosts within one AD. Layout/runtime fit unvalidated.");
     const ads = details(cells[4], "AD capacity and limit details", "ad-details");
-    for (const ad of row.availability_domains || []) {
+    for (const ad of (row.availability_domains || []).filter(ad => ad.available_hosts > 0)) {
       const detail = add(ads, "div", undefined, "ad-row"); add(detail, "strong", ad.availability_domain);
       add(detail, "p", number(ad.available_hosts) + " physical hosts · " + number(ad.entitled_hosts) + " entitled hosts · " + label(ad.entitlement_status));
       add(detail, "p", "Observed: " + text(ad.observed_at), "muted oci-caption");
@@ -181,9 +192,6 @@ function renderCapacity() {
 }
 for (const notice of report.notices || []) add($("notices"), "li", notice);
 if (report.diagnostics) code(details($("diagnostics"), "Detailed discovery evidence", "diagnostics"), JSON.stringify(report.diagnostics, null, 2));
-const represented = new Set((report.regional_capacity || []).map(row => row.region));
-const otherRegions = (report.scan.assessed_regions || []).filter(region => !represented.has(region));
-if (otherRegions.length) list(details($("unrepresented-regions"), number(otherRegions.length) + " assessed regions without GPU-shape observations", "recipe-details"), otherRegions);
 $("search").addEventListener("input", renderOptions);
 $("sort").addEventListener("change", renderOptions);
 $("capacity-search").addEventListener("input", renderCapacity);

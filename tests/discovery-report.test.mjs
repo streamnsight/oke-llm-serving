@@ -81,6 +81,26 @@ test("planned command overrides managed topology while preserving original recip
   assert.match(planned, /--tool-call-parser qwen3_coder/);
   assert.ok(blocks.some(command => command.includes("--tensor-parallel-size 1")), "retain original upstream command separately");
 });
+test("deployment actions precede technical serving configuration", () => {
+  const {nodes} = execute();
+  for (const option of nodes.options.children) {
+    assert.ok(option.textContent.indexOf("Model project and pipelines") < option.textContent.indexOf("Serving configuration"));
+  }
+});
+test("zero and unknown-only supply are hidden while positive supply with zero limits remains", () => {
+  const positive = {region: "needs-limits", gpu_shape: "GPU", available_hosts: 3, available_gpus: 24, availability_domains: [{availability_domain: "AD",available_hosts: 3,entitled_hosts: 0}], limit_increase_possible: true};
+  const {nodes} = execute({regional_capacity: [positive, {...positive,region:"zero",available_hosts:0,available_gpus:0}, {...positive,region:"unknown",available_hosts:null,available_gpus:null}]});
+  assert.equal(nodes.capacity.children.length, 1);
+  assert.match(nodes.capacity.textContent, /needs-limits/);
+  assert.match(nodes.capacity.textContent, /Review limit increase/);
+});
+test("partial hybrid memory and planning budget have distinct labels", () => {
+  const {nodes} = execute({model: {repository:"Qwen/model", context_length:4096,concurrency_per_replica:4,memory_status:"unsupported",memory_gb:{resident_weights:55.56,full_attention_kv:1.07,total_estimated:null},recipe_memory_budget_gb:71.83,partial_memory:{full_attention_layers:16,linear_attention_layers:48},planning_memory:{weight_bytes:55560000000,kv_surrogate_bytes:4290000000,safety_margin_fraction:0.2,recipe_minimum_bytes:67000000000,selected_payload_budget_bytes:71830000000,runtime_allowance_per_gpu_bytes:2147483648}}});
+  assert.match(nodes["memory-metrics"].textContent, /Resident weights 55.56 GB/);
+  assert.match(nodes["memory-metrics"].textContent, /Full-attention KV payload \/ replica 1.07 GB/);
+  assert.match(nodes["memory-metrics"].textContent, /Planning payload budget \/ replica 71.83 GB/);
+  assert.match(nodes["memory-status"].textContent, /not an estimate of actual hybrid-cache allocation/);
+});
 test("untrusted metadata is text and unsafe deployment/source URLs are rejected", () => {
   const malicious = "</script><script>globalThis.injected=true</script>", unsafe = option(malicious);
   unsafe.links = {launch_url: "javascript:globalThis.injected=true", download_url: "data:text/html,unsafe", model_deployment: {launch_url: "javascript:bad", download_url: "file:///tmp/bad"}};
