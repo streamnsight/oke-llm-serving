@@ -6,6 +6,7 @@ import {execFileSync, spawnSync} from 'node:child_process';
 import {mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {resolve} from 'node:path';
+import {createHash} from 'node:crypto';
 const root=resolve(import.meta.dirname,'..');
 const modulePath=`${root}/modules/platform-bootstrap`;
 const components=JSON.parse(readFileSync(`${modulePath}/data/components.json`));
@@ -61,6 +62,7 @@ if(tool==='curl') {
 } else if(tool==='helm') {
  if(args[0]==='list') out(state.releases);
  else if(args[0]==='upgrade') {state.installed=true;}
+ else if(args[0]==='show'&&args[1]==='crds') out('apiVersion: apiextensions.k8s.io/v1\nkind: CustomResourceDefinition\n');
  else throw Error('unexpected Helm action');
 } else if(tool==='kubectl') {
  if(args[0]==='get'&&args[1]==='nodes') out({items:(args.includes('-l')?[state.gpu]:[state.gpu,state.cpu]).filter(Boolean)});
@@ -69,11 +71,18 @@ if(tool==='curl') {
  else if(args[0]==='wait') {}
  else if(args[0]==='rollout') {if(state.failRollout){save();process.stderr.write('controller rollout failed');process.exit(1);}}
  else if(args[0]==='apply'&&args.includes('--dry-run=server')) out({kind:'LeaderWorkerSet'});
+ else if(args[0]==='apply'&&args.includes('--server-side')) {if(state.crdConflict){save();process.stderr.write('field ownership conflict');process.exit(1);}}
  else throw Error('unexpected Kubernetes mutation');
 } else if(tool==='sleep') {} else throw Error('unexpected tool');
 save();
 `;
-function runBootstrap(initial={},configuration=config,deploymentId='mock-run') {
+function environment(c) {
+  return {PLATFORM_NAME:c.platform_name,REGION:c.region,CLUSTER_ID:c.cluster_id,KUBERNETES_VERSION:c.target.kubernetes_version,HELM_VERSION:c.components.helm_version,
+    GPU_ALLOCATION_ENABLED:String(c.gpu_allocation_enabled??true),GPU_NODE_COUNT:String(c.node_count),GPUS_PER_HOST:String(c.gpu_count_per_host),GPU_SHAPES:c.gpu_shapes.join(','),
+    REQUIRES_RDMA:String(c.requires_rdma),RDMA_RESOURCE_NAME:c.rdma_resource_name||'auto',ENABLE_LWS:String(c.enable_lws),LWS_CHART:c.components.lws.chart,
+    LWS_VERSION:c.components.lws.version,LWS_RELEASE:c.components.lws.release,LWS_NAMESPACE:c.components.lws.namespace};
+}
+function runBootstrap(initial={},configuration=config,deploymentId='mock-run',overrides={}) {
   const dir=mkdtempSync(`${tmpdir()}/oke-platform-run-`);
   try {
     mkdirSync(`${dir}/bin`); mkdirSync(`${dir}/linux-amd64`);
@@ -81,9 +90,9 @@ function runBootstrap(initial={},configuration=config,deploymentId='mock-run') {
     writeFileSync(`${dir}/linux-amd64/helm`,readFileSync(`${dir}/bin/helm`),{mode:0o755});
     execFileSync('tar',['-czf',`${dir}/helm.tgz`,'-C',dir,'linux-amd64']);
     writeFileSync(`${dir}/state.json`,JSON.stringify({calls:[],uploads:[],releases:[],crd:null,gpu,cpu,...initial}));
-    const result=spawnSync('bash',[`${modulePath}/scripts/bootstrap.sh`],{env:{...process.env,PATH:`${dir}/bin:${process.env.PATH}`,MOCK_DIR:dir,OCI_DEPLOYMENT_ID:deploymentId,CONFIG_B64:Buffer.from(JSON.stringify(configuration)).toString('base64'),READINESS_B64:readFileSync(`${modulePath}/scripts/readiness.jq`).toString('base64')},encoding:'utf8',timeout:20000});
+    const result=spawnSync('bash',[`${modulePath}/scripts/bootstrap.sh`],{env:{...process.env,PATH:`${dir}/bin:${process.env.PATH}`,MOCK_DIR:dir,OCI_DEPLOYMENT_ID:deploymentId,...environment(configuration),PLATFORM_MODE:'deploy',LWS_OPERATION:'ensure',PLATFORM_GENERATION:configuration.generation,STORAGE_NAMESPACE:configuration.storage_namespace,ARTIFACT_BUCKET:configuration.artifact_bucket,EVIDENCE_PREFIX:configuration.evidence_prefix,EXPECTED_SETTINGS_SHA256:createHash('sha256').update(JSON.stringify(environment(configuration),Object.keys(environment(configuration)).sort())).digest('hex'),...overrides},encoding:'utf8',timeout:20000});
     const state=JSON.parse(readFileSync(`${dir}/state.json`));
-    return {...result,state,marker:JSON.parse(state.uploads.filter(x=>x.name.endsWith('/readiness.json')).at(-1).body)};
+    return {...result,state,marker:JSON.parse(state.uploads.filter(x=>x.name.endsWith('/readiness.json')).at(-1)?.body??'null')};
   } finally {rmSync(dir,{recursive:true,force:true});}
 }
 test('bootstrap installs only a shared controller and writes generation readiness',()=>{
@@ -136,4 +145,45 @@ test('a different chart version is reported rather than automatically upgraded',
 test('rollout failure replaces in-progress evidence with failed readiness',()=>{
   const result=runBootstrap({failRollout:true}); assert.notEqual(result.status,0);
   assert.equal(result.marker.status,'failed'); assert.match(result.stderr,/rollout failed/);
+});
+
+test('validation pipeline checks an existing controller without installing or upgrading',()=>{
+  const result=runBootstrap({crd:{metadata:{annotations:{}}},releases:[{name:'lws',namespace:'lws-system',chart:'lws-v1.0.0',status:'deployed'}]},config,'validate-run',{PLATFORM_MODE:'validate',LWS_OPERATION:'upgrade'});
+  assert.equal(result.status,0,result.stderr); assert.equal(result.marker.pipeline_mode,'validate');
+  assert.equal(result.state.calls.filter(x=>x.tool==='helm'&&x.args[0]==='upgrade').length,0);
+  assert.equal(result.state.calls.filter(x=>x.tool==='kubectl'&&x.args[0]==='apply'&&!x.args.includes('--dry-run=server')).length,0);
+});
+test('validation fails when LWS is absent and never installs it',()=>{
+  const result=runBootstrap({},config,'validate-run',{PLATFORM_MODE:'validate'});
+  assert.notEqual(result.status,0); assert.equal(result.marker.status,'failed');
+  assert.equal(result.state.calls.filter(x=>x.tool==='helm'&&x.args[0]==='upgrade').length,0);
+});
+test('environment overrides are effective and cannot overwrite original readiness',()=>{
+  const result=runBootstrap({crd:{metadata:{annotations:{}}},releases:[{name:'lws',namespace:'lws-system',chart:'lws-v1.1.0',status:'deployed'}]},config,'override-run',{LWS_VERSION:'1.1.0'});
+  assert.equal(result.status,0,result.stderr); assert.equal(result.marker.settings.LWS_VERSION,'1.1.0');
+  assert.equal(result.marker.configuration_status,'overridden'); assert.notEqual(result.marker.generation,config.generation);
+  assert.equal(result.marker.desired_generation,config.generation);
+  assert.ok(result.state.uploads.every(x=>x.name.startsWith(config.evidence_prefix+'/overrides/')));
+});
+test('explicit component upgrade targets the configured owner and updates CRDs without forcing conflicts',()=>{
+  const result=runBootstrap({crd:{metadata:{annotations:{}}},releases:[{name:'lws',namespace:'lws-system',chart:'lws-v0.9.0',status:'deployed'}]},config,'upgrade-run',{LWS_OPERATION:'upgrade'});
+  assert.equal(result.status,0,result.stderr); assert.equal(result.marker.controllers.lws.action,'upgraded');
+  const upgrade=result.state.calls.find(x=>x.tool==='helm'&&x.args[0]==='upgrade');
+  assert.ok(upgrade.args.includes('--reuse-values')); assert.ok(!upgrade.args.includes('--install'));
+  const apply=result.state.calls.find(x=>x.tool==='kubectl'&&x.args.includes('--server-side'));
+  assert.ok(apply); assert.ok(!apply.args.includes('--force-conflicts'));
+});
+test('component upgrades refuse another owner and stop on CRD field conflicts',()=>{
+  const foreign=runBootstrap({crd:{metadata:{annotations:{}}},releases:[{name:'another-lws',namespace:'another-system',chart:'lws-v0.9.0',status:'deployed'}]},config,'upgrade-run',{LWS_OPERATION:'upgrade'});
+  assert.notEqual(foreign.status,0); assert.match(foreign.stderr,/another owner/);
+  assert.equal(foreign.state.calls.filter(x=>x.tool==='helm'&&x.args[0]==='upgrade').length,0);
+  const conflict=runBootstrap({crdConflict:true,crd:{metadata:{annotations:{}}},releases:[{name:'lws',namespace:'lws-system',chart:'lws-v0.9.0',status:'deployed'}]},config,'upgrade-run',{LWS_OPERATION:'upgrade'});
+  assert.notEqual(conflict.status,0); assert.equal(conflict.marker.status,'failed');
+  assert.equal(conflict.state.calls.filter(x=>x.tool==='helm'&&x.args[0]==='upgrade').length,0);
+});
+test('invalid environment types fail before calling OCI or Kubernetes',()=>{
+  for(const overrides of [{GPU_ALLOCATION_ENABLED:'yes'},{GPU_NODE_COUNT:'0'},{LWS_RELEASE:'$(touch /tmp/unwanted)'},{LWS_OPERATION:'delete'}]) {
+    const result=runBootstrap({},config,'bad-run',overrides); assert.notEqual(result.status,0);
+    assert.equal(result.state.calls.length,0); assert.equal(result.marker,null);
+  }
 });
