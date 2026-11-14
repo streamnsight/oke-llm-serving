@@ -91,6 +91,10 @@ resource "oci_containerengine_node_pool" "gpu" {
     key   = "oke-llm/allocation"
     value = var.name
   }
+  initial_node_labels {
+    key   = "nvidia.com/gpu"
+    value = "true"
+  }
   node_config_details {
     size               = var.node_count
     nsg_ids            = var.gpu_nsg_ids

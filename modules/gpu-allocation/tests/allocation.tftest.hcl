@@ -47,6 +47,10 @@ run "regular_pool_and_cpu_capacity" {
     condition     = oci_containerengine_node_pool.gpu.node_metadata["areLegacyImdsEndpointsDisabled"] == "true" && oci_containerengine_node_pool.cpu[0].node_metadata["areLegacyImdsEndpointsDisabled"] == "true"
     error_message = "Both GPU and optional CPU node launches must disable IMDSv1 so IMDSv2-only tenancies accept them."
   }
+  assert {
+    condition     = anytrue([for label in oci_containerengine_node_pool.gpu.initial_node_labels : label.key == "nvidia.com/gpu" && label.value == "true"])
+    error_message = "GPU pools must advertise their hardware type with a node label before the device plugin becomes ready."
+  }
 }
 run "capacity_unknown_blocks_allocation" {
   command = plan

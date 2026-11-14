@@ -114,7 +114,7 @@ test('infrastructure RMS form exposes GPU hardware without CPU-pool or model inp
   assert.equal(schema.variables.rdma_mode.default,'auto');
 });
 test('released LWS chart retains GPU exclusion and its default CPU budget',{skip:!process.env.LWS_CHART_FILE},()=>{
-  const affinity={nodeAffinity:{requiredDuringSchedulingIgnoredDuringExecution:{nodeSelectorTerms:[{matchExpressions:[{key:'node.kubernetes.io/instance-type',operator:'Exists'},{key:'node.kubernetes.io/instance-type',operator:'NotIn',values:['BM.GPU.A10.4']}]}]}}};
+  const affinity={nodeAffinity:{requiredDuringSchedulingIgnoredDuringExecution:{nodeSelectorTerms:[{matchExpressions:[{key:'node.kubernetes.io/instance-type',operator:'In',values:['VM.Standard.E4.Flex']},{key:'nvidia.com/gpu',operator:'NotIn',values:['true']}]}]}}};
   const yaml=execFileSync('helm',['template','lws',process.env.LWS_CHART_FILE,'--include-crds','--set-json',`affinity=${JSON.stringify(affinity)}`],{encoding:'utf8',maxBuffer:16*1024*1024});
   const documents=parseAllDocuments(yaml).map(d=>{assert.equal(d.errors.length,0);return d.toJSON();}).filter(Boolean);
   const deployment=documents.find(d=>d.kind==='Deployment');

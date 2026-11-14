@@ -9,7 +9,7 @@ version=$LWS_VERSION
 helm list --all --all-namespaces -o json > helm-releases.json
 kubectl get crd leaderworkersets.leaderworkerset.x-k8s.io --ignore-not-found -o json > existing-crd.json
 existing=$(jq --arg release "$release" --arg namespace "$namespace" '[.[]|select(.name==$release and .namespace==$namespace)]|length' helm-releases.json)
-affinity=$(jq -c --slurpfile nodes cpu-nodes.json '{nodeAffinity:{requiredDuringSchedulingIgnoredDuringExecution:{nodeSelectorTerms:[{matchExpressions:[{key:"node.kubernetes.io/instance-type",operator:"Exists"},{key:"node.kubernetes.io/instance-type",operator:"NotIn",values:((.gpu_shapes + [$nodes[0].items[].metadata.labels["node.kubernetes.io/instance-type"] // "" | select(contains("GPU"))])|unique)}]}]}}}' config.json)
+affinity=$(jq -c '{nodeAffinity:{requiredDuringSchedulingIgnoredDuringExecution:{nodeSelectorTerms:[{matchExpressions:([{key:"node.kubernetes.io/instance-type",operator:"In",values:.cpu_shapes}]+["nvidia.com/gpu","nvidia.com/gpu.present","oci.oraclecloud.com/gpu-shape","feature.node.kubernetes.io/pci-10de.present"]|map(if type=="string" then {key:.,operator:"NotIn",values:["true"]} else . end))}]}}}' node-readiness.json)
 if [[ -s existing-crd.json || "$existing" != 0 ]]; then
   if [[ -s existing-crd.json ]]; then
     # Helm's crds/ installer normally leaves ownership annotations unset.

@@ -36,11 +36,15 @@ run "platform_has_explicit_shell_bootstrap_and_separate_readiness" {
     error_message = "A DevOps Shell stage requires both container-instance and container permissions."
   }
   assert {
-    condition     = length(oci_objectstorage_object.script) == 4 && alltrue([for script, object in oci_objectstorage_object.script : object.content == file("${path.module}/scripts/${script}") && strcontains(object.object, filesha256("${path.module}/scripts/${script}"))]) && alltrue([for spec in values(local.command_specs) : strcontains(yamldecode(spec).steps[0].command, "sha256sum -c -") && !strcontains(yamldecode(spec).steps[0].command, "$${LWS_VERSION}")])
-    error_message = "Private script objects must be plain text, hash-addressed, checksum verified and outside parameter substitution."
+    condition     = oci_artifacts_repository.scripts.is_immutable && length(oci_generic_artifacts_content_artifact_by_path.script) == 4 && alltrue([for script, artifact in oci_generic_artifacts_content_artifact_by_path.script : artifact.content == file("${path.module}/scripts/${script}") && artifact.version == filesha256("${path.module}/scripts/${script}")]) && alltrue([for spec in values(local.command_specs) : length(yamldecode(spec).inputArtifacts) == 4 && strcontains(yamldecode(spec).steps[0].command, "sha256sum -c -") && !strcontains(yamldecode(spec).steps[0].command, "os object get") && strcontains(yamldecode(spec).steps[0].command, "export ") && !strcontains(yamldecode(spec).steps[0].command, "$${LWS_VERSION}")])
+    error_message = "Versioned script artifacts must be input files, checksum verified, with explicit exports for child processes."
   }
   assert {
-    condition     = { for item in oci_devops_deploy_pipeline.bootstrap.deploy_pipeline_parameters[0].items : item.name => item.default_value } == local.parameters && yamldecode(local.command_specs.validate).env.variables.PLATFORM_MODE == "validate" && strcontains(oci_identity_dynamic_group.bootstrap.matching_rule, oci_devops_deploy_pipeline.validate.id)
+    condition     = { for item in oci_devops_deploy_pipeline.bootstrap.deploy_pipeline_parameters[0].items : item.name => item.default_value } == local.parameters && !contains(keys(local.parameters), "GPU_SHAPES") && yamldecode(local.command_specs.validate).env.variables.PLATFORM_MODE == "validate" && strcontains(oci_identity_dynamic_group.bootstrap.matching_rule, oci_devops_deploy_pipeline.validate.id)
     error_message = "Run parameters must populate environment defaults and both identities must have scoped OCI access."
+  }
+  assert {
+    condition     = alltrue(flatten([for spec in values(local.command_specs) : [for key in keys(yamldecode(spec).env.variables) : contains(split(" ", split("\n", yamldecode(spec).steps[0].command)[1]), key)]]))
+    error_message = "Every native Shell variable must be explicitly exported before starting Bash/jq child processes."
   }
 }

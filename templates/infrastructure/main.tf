@@ -36,7 +36,7 @@ locals {
     availability_domain         = var.availability_domain, gpu_shape = var.gpu_shape, gpu_count_per_host = try(local.gpu.gpus, 0), node_count = var.node_count,
     gpu_memory_bytes_per_device = try(local.gpu.memory_bytes_per_gpu, null),
     requires_rdma               = local.requires_rdma, rdma_resource_name = var.rdma_resource_name, enable_lws = var.enable_lws,
-    cpu_placement               = "existing_cluster_cpu_pools", gpu_shapes = keys(local.catalog.shapes), gpu_allocation_enabled = !var.skip_gpu_allocation,
+    cpu_placement               = "existing_cluster_cpu_pools", gpu_allocation_enabled = !var.skip_gpu_allocation,
     boot_volume_gib             = var.boot_volume_gib, target = module.target.target
   }
 }

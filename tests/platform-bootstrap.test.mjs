@@ -12,7 +12,7 @@ const modulePath=`${root}/modules/platform-bootstrap`;
 const components=JSON.parse(readFileSync(`${modulePath}/data/components.json`));
 const gpu={metadata:{name:'gpu',labels:{'node.kubernetes.io/instance-type':'BM.GPU.A10.4'}},spec:{},status:{conditions:[{type:'Ready',status:'True'}],allocatable:{'nvidia.com/gpu':'4'}}};
 const cpu={metadata:{name:'existing-cpu',labels:{'node.kubernetes.io/instance-type':'VM.Standard.E4.Flex'}},spec:{},status:{conditions:[{type:'Ready',status:'True'}],allocatable:{cpu:'8',memory:'22Gi'}}};
-const config={platform_name:'fixture',region:'us-ashburn-1',cluster_id:'cluster',node_count:1,gpu_count_per_host:4,gpu_shapes:['BM.GPU.A10.4'],requires_rdma:false,enable_lws:true,target:{kubernetes_version:'v1.34.1'},generation:'a'.repeat(64),artifact_bucket:'private-platform',storage_namespace:'fixture',evidence_prefix:'fixture/generation',components};
+const config={platform_name:'fixture',region:'us-ashburn-1',cluster_id:'cluster',node_count:1,gpu_count_per_host:4,requires_rdma:false,enable_lws:true,target:{kubernetes_version:'v1.34.1'},generation:'a'.repeat(64),evidence_bucket:'private-platform',storage_namespace:'fixture',evidence_prefix:'fixture/generation',components};
 function readiness(changes={}) {
   return JSON.parse(execFileSync('jq',['-f',`${modulePath}/scripts/readiness.jq`],{input:JSON.stringify({config,gpu_nodes:{items:[gpu]},cpu_nodes:{items:[gpu,cpu]},...changes}),encoding:'utf8'}));
 }
@@ -78,7 +78,7 @@ save();
 `;
 function environment(c) {
   return {PLATFORM_NAME:c.platform_name,REGION:c.region,CLUSTER_ID:c.cluster_id,KUBERNETES_VERSION:c.target.kubernetes_version,HELM_VERSION:c.components.helm_version,
-    GPU_ALLOCATION_ENABLED:String(c.gpu_allocation_enabled??true),GPU_NODE_COUNT:String(c.node_count),GPUS_PER_HOST:String(c.gpu_count_per_host),GPU_SHAPES:c.gpu_shapes.join(','),
+    GPU_ALLOCATION_ENABLED:String(c.gpu_allocation_enabled??true),GPU_NODE_COUNT:String(c.node_count),GPUS_PER_HOST:String(c.gpu_count_per_host),
     REQUIRES_RDMA:String(c.requires_rdma),RDMA_RESOURCE_NAME:c.rdma_resource_name||'auto',ENABLE_LWS:String(c.enable_lws),LWS_CHART:c.components.lws.chart,
     LWS_VERSION:c.components.lws.version,LWS_RELEASE:c.components.lws.release,LWS_NAMESPACE:c.components.lws.namespace};
 }
@@ -90,7 +90,7 @@ function runBootstrap(initial={},configuration=config,deploymentId='mock-run',ov
     writeFileSync(`${dir}/linux-amd64/helm`,readFileSync(`${dir}/bin/helm`),{mode:0o755});
     execFileSync('tar',['-czf',`${dir}/helm.tgz`,'-C',dir,'linux-amd64']);
     writeFileSync(`${dir}/state.json`,JSON.stringify({calls:[],uploads:[],releases:[],crd:null,gpu,cpu,...initial}));
-    const result=spawnSync('bash',[`${modulePath}/scripts/bootstrap.sh`],{env:{...process.env,PATH:`${dir}/bin:${process.env.PATH}`,MOCK_DIR:dir,OCI_DEPLOYMENT_ID:deploymentId,...environment(configuration),PLATFORM_MODE:'deploy',LWS_OPERATION:'ensure',PLATFORM_GENERATION:configuration.generation,STORAGE_NAMESPACE:configuration.storage_namespace,ARTIFACT_BUCKET:configuration.artifact_bucket,EVIDENCE_PREFIX:configuration.evidence_prefix,EXPECTED_SETTINGS_SHA256:createHash('sha256').update(JSON.stringify(environment(configuration),Object.keys(environment(configuration)).sort())).digest('hex'),...overrides},encoding:'utf8',timeout:20000});
+    const result=spawnSync('bash',[`${modulePath}/scripts/bootstrap.sh`],{env:{...process.env,PATH:`${dir}/bin:${process.env.PATH}`,MOCK_DIR:dir,OCI_DEPLOYMENT_ID:deploymentId,...environment(configuration),PLATFORM_MODE:'deploy',LWS_OPERATION:'ensure',PLATFORM_GENERATION:configuration.generation,STORAGE_NAMESPACE:configuration.storage_namespace,EVIDENCE_BUCKET:configuration.evidence_bucket,EVIDENCE_PREFIX:configuration.evidence_prefix,EXPECTED_SETTINGS_SHA256:createHash('sha256').update(JSON.stringify(environment(configuration),Object.keys(environment(configuration)).sort())).digest('hex'),...overrides},encoding:'utf8',timeout:20000});
     const state=JSON.parse(readFileSync(`${dir}/state.json`));
     return {...result,state,marker:JSON.parse(state.uploads.filter(x=>x.name.endsWith('/readiness.json')).at(-1)?.body??'null')};
   } finally {rmSync(dir,{recursive:true,force:true});}
@@ -101,7 +101,10 @@ test('bootstrap installs only a shared controller and writes generation readines
   assert.equal(result.marker.controllers.lws.action,'installed');
   const install=result.state.calls.find(x=>x.tool==='helm'&&x.args[0]==='upgrade');
   const affinity=JSON.parse(install.args[install.args.indexOf('--set-json')+1].slice('affinity='.length));
-  assert.ok(affinity.nodeAffinity.requiredDuringSchedulingIgnoredDuringExecution.nodeSelectorTerms[0].matchExpressions.some(e=>e.operator==='NotIn'&&e.values.includes('BM.GPU.A10.4')));
+  const expressions=affinity.nodeAffinity.requiredDuringSchedulingIgnoredDuringExecution.nodeSelectorTerms[0].matchExpressions;
+  assert.ok(expressions.some(e=>e.key==='node.kubernetes.io/instance-type'&&e.operator==='In'&&e.values.includes('VM.Standard.E4.Flex')));
+  assert.ok(expressions.some(e=>e.key==='nvidia.com/gpu.present'&&e.operator==='NotIn'&&e.values.includes('true')));
+  assert.ok(!JSON.stringify(affinity).includes('BM.GPU.A10.4'));
   assert.ok(result.state.calls.some(x=>x.tool==='kubectl'&&x.args.includes('--dry-run=server')));
   assert.equal(result.state.calls.filter(x=>x.tool==='oci'&&x.args[0]==='ce').length,1,'only kubeconfig creation may use OCI CE');
   assert.equal(result.marker.model_runtime_validation,'not_run');
@@ -186,4 +189,18 @@ test('invalid environment types fail before calling OCI or Kubernetes',()=>{
     const result=runBootstrap({},config,'bad-run',overrides); assert.notEqual(result.status,0);
     assert.equal(result.state.calls.length,0); assert.equal(result.marker,null);
   }
+});
+
+test('GPU labels, advertised resources and shape fallback prevent CPU misclassification',()=>{
+  for(const key of ['nvidia.com/gpu','nvidia.com/gpu.present','oci.oraclecloud.com/gpu-shape','feature.node.kubernetes.io/pci-10de.present']) {
+    const labelled={...cpu,metadata:{...cpu.metadata,labels:{...cpu.metadata.labels,[key]:'true'}}};
+    assert.equal(readiness({cpu_nodes:{items:[labelled]}}).cpu_ready_nodes,0,key);
+  }
+  for(const resource of ['nvidia.com/gpu','nvidia.com/mig-1g.10gb','amd.com/gpu']) {
+    const device={...cpu,status:{...cpu.status,allocatable:{...cpu.status.allocatable,[resource]:'1'}}};
+    assert.equal(readiness({cpu_nodes:{items:[device]}}).cpu_ready_nodes,0,resource);
+  }
+  const failedPlugin={...gpu,status:{...gpu.status,allocatable:{cpu:'8'}}};
+  assert.equal(readiness({cpu_nodes:{items:[failedPlugin]}}).cpu_ready_nodes,0);
+  assert.deepEqual(readiness().cpu_shapes,['VM.Standard.E4.Flex']);
 });
