@@ -94,7 +94,7 @@ variables:
     minimum: 1
   concurrency:
     type: integer
-    title: Concurrent sequences
+    title: Concurrent sequences per replica
     minimum: 1
   observation_id:
     type: string

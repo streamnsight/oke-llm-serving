@@ -91,6 +91,15 @@ variable "keda_mode" {
     error_message = "Select managed, reuse or retire."
   }
 }
+variable "cluster_authorization_mode" {
+  description = "IAM grants only CLUSTER_MANAGE on this exact cluster for Kubernetes administration. RBAC instead requires applying the generated binding separately. Neither mode grants OCI node-pool management to pipelines."
+  type        = string
+  default     = "iam"
+  validation {
+    condition     = contains(["iam", "rbac"], var.cluster_authorization_mode)
+    error_message = "Choose iam or rbac."
+  }
+}
 variable "os_version" {
   type    = string
   default = "8"

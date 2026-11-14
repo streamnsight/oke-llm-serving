@@ -21,7 +21,13 @@ locals {
     schema_version    = "1.0"
     status            = "requires_validation"
     auto_deploy_ready = false
-    monitoring        = { enabled = var.monitoring_enabled, source = "install_or_reuse", prometheus_required = var.monitoring_enabled || var.autoscaling_enabled }
+    workload = {
+      context_length                  = try(local.profile.memory.assumptions.context_length, null)
+      concurrency_per_replica         = try(local.profile.memory.assumptions.concurrency, null)
+      estimated_aggregate_concurrency = try(local.profile.memory.assumptions.concurrency * p.option.replicas, null)
+      status                          = "repeated_per_replica_memory_budget; aggregate concurrency is a sizing assumption, not measured throughput"
+    }
+    monitoring = { enabled = var.monitoring_enabled, source = "install_or_reuse", prometheus_required = var.monitoring_enabled || var.autoscaling_enabled }
     autoscaling = {
       enabled        = var.autoscaling_enabled
       metrics_source = "prometheus"

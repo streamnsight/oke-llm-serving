@@ -28,7 +28,7 @@ variableGroups:
     variables: [platform_name, compartment_id, cluster_id, availability_domain, gpu_shape, node_count, skip_gpu_allocation, advanced_settings]
   - title: Platform and storage overrides
     visible: advanced_settings
-    variables: [enable_lws, enable_disaggregated_set, monitoring_enabled, autoscaling_enabled, lws_mode, prometheus_mode, keda_mode, model_storage_mode, model_staging_image, model_staging_cpu_shape, rdma_mode, os_version, boot_volume_gib, gpu_image_id, rdma_resource_name, observation_id]
+    variables: [enable_lws, enable_disaggregated_set, monitoring_enabled, autoscaling_enabled, lws_mode, prometheus_mode, keda_mode, cluster_authorization_mode, model_storage_mode, model_staging_image, model_staging_cpu_shape, rdma_mode, os_version, boot_volume_gib, gpu_image_id, rdma_resource_name, observation_id]
   - title: Network overrides (must belong to the cluster VCN)
     visible: advanced_settings
     variables: [subnet_id, pod_subnet_id, devops_subnet_id, worker_nsg_ids, pod_nsg_ids, devops_nsg_ids]
@@ -36,6 +36,12 @@ variableGroups:
     visible: false
     variables: [tenancy_ocid, compartment_ocid, region]
 variables:
+  cluster_authorization_mode:
+    type: enum
+    enum: [iam, rbac]
+    default: iam
+    title: Pipeline Kubernetes authorization
+    description: IAM scopes Kubernetes administration to this cluster and the pipeline identities. RBAC requires applying the generated cluster role binding separately. Neither grants OCI node-pool administration to pipelines.
   model_storage_mode:
     type: enum
     enum: [direct_huggingface, object_storage]

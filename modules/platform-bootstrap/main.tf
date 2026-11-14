@@ -60,7 +60,7 @@ resource "oci_devops_deploy_environment" "cluster" {
   deploy_environment_type = "OKE_CLUSTER"
   cluster_id              = var.config.cluster_id
   network_channel {
-    network_channel_type = "SERVICE_VNIC_CHANNEL"
+    network_channel_type = "PRIVATE_ENDPOINT_CHANNEL"
     subnet_id            = var.subnet_id
     nsg_ids              = var.nsg_ids
   }
@@ -180,7 +180,7 @@ resource "oci_identity_policy" "bootstrap" {
   provider       = oci.home
   compartment_id = var.tenancy_ocid
   name           = "${var.name}-bootstrap"
-  description    = "Private OKE delivery, chart mirroring and exact Generic Artifact Registry access."
+  description    = "Private OKE delivery, chart mirroring and Generic Artifact Registry access."
   statements = concat([
     "Allow dynamic-group id ${oci_identity_dynamic_group.bootstrap.id} to use cluster-family in compartment id ${var.config.target.cluster_compartment_id}",
     "Allow dynamic-group id ${oci_identity_dynamic_group.bootstrap.id} to manage devops-deployment in compartment id ${var.compartment_id}",
@@ -192,7 +192,9 @@ resource "oci_identity_policy" "bootstrap" {
     "Allow dynamic-group id ${oci_identity_dynamic_group.bootstrap.id} to read generic-artifacts in compartment id ${var.compartment_id}",
     "Allow dynamic-group id ${oci_identity_dynamic_group.bootstrap.id} to manage generic-artifacts in compartment id ${var.compartment_id}",
     "Allow dynamic-group id ${oci_identity_dynamic_group.bootstrap.id} to use log-content in compartment id ${var.compartment_id}"
-  ], [for repo in values(module.components.chart_repositories) : "Allow dynamic-group id ${oci_identity_dynamic_group.bootstrap.id} to manage repos in compartment id ${var.compartment_id} where target.repo.name = '${repo.name}'"])
+    ], try(var.config.cluster_authorization_mode, "iam") == "iam" ? [
+    "Allow dynamic-group id ${oci_identity_dynamic_group.bootstrap.id} to manage clusters in compartment id ${var.config.target.cluster_compartment_id} where all {target.cluster.id = '${var.config.cluster_id}', request.permission = 'CLUSTER_MANAGE'}"
+  ] : [], [for repo in values(module.components.chart_repositories) : "Allow dynamic-group id ${oci_identity_dynamic_group.bootstrap.id} to manage repos in compartment id ${var.compartment_id} where target.repo.name = '${repo.name}'"])
 }
 output "bootstrap_rbac" {
   value = {
@@ -215,6 +217,7 @@ output "platform" {
     specification          = { repository_id = oci_artifacts_repository.scripts.id, path = oci_generic_artifacts_content_artifact_by_path.specification.artifact_path, version = oci_generic_artifacts_content_artifact_by_path.specification.version },
     evidence               = { repository_id = oci_artifacts_repository.results.id, prefix = "${var.name}/platform/${local.generation}", version = "execution UUID; no mutable latest report" },
     required_components    = keys(local.component_specs), monitoring_enabled = local.monitoring_enabled, autoscaling_enabled = local.autoscaling_enabled,
+    cluster_authorization  = try(var.config.cluster_authorization_mode, "iam"),
     runtime_readiness      = "not_asserted_by_terraform; run deploy/validate and inspect immutable execution evidence"
   }
 }

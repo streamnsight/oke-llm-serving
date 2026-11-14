@@ -41,7 +41,7 @@ run "default_platform_only_requires_monitoring" {
     error_message = "Separate orchestration/readiness Shell stages must export editable native environment settings and use the private runner subnet."
   }
   assert {
-    condition     = oci_devops_deploy_environment.cluster.deploy_environment_type == "OKE_CLUSTER" && oci_devops_deploy_environment.cluster.cluster_id == "cluster" && oci_devops_deploy_environment.cluster.network_channel[0].network_channel_type == "SERVICE_VNIC_CHANNEL" && oci_devops_deploy_environment.cluster.network_channel[0].subnet_id == "runner" && toset(oci_devops_deploy_environment.cluster.network_channel[0].nsg_ids) == toset(["runner-nsg"])
+    condition     = oci_devops_deploy_environment.cluster.deploy_environment_type == "OKE_CLUSTER" && oci_devops_deploy_environment.cluster.cluster_id == "cluster" && oci_devops_deploy_environment.cluster.network_channel[0].network_channel_type == "PRIVATE_ENDPOINT_CHANNEL" && oci_devops_deploy_environment.cluster.network_channel[0].subnet_id == "runner" && toset(oci_devops_deploy_environment.cluster.network_channel[0].nsg_ids) == toset(["runner-nsg"])
     error_message = "Native chart stages need the selected private OKE environment and matching runner networking."
   }
   assert {
@@ -110,4 +110,19 @@ run "private_oke_environment_rejects_ipv6_enabled_runner_subnets" {
     values = { compartment_id = "network-compartment", ipv6cidr_block = "2001:db8::/64", ipv6cidr_blocks = ["2001:db8::/64"] }
   }
   expect_failures = [oci_devops_deploy_environment.cluster]
+}
+run "kubernetes_iam_permission_is_scoped_without_nodepool_management" {
+  command = plan
+  assert {
+    condition = length([for rule in oci_identity_policy.bootstrap.statements : rule if strcontains(rule,"request.permission = 'CLUSTER_MANAGE'") && strcontains(rule,"target.cluster.id = 'cluster'")]) == 1 && alltrue([for rule in oci_identity_policy.bootstrap.statements : !strcontains(rule,"manage cluster-family") && !strcontains(rule,"manage cluster-node-pools")])
+    error_message = "Automatic Kubernetes administration must be constrained to this cluster and CLUSTER_MANAGE, excluding OCI infrastructure changes."
+  }
+}
+run "explicit_rbac_mode_omits_kubernetes_iam_administration" {
+  command = plan
+  variables { config = merge(var.config,{cluster_authorization_mode="rbac"}) }
+  assert {
+    condition = alltrue([for rule in oci_identity_policy.bootstrap.statements : !strcontains(rule,"CLUSTER_MANAGE")]) && output.platform.cluster_authorization == "rbac" && length(output.bootstrap_rbac.subjects)>0
+    error_message = "RBAC mode must retain explicit binding output without granting IAM Kubernetes administration."
+  }
 }

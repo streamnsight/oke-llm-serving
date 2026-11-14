@@ -25,7 +25,7 @@ variable "context_length" {
   default     = 4096
 }
 variable "concurrency" {
-  description = "Simultaneously active sequences at the specified context length."
+  description = "Simultaneously active sequences per serving replica at the specified context length; complete additional replicas repeat this memory budget."
   type        = number
   default     = 1
 }

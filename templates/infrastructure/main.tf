@@ -38,6 +38,7 @@ locals {
     gpu_memory_bytes_per_device = try(local.gpu.memory_bytes_per_gpu, null),
     requires_rdma               = local.requires_rdma, rdma_resource_name = var.rdma_resource_name, enable_lws = var.enable_lws,
     monitoring_enabled          = var.monitoring_enabled, autoscaling_enabled = var.autoscaling_enabled,
+    cluster_authorization_mode  = var.cluster_authorization_mode,
     enable_disaggregated_set    = var.enable_disaggregated_set, component_modes = { lws = var.lws_mode, prometheus = var.prometheus_mode, keda = var.keda_mode },
     cpu_placement               = "existing_cluster_cpu_pools", gpu_allocation_enabled = !var.skip_gpu_allocation,
     boot_volume_gib             = var.boot_volume_gib, target = module.target.target
