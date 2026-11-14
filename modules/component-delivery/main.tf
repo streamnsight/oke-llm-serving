@@ -30,7 +30,7 @@ locals {
   stages = merge(local.operations, { for key, c in local.managed : "${key}/finish" => { component = key, operation = "finish" } })
   parameters = { for key, c in var.components : key => merge(c.parameters, {
     CHART_VERSION           = c.chart.version,
-    CONFIRM_UNINSTALL       = "false", RECOVER_LOCK_HOLDER = "",
+    CONFIRM_UNINSTALL       = "false", RECOVER_LOCK_HOLDER = "none",
     ENFORCE_HELM_DEPLOYMENT = "true"
   }) }
 }

@@ -58,7 +58,7 @@ run "conditional_native_helm_delivery" {
     error_message = "Lifecycle behavior must come from the declaration, not an override that leaves a mutating stage behind."
   }
   assert {
-    condition     = alltrue(flatten([for parameters in values(local.parameters) : [for name in keys(parameters) : !startswith(name, "OCI_")]])) && alltrue([for parameters in values(local.parameters) : parameters.ENFORCE_HELM_DEPLOYMENT == "true"])
+    condition     = alltrue(flatten([for parameters in values(local.parameters) : [for name in keys(parameters) : !startswith(name, "OCI_")]])) && alltrue([for parameters in values(local.parameters) : parameters.ENFORCE_HELM_DEPLOYMENT == "true" && parameters.RECOVER_LOCK_HOLDER == "none"])
     error_message = "OCI service-reserved controls cannot be declared as pipeline parameters. Prepare creates namespaces; retain the documented non-reserved Helm rerun argument."
   }
 }
