@@ -67,8 +67,9 @@ if(tool==='curl') {
  else if(a[0]==='wait'||a[0]==='rollout') {if(state.failRollout)process.exit(1);}
  else throw Error('Unexpected Kubernetes mutation '+a.join(' '));
 } else if(tool==='helm') {
- if(a[0]!=='status')throw Error('Validator must not mutate Helm');
- out({name:a[1],namespace:arg('--namespace'),version:3,chart:{metadata:{version:'1.0.0'}},info:{status:state.badRelease?'failed':'deployed'}});
+ if(a[0]==='status')out({name:a[1],namespace:arg('--namespace'),version:3,info:{status:state.badRelease?'failed':'deployed'}});
+ else if(a[0]==='get'&&a[1]==='metadata')out({name:a[2],namespace:arg('--namespace'),chart:a[2],version:state.chartDrift?'9.0.0':state.prefixedVersion?'v1.0.0':'1.0.0',revision:state.metadataChanged?4:3,status:'deployed'});
+ else throw Error('Validator must not mutate Helm');
 } else if(tool!=='sleep')throw Error('Unexpected tool');
 `;
 const platformComponent=(name,deps=[])=>({namespace:name,release_name:name,mode:'managed',owner_name:'owner-'+name,ownership_token:'fixture-owner',generation:'b'.repeat(64),pipeline_id:'ocid1.devopsdeploypipeline.'+name,dependency_keys:deps,crd_names:[],deployment_names:[name]});
@@ -92,6 +93,8 @@ test('fresh validation writes immutable Artifact Registry evidence and never dep
  const r=runPlatform();assert.equal(r.status,0,r.stderr);assert.equal(r.uploads.length,1);
  assert.equal(r.uploads[0].body.status,'ready');assert.match(r.uploads[0].version,/^[a-f0-9]{32}$/);
  assert.equal(r.uploads[0].body.node_checks.gpu_validation,'skipped_debug');
+ assert.equal(r.uploads[0].body.components.a.chart_name,'a');assert.equal(r.uploads[0].body.components.a.chart_version,'1.0.0');
+ assert(r.calls.some(c=>c.tool==='helm'&&c.args.slice(0,2).join(' ')==='get metadata'));
  assert.equal(r.calls.some(c=>c.args.includes('create-pipeline-deployment')),false);
  assert.equal(r.calls.some(c=>c.args.includes('os')),false);
 });
@@ -117,9 +120,12 @@ test('cyclic dependency graph fails without launching children',()=>{
  assert.equal(r.calls.length,1);assert.equal(r.uploads[0].body.status,'failed');
 });
 test('failed actual rollout and failed evidence upload cannot report success',()=>{
- for(const changes of [{failRollout:true},{failUpload:true},{badRelease:true},{staleOwner:true},{drift:true}]){
+ for(const changes of [{failRollout:true},{failUpload:true},{badRelease:true},{staleOwner:true},{drift:true},{chartDrift:true},{metadataChanged:true}]){
   const r=runPlatform(changes);assert.notEqual(r.status,0);
  }
+});
+test('fresh validation normalizes v-prefixed chart versions returned by Helm metadata',()=>{
+ const r=runPlatform({prefixedVersion:true});assert.equal(r.status,0,r.stderr);assert.equal(r.uploads[0].body.components.a.chart_version,'v1.0.0');
 });
 test('Prometheus validation requires Bound data PVC and KEDA API aggregation',()=>{
  const prometheus=platformComponent('prometheus'),keda=platformComponent('keda');

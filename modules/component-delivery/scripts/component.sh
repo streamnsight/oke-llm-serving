@@ -90,6 +90,12 @@ validate_release() {
   helm status "$release" -n "$namespace" -o json > helm-status.json
   jq -e '.info.status=="deployed"' helm-status.json >/dev/null
   helm_revision=$(jq -er '.version | select(type=="number" and .>0) | tostring' helm-status.json)
+  # Helm status deliberately omits chart metadata. Its separate metadata
+  # command supplies chart/version; reject a release that changed between reads.
+  helm get metadata "$release" -n "$namespace" -o json > helm-metadata.json
+  jq -e --argjson revision "$helm_revision" '.revision==$revision and .status=="deployed"' helm-metadata.json >/dev/null || {
+    message="Helm release changed while reading status and metadata"; echo "$message" >&2; return 2;
+  }
   while IFS= read -r crd; do kubectl wait --for=condition=Established "crd/$crd" --timeout="${timeout}s"; done < <(jq -r '.crd_names[]' specification.json)
   while IFS= read -r deployment; do kubectl -n "$namespace" rollout status "deployment/$deployment" --timeout="${timeout}s"; done < <(jq -r '.deployment_names[]' specification.json)
 }
@@ -221,9 +227,10 @@ case "$DELIVERY_OPERATION" in
     }
     dependencies_ready
     validate_release
-    jq -e --arg version "${CHART_VERSION#v}" --arg chart "$(jq -er .chart.name specification.json)" \
-      '.chart.metadata.name==$chart and (.chart.metadata.version|ltrimstr("v"))==$version' helm-status.json >/dev/null || {
-      message="Installed chart does not match the prepared chart/version"; exit 2;
+    chart=$(jq -er .chart.name specification.json)
+    jq -e --arg version "${CHART_VERSION#v}" --arg chart "$chart" \
+      '.chart==$chart and (.version|ltrimstr("v"))==$version' helm-metadata.json >/dev/null || {
+      message="Installed chart does not match $chart@$CHART_VERSION; observed $(jq -c '{chart,version,revision}' helm-metadata.json)"; echo "$message" >&2; exit 2;
     }
     render_values
     yq -o=json effective-values.yaml | jq -S '. // {}' > expected-values.json

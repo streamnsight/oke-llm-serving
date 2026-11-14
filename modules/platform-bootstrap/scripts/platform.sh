@@ -91,17 +91,19 @@ while IFS= read -r component; do
   release=$(jq -r --arg k "$component" '.components[$k].release_name' config.json)
   helm status "$release" --namespace "$namespace" -o json > "helm-$component.json"
   jq -e '.info.status=="deployed"' "helm-$component.json" >/dev/null
+  helm get metadata "$release" --namespace "$namespace" -o json > "helm-metadata-$component.json"
+  jq -e --slurpfile h "helm-$component.json" '.revision==$h[0].version and .status=="deployed"' "helm-metadata-$component.json" >/dev/null || { echo 'Helm release changed while reading status and metadata.' >&2; exit 1; }
   if [[ $(jq -r --arg k "$component" '.components[$k].mode' config.json) == managed ]]; then
     owner_name=$(jq -er --arg k "$component" '.components[$k].owner_name' config.json)
     kubectl get configmap "$owner_name" -n "$namespace" -o json > "owner-$component.json"
     jq -e --slurpfile c config.json --arg k "$component" '.data.generation==$c[0].components[$k].generation and .data.status=="ready" and .data.ownership_token==$c[0].components[$k].ownership_token' "owner-$component.json" >/dev/null
-    jq -e --slurpfile h "helm-$component.json" '.data.helm_revision==($h[0].version|tostring) and (.data.chart_version|ltrimstr("v"))==($h[0].chart.metadata.version|ltrimstr("v"))' "owner-$component.json" >/dev/null || { echo 'Helm release drifted after its last validated component run.' >&2; exit 1; }
+    jq -e --slurpfile m "helm-metadata-$component.json" '.data.helm_revision==($m[0].revision|tostring) and (.data.chart_version|ltrimstr("v"))==($m[0].version|ltrimstr("v"))' "owner-$component.json" >/dev/null || { echo 'Helm release drifted after its last validated component run.' >&2; exit 1; }
     last_deployment=$(jq -er .data.deployment_id "owner-$component.json")
     [[ $(oci devops deployment get --deployment-id "$last_deployment" --query 'data."lifecycle-state"' --raw-output) == SUCCEEDED ]] || { echo 'Component evidence refers to an incomplete deployment.' >&2; exit 1; }
   fi
   while IFS= read -r crd; do kubectl wait --for=condition=Established --timeout=120s "crd/$crd"; done < <(jq -r --arg k "$component" '.components[$k].crd_names[]' config.json)
   while IFS= read -r deployment; do kubectl rollout status "deployment/$deployment" -n "$namespace" --timeout=120s; done < <(jq -r --arg k "$component" '.components[$k].deployment_names[]' config.json)
-  jq --arg k "$component" --slurpfile h "helm-$component.json" --slurpfile c config.json '.+{($k):{generation:$c[0].components[$k].generation,mode:$c[0].components[$k].mode,release:$h[0].name,namespace:$h[0].namespace,revision:$h[0].version,chart_version:$h[0].chart.metadata.version,status:$h[0].info.status}}' components.json > next.json
+  jq --arg k "$component" --slurpfile h "helm-$component.json" --slurpfile m "helm-metadata-$component.json" --slurpfile c config.json '.+{($k):{generation:$c[0].components[$k].generation,mode:$c[0].components[$k].mode,release:$h[0].name,namespace:$h[0].namespace,revision:$h[0].version,chart_name:$m[0].chart,chart_version:$m[0].version,status:$h[0].info.status}}' components.json > next.json
   mv next.json components.json
   # Monitoring also needs its actual Prometheus workload, not only the operator.
   if [[ "$component" == prometheus ]]; then

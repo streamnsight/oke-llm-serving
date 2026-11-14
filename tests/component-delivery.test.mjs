@@ -40,9 +40,10 @@ if(tool==='kubectl') {
  else fail('unexpected Kubernetes command');
 } else if(tool==='helm') {
  if(a[0]==='list')out(state.releases||[]);
- else if(a[0]==='status') {if(state.notReady)fail('NotReady');out({version:state.installedRevision??3,info:{status:'deployed'},chart:{metadata:{name:'lws',version:state.installedVersion||'1.0.0'}}});}
+ else if(a[0]==='status') {if(state.notReady)fail('NotReady');out({name:a[1],namespace:arg('-n'),version:state.installedRevision??3,info:{status:'deployed'}});}
  else if(a[0]==='pull') {if(arg('--destination')==='mirrored'){registryAuth();if(state.mirrorForbidden)fail('403 Anonymous users are only allowed read access on public repos');if(!state.mirrored)fail('manifest not found: 404');}fs.mkdirSync(arg('--destination'),{recursive:true});fs.writeFileSync(path.join(arg('--destination'),'lws-1.0.0.tgz'),'chart');}
  else if(a[0]==='show'){if(a[1]==='crds')out(state.crdBundle||[]);else out({name:'lws'});}
+ else if(a[0]==='get'&&a[1]==='metadata')out({name:a[2],namespace:arg('-n'),revision:state.metadataRevision??state.installedRevision??3,status:'deployed',chart:state.installedChart||'lws',version:state.installedVersion||'1.0.0'});
  else if(a[0]==='get'&&a[1]==='values')out(state.installedValues||{replicas:process.env.REPLICAS});
  else if(a[0]==='template'||a[0]==='get')out(state.manifest||{apiVersion:'apps/v1',kind:'Deployment',metadata:{name:'controller'}});
  else if(a[0]==='push'){registryAuth();state.mirrored=true;}
@@ -87,7 +88,9 @@ test('managed prepare mirrors chart, locks across native stage, validates and re
     f.set({...f.read(),releases:[{name:'lws'}],installedVersion:'v1.0.0'});
     r=f.run('finish');assert.equal(r.status,0,r.stderr);assert.equal(r.state.lease.spec.holderIdentity,'');assert.equal(r.state.owner.data.status,'ready');assert.equal(r.state.results.at(-1).effective_parameters.REPLICAS,'2');
     assert.equal(r.state.owner.data.helm_revision,'3');assert.equal(r.state.results.at(-1).helm_revision,3);
-    assert.equal(JSON.parse(readFileSync(`${f.dir}/helm-status.json`)).chart.metadata.version,'v1.0.0');
+    assert.equal('chart' in JSON.parse(readFileSync(`${f.dir}/helm-status.json`)),false);
+    assert.equal(JSON.parse(readFileSync(`${f.dir}/helm-metadata.json`)).version,'v1.0.0');
+    assert(r.state.calls.some(x=>x.tool==='helm'&&x.args.slice(0,2).join(' ')==='get metadata'));
     assert(!r.state.calls.some(x=>x.tool==='helm'&&['upgrade','install'].includes(x.args[0])));
   }finally{f.close();}
 });
@@ -125,7 +128,7 @@ test('reuse fails when evidence upload fails inside the EXIT trap',()=>{
   }finally{f.close();}
 });
 test('finish rejects changed arguments, wrong installed versions and mismatched native Helm values',()=>{
-  for(const change of [{overrides:{REPLICAS:'3'}},{installedVersion:'2.0.0'},{installedValues:{replicas:'99'}},{installedRevision:0}]){
+  for(const change of [{overrides:{REPLICAS:'3'}},{installedVersion:'2.0.0'},{installedChart:'other'},{installedValues:{replicas:'99'}},{installedRevision:0},{metadataRevision:4}]){
     const f=fixture();try{const prepared=f.run('prepare');assert.equal(prepared.status,0,prepared.stderr);f.set({...f.read(),releases:[{name:'lws'}],...change});const r=f.run('finish',change.overrides);assert.notEqual(r.status,0);assert.equal(r.state.owner.data.status,'applying');assert.equal(r.state.results.at(-1).status,'failed');assert.equal(r.state.lease.spec.holderIdentity,'');}finally{f.close();}
   }
 });
