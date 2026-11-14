@@ -22,11 +22,11 @@ run "network_ambiguity_blocks_metadata_creation" {
   variables { target = { cluster_id = "existing-cluster", runner_subnet_id = "runner-subnet", runner_nsg_ids = [], metadata_ready = false, issues = ["ambiguous runner subnet"] } }
   expect_failures = [oci_devops_project.model]
 }
-run "model_punctuation_does_not_create_an_invalid_notification_topic" {
+run "model_punctuation_does_not_create_invalid_service_names" {
   command = plan
   variables { name = "m-qwen-qwen3-8--cd680c-71f707f4" }
   assert {
-    condition     = oci_ons_notification_topic.model.name == "m-qwen-qwen3-8-cd680c-71f707f4-notifications"
-    error_message = "Generated model names must collapse consecutive dashes for OCI Notifications while preserving project identity."
+    condition     = oci_ons_notification_topic.model.name == "m-qwen-qwen3-8-cd680c-71f707f4-notifications" && oci_devops_project.model.name == "m-qwen-qwen3-8-cd680c-71f707f4"
+    error_message = "Generated model names must collapse consecutive dashes for both OCI Notifications and DevOps projects."
   }
 }

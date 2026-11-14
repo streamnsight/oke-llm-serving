@@ -7,14 +7,17 @@ terraform {
 variable "name" { type = string }
 variable "compartment_id" { type = string }
 variable "target" { type = any }
+locals {
+  # DNS-compatible model names can contain consecutive dashes; OCI service names cannot.
+  service_name = replace(var.name, "/-+/", "-")
+}
 resource "oci_ons_notification_topic" "model" {
   compartment_id = var.compartment_id
-  # DNS-compatible model names can contain consecutive dashes; ONS forbids them.
-  name = "${replace(var.name, "/-+/", "-")}-notifications"
+  name           = "${local.service_name}-notifications"
 }
 resource "oci_devops_project" "model" {
   compartment_id = var.compartment_id
-  name           = var.name
+  name           = local.service_name
   description    = "Independent model lifecycle: deploy, validate, benchmark and undeploy on separately retained GPU infrastructure."
   notification_config { topic_id = oci_ons_notification_topic.model.id }
   lifecycle {
