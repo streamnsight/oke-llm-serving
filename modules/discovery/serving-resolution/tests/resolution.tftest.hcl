@@ -2,19 +2,19 @@
 # Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
 mock_provider "http" {}
 override_data {
- target=data.http.recipe_metadata
- values={status_code=404,response_body="{}"}
+  target = data.http.recipe_metadata[0]
+  values = { status_code = 404, response_body = "{}" }
 }
 variables {
   profile         = { model = { repository = "RecursiveSI/flint", resolved_revision = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }, architecture = { architectures = ["FlintForCausalLM"] } }
   recipe_features = ["reasoning"]
 }
 override_data {
-  target = data.http.recipe_commit
+  target = data.http.recipe_commit[0]
   values = { status_code = 200, response_body = "{\"sha\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\"}" }
 }
 override_data {
-  target = data.http.recipe
+  target = data.http.recipe[0]
   values = { status_code = 200, response_body = "meta:\n  default_hardware: gb200\n  hardware: {gb200: verified}\nmodel:\n  model_id: RecursiveSI/flint\n  min_vllm_version: nightly\n  base_args: []\n  base_env: {TEST_SETTING: 1}\nvariants:\n  default: {precision: bf16}\nfeatures:\n  reasoning: {args: [--reasoning-parser, glm47],env: {FEATURE_SETTING: enabled}}\ncompatible_strategies: [single_node_tp]\nstrategy_overrides:\n  single_node_tp: {tp: 1}\n" }
 }
 override_data {
@@ -22,7 +22,7 @@ override_data {
   values = { status_code = 200, response_body = "[{\"name\":\"v0.34.0rc1\"},{\"name\":\"v0.33.0\"},{\"name\":\"v0.32.0\"}]" }
 }
 override_data {
-  target = data.http.stable_commit
+  target = data.http.stable_commit[0]
   values = { status_code = 200, response_body = "{\"sha\":\"cccccccccccccccccccccccccccccccccccccccc\"}" }
 }
 override_data {
@@ -48,7 +48,7 @@ run "stable_supersedes_old_nightly_hint" {
     error_message = "Stable source support must supersede a stale nightly hint without picking an rc tag."
   }
   assert {
-    condition     = tolist(output.resolution.recipe.args) == tolist(["--reasoning-parser", "glm47"]) && output.resolution.recipe.env.TEST_SETTING == "1" && output.resolution.recipe.env.FEATURE_SETTING == "enabled" && strcontains(data.http.recipe.url, "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb")
+    condition     = tolist(output.resolution.recipe.args) == tolist(["--reasoning-parser", "glm47"]) && output.resolution.recipe.env.TEST_SETTING == "1" && output.resolution.recipe.env.FEATURE_SETTING == "enabled" && strcontains(data.http.recipe[0].url, "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb")
     error_message = "Freeze source and explicitly selected feature argv/env without executing prose."
   }
 }
@@ -77,7 +77,7 @@ run "absent_recipe_keeps_engine_evidence_but_requires_expert" {
     profile = { model = { repository = "custom/model", resolved_revision = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }, architecture = { architectures = ["FlintForCausalLM"] } }
   }
   override_data {
-    target = data.http.recipe
+    target = data.http.recipe[0]
     values = { status_code = 404, response_body = "404: Not Found" }
   }
   assert {
@@ -96,7 +96,7 @@ run "missing_platform_digest_is_unresolved" {
 run "managed_flags_need_expert_review" {
   command = plan
   override_data {
-    target = data.http.recipe
+    target = data.http.recipe[0]
     values = { status_code = 200, response_body = "meta: {default_hardware: gb200}\nmodel: {model_id: RecursiveSI/flint, base_args: [--tensor-parallel-size, '8']}\nvariants: {default: {precision: bf16}}\n" }
   }
   variables { recipe_features = [] }
@@ -118,7 +118,7 @@ run "blank_optional_version_uses_auto_selection" {
 run "feature_modes_are_not_silently_ignored" {
   command = plan
   override_data {
-    target = data.http.recipe
+    target = data.http.recipe[0]
     values = { status_code = 200, response_body = "meta: {default_hardware: gb200}\nmodel: {model_id: RecursiveSI/flint}\nvariants: {default: {precision: bf16}}\nfeatures:\n  reasoning: {modes: {enabled: {args: [--reasoning-parser, glm47]}}}\n" }
   }
   assert {
@@ -127,16 +127,16 @@ run "feature_modes_are_not_silently_ignored" {
   }
 }
 run "live_metadata_supplies_the_recipe_owner_and_path" {
- command=plan
- variables {recipe_features=[]}
- override_data {
-  target=data.http.recipe_metadata
-  values={status_code=200,response_body="{\"source\":{\"repo\":\"vllm-project/recipes\",\"sha\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"path\":\"models/RecursiveSI/flint.yaml\"}}"}
- }
- assert {
-  condition=output.resolution.recipe.status=="resolved" && strcontains(output.resolution.recipe.source_url,"vllm-project/recipes/") && strcontains(output.resolution.recipe.source_url,"models/RecursiveSI/flint.yaml")
-  error_message="Resolve the live recipe owner/path, without a static alias catalog or legacy source fallback."
- }
+  command = plan
+  variables { recipe_features = [] }
+  override_data {
+    target = data.http.recipe_metadata[0]
+    values = { status_code = 200, response_body = "{\"source\":{\"repo\":\"vllm-project/recipes\",\"sha\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"path\":\"models/RecursiveSI/flint.yaml\"}}" }
+  }
+  assert {
+    condition     = output.resolution.recipe.status == "resolved" && strcontains(output.resolution.recipe.source_url, "vllm-project/recipes/") && strcontains(output.resolution.recipe.source_url, "models/RecursiveSI/flint.yaml")
+    error_message = "Resolve the live recipe owner/path, without a static alias catalog or legacy source fallback."
+  }
 }
 run "discovery_assesses_nightly_without_requiring_a_user_choice" {
   command = plan
@@ -151,5 +151,39 @@ run "discovery_assesses_nightly_without_requiring_a_user_choice" {
   assert {
     condition     = length(output.resolution.engine_candidates) == 2 && output.resolution.engine_candidates[1].channel == "nightly" && length(output.resolution.recipe.args) == 0 && contains(keys(output.resolution.recipe.feature_options), "reasoning")
     error_message = "Discovery should assess image/feature alternatives, leaving feature activation to deployment."
+  }
+}
+
+run "shared_recipe_snapshot_avoids_duplicate_metadata_and_commit_reads" {
+  command = plan
+  variables {
+    recipe_features = []
+    recipe_metadata = {
+      url  = "https://recipes.vllm.ai/RecursiveSI/flint.json", status_code = 200,
+      body = { source = { repo = "vllm-project/recipes", sha = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", path = "models/RecursiveSI/flint.yaml" } }
+    }
+  }
+  assert {
+    condition     = length(data.http.recipe_metadata) == 0 && length(data.http.recipe_commit) == 0 && strcontains(data.http.recipe[0].url, "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb")
+    error_message = "A shared immutable recipe snapshot must eliminate repeated metadata/SHA-resolution requests."
+  }
+}
+run "absent_shared_recipe_avoids_useless_source_lookups" {
+  command = plan
+  variables { recipe_metadata = { url = "https://recipes.vllm.ai/org/absent.json", status_code = 404, body = {} } }
+  assert {
+    condition     = length(data.http.recipe_metadata) == 0 && length(data.http.recipe_commit) == 0 && length(data.http.recipe) == 0 && output.resolution.recipe.status == "requires_validation"
+    error_message = "An absent shared recipe must preserve engine assessment without probing guessed recipe GitHub paths."
+  }
+}
+run "stable_tag_commit_is_reused_without_a_second_resolution_call" {
+  command = plan
+  override_data {
+    target = data.http.tags
+    values = { status_code = 200, response_body = "[{\"name\":\"v0.33.0\",\"commit\":{\"sha\":\"cccccccccccccccccccccccccccccccccccccccc\"}}]" }
+  }
+  assert {
+    condition     = length(data.http.stable_commit) == 0 && strcontains(data.http.stable_registry.url, "cccccccccccccccccccccccccccccccccccccccc") && output.resolution.engine.source_commit == "cccccccccccccccccccccccccccccccccccccccc"
+    error_message = "The exact immutable SHA already returned by tag enumeration must be reused."
   }
 }

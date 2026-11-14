@@ -137,7 +137,7 @@ run "staging_manifest_uses_only_snapshot_data_and_lfs_sha256" {
   override_data {
     target = data.http.model
     values = {
-      status_code = 200
+      status_code   = 200
       response_body = <<-JSON
       {"sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","safetensors":{"parameters":{"BF16":6},"total":6},"siblings":[
         {"rfilename":"model.safetensors","size":12,"lfs":{"size":12,"sha256":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}},
@@ -151,5 +151,18 @@ run "staging_manifest_uses_only_snapshot_data_and_lfs_sha256" {
   assert {
     condition     = [for f in output.profile.weights.staging_files : f.path] == ["model.safetensors", "config.json"] && output.profile.weights.staging_files[0].sha256 == "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" && output.profile.weights.staging_files[1].sha256 == null
     error_message = "Data allowlists must not execute/stage repository code, mix nested checkpoint variants, or call Git blob IDs SHA256 digests."
+  }
+}
+run "shared_recipe_does_not_trigger_unused_config_repositories" {
+  command = plan
+  variables {
+    recipe_metadata = {
+      url  = "https://recipes.vllm.ai/org/model.json", status_code = 200,
+      body = { variants = { default = { model_id = "org/model", extra_args = ["--hf-config-path", "unused/config"] } } }
+    }
+  }
+  assert {
+    condition     = length(data.http.fallback_recipe) == 0 && length(data.http.fallback_model) == 0 && output.profile.memory.status == "estimated"
+    error_message = "A usable checkpoint config must not cause exploratory external-config lookups from a shared recipe."
   }
 }

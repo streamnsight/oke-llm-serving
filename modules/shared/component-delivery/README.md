@@ -18,6 +18,15 @@ the chart name. `values_yaml` is a string, allowing components with different
 value structures. Optional parameter placeholders use `${PARAMETER}`; escape
 them as `$${PARAMETER}` inside Terraform strings. Parameters contain no secrets.
 
+A trusted adapter may supply `chart.files`, a map of relative chart filenames
+to UTF-8 source, instead of `chart.repository`. Those inputs are checksum-verified
+Artifact Registry files. Prepare normalizes permissions, sort order and mtimes
+with GNU tar and `gzip -n`, then imports the reproducible archive into OCIR.
+Local chart versions are frozen with their source: changing `CHART_VERSION`
+alone fails before native Helm. A source update requires Terraform apply.
+Every source artifact path is prefixed by the caller's unique `name` so that
+independent Terraform states sharing a repository do not own the same artifact.
+
 | Mode | Deploy/validate pipeline | Explicit undeploy pipeline |
 |---|---|---|
 | `managed` | Shell prepare → native Helm install/upgrade → Shell validation | Yes, confirmation and ownership guarded |
@@ -40,7 +49,10 @@ and never deliberately overwritten. Shell does not run Helm install or upgrade.
 Values, scripts, specifications and command specifications are immutable Generic
 Artifacts; chart content belongs in OCIR. `registry_host` supports an explicit
 realm-specific OCIR endpoint; the default is commercial `${region}.ocir.io`.
-Prepare creates the namespace. Service-only `OCI_` controls are not declared as
+Prepare creates the namespace by default. `namespace_mode="existing"` instead
+checks it without mutation; trusted adapter preflight is responsible for its
+ownership/onboarding check. `manage_crds=false` disables both Shell CRD updates
+and native CRD installation. Service-only `OCI_` controls are not declared as
 pipeline parameters; `ENFORCE_HELM_DEPLOYMENT` remains the editable rerun argument.
 Chart delivery passes the OCI-issued short-lived bearer token directly through
 a private Helm registry configuration (`registrytoken`), avoiding a second Basic
@@ -76,7 +88,7 @@ and read failures fail closed. Keep CRDs, PVCs, namespaces and node pools separa
 from explicit release uninstall. Chart hooks must also follow that retention
 contract; the runner does not execute arbitrary metadata commands.
 
-A Kubernetes Lease in `kube-system`, keyed by cluster/namespace/release, serializes
+A Kubernetes Lease in `lock_namespace` (default `kube-system`), keyed by cluster/namespace/release, serializes
 managed install, upgrade and uninstall across pipelines. Acquisition and release
 use resourceVersion compare-and-swap. Prepare retains the lock across the bounded
 native Helm stage; finish verifies the same deployment, generation, parameter
@@ -87,6 +99,13 @@ The documented predefined `OCI_DEPLOYMENT_ID` is explicitly bound through the
 command-spec environment and exported into child scripts. If the runtime fails
 to provide it, the component refuses to mutate resources; independent random
 fallbacks cannot safely correlate prepare and finish across a native stage.
+
+Trusted caller `runtime_files` are immutable source inputs under `runtime/`.
+Fixed `preflight.sh`, `validate.sh` and `retired.sh` hooks run under that same
+lease before install, before ready evidence, and after uninstall respectively.
+These are reviewed adapter source files, not command strings in component
+metadata. `non_release_parameters` identifies probe-only parameters that do not
+alter a Helm release; all other parameters contribute to its settings hash.
 
 If native Helm fails or a Shell stage is killed, the lock remains deliberately.
 Expiry never permits automatic takeover. Inspect the deployment and release;

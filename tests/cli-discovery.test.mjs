@@ -22,8 +22,8 @@ let data;
 if(command.includes('region-subscription list')) data=scenario==='batch-four'?[1,2,3,4].map(n=>({'region-name':'region-'+n,status:'READY','is-home-region':n===1})):[{'region-name':'new-region-99',status:'READY','is-home-region':true},{'region-name':'not-ready',status:'IN_PROGRESS'}];
 else if(command.includes('availability-domain list')) data=[{name:'AD-1'}];
 else if(command.includes('compute shape list')) data=[{shape:'VM.GPU.A10.1',gpus:1,'gpu-description':'A10','memory-in-gbs':240,ocpus:15,'quota-names':['gpu-a10-count']}];
-else if(command.includes('limits definition list'))data=[{name:'gpu-a10-count','is-resource-availability-supported':true}];
-else if(command.includes('limits value list')) data=scenario==='unmapped'?[]:[{name:'gpu-a10-count','scope-type':'AD','availability-domain':scenario==='other-ad-zero'?'AD-2':'AD-1',value:['zero','other-ad-zero'].includes(scenario)?0:8}];
+else if(command.includes('limits definition list'))data=[{name:'gpu-a10-count','is-resource-availability-supported':true},...(scenario==='unrelated-limits'?[{name:'gpu-unused-count','is-resource-availability-supported':true}]:[])];
+else if(command.includes('limits value list')) data=scenario==='unmapped'?[]:[{name:'gpu-a10-count','scope-type':'AD','availability-domain':scenario==='other-ad-zero'?'AD-2':'AD-1',value:['zero','other-ad-zero'].includes(scenario)?0:8},...(scenario==='unrelated-limits'?[{name:'gpu-unused-count','scope-type':'REGION',value:100}]:[])];
 else if(command.includes('resource-availability get'))data={available:8,used:0};
 else if(command.includes('compute-capacity-report create')) {
  const request=JSON.parse(fs.readFileSync(flag('--shape-availabilities').replace('file://',''),'utf8'));
@@ -56,6 +56,14 @@ test('known zero skips reports; unmapped or another AD zero does not',()=>{
   const r=run(scenario,{only_shapes_with_limits:'true'});assert.equal(r.status,0,r.stderr);
   assert.equal(r.calls.filter(c=>c.includes('compute-capacity-report')).length,expected,scenario);
  }
+});
+test('only shape-relevant quota headroom is queried while physical reports remain batched',()=>{
+ const r=run('unrelated-limits');assert.equal(r.status,0,r.stderr);
+ const headroom=r.calls.filter(c=>c.includes('resource-availability'));
+ assert.equal(headroom.length,1,'unrelated GPU-named limits do not consume a headroom request');
+ assert.equal(headroom[0][headroom[0].indexOf('--limit-name')+1],'gpu-a10-count');
+ assert.equal(r.calls.filter(c=>c.includes('compute-capacity-report')).length,1,'one physical capacity report per AD');
+ assert.equal(r.result.regions[0].inventory.headroom_queries_used,1);
 });
 test('unknown counts and missing report rows remain partial',()=>{
  for(const scenario of ['unknown','missing']) {

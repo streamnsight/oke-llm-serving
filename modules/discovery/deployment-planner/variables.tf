@@ -59,3 +59,14 @@ variable "recipe_api_enabled" {
   type        = bool
   default     = false
 }
+variable "assess_cache_alternatives" {
+  description = "Fetch unselected native/LMCache offload alternatives only for explicitly requested diagnostic assessment."
+  type        = bool
+  default     = false
+}
+
+variable "recipe_metadata" {
+  description = "Optional shared immutable recipe lookup {url,status_code,body}. The discovery root supplies it once; standalone module callers may omit it."
+  type        = any
+  default     = null
+}

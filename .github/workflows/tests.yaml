@@ -24,7 +24,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          for directory in . templates/infrastructure templates/deployment; do
+          for directory in . templates/infrastructure templates/llm-deployment; do
             terraform -chdir="$directory" init -backend=false -input=false -no-color
             terraform -chdir="$directory" validate -no-color
           done
@@ -74,6 +74,14 @@ jobs:
       - name: Verify the actually rendered infrastructure ZIP
         if: matrix.directory == 'modules/discovery/infrastructure-publisher'
         run: bash "$GITHUB_WORKSPACE/scripts/check-generated-infrastructure.sh" "$PWD/.generated/infrastructure-selected.zip"
+      - name: Verify the actually rendered model ZIPs
+        if: matrix.directory == 'modules/discovery/model-publisher'
+        shell: bash
+        run: |
+          set -euo pipefail
+          for bundle in "$PWD"/.generated/model-*.zip; do
+            bash "$GITHUB_WORKSPACE/scripts/check-generated-model.sh" "$bundle"
+          done
   scripts:
     name: JavaScript and shell tests
     runs-on: ubuntu-latest

@@ -4,7 +4,7 @@
 # A Lease serializes all managed operations for a cluster/namespace/release.
 # Expiry alone NEVER permits takeover: native Helm cannot renew between stages.
 lock_read() {
-  kubectl -n kube-system get lease "$lock_name" --ignore-not-found -o json > lease.json
+  kubectl -n "${lock_namespace:-kube-system}" get lease "$lock_name" --ignore-not-found -o json > lease.json
 }
 lock_assert() {
   lock_read
@@ -14,8 +14,8 @@ lock_assert() {
 lock_acquire() {
   local now old_holder old_state expires
   now=$(date -u +%s)
-  jq -n --arg name "$lock_name" --arg owner "$owner" --arg holder "$OCI_DEPLOYMENT_ID" --argjson now "$now" --argjson duration "$lock_duration" \
-    '{apiVersion:"coordination.k8s.io/v1",kind:"Lease",metadata:{name:$name,namespace:"kube-system",annotations:{"oke-llm/owner-token":$owner,"oke-llm/acquired-epoch":($now|tostring)}},spec:{holderIdentity:$holder,leaseDurationSeconds:$duration}}' > new-lease.json
+  jq -n --arg namespace "${lock_namespace:-kube-system}" --arg name "$lock_name" --arg owner "$owner" --arg holder "$OCI_DEPLOYMENT_ID" --argjson now "$now" --argjson duration "$lock_duration" \
+    '{apiVersion:"coordination.k8s.io/v1",kind:"Lease",metadata:{name:$name,namespace:$namespace,annotations:{"oke-llm/owner-token":$owner,"oke-llm/acquired-epoch":($now|tostring)}},spec:{holderIdentity:$holder,leaseDurationSeconds:$duration}}' > new-lease.json
   if kubectl create -f new-lease.json >/dev/null 2> lease-create-error.txt; then lock_held=true; return; fi
   # Any permissions/transport failure here fails closed, never overwrites blindly.
   lock_read

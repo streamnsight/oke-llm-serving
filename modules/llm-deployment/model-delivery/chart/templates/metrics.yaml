@@ -1,0 +1,36 @@
+# Copyright (c) 2020-2022 Oracle and/or its affiliates. All rights reserved.
+# Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
+{{- if .Values.monitoring.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ .Release.Name }}
+  labels:
+    {{- include "model.labels" . | nindent 4 }}
+    oke-llm/platform: {{ .Values.monitoring.platform | quote }}
+spec:
+  selector:
+    matchLabels: {app.kubernetes.io/instance: {{ .Release.Name }}, app.kubernetes.io/name: oke-llm-model}
+  endpoints: [{port: http, path: /metrics, interval: 15s}]
+{{- end }}
+{{- if .Values.autoscaling.enabled }}
+---
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: {{ .Release.Name }}
+spec:
+  scaleTargetRef:
+    apiVersion: {{ if eq (int .Values.hosts) 1 }}apps/v1{{ else }}leaderworkerset.x-k8s.io/v1{{ end }}
+    kind: {{ if eq (int .Values.hosts) 1 }}Deployment{{ else }}LeaderWorkerSet{{ end }}
+    name: {{ .Release.Name }}
+  minReplicaCount: {{ int .Values.autoscaling.min_replicas }}
+  maxReplicaCount: {{ int .Values.autoscaling.max_replicas }}
+  cooldownPeriod: 300
+  triggers:
+    - type: prometheus
+      metadata:
+        serverAddress: {{ .Values.autoscaling.prometheus_url | quote }}
+        threshold: {{ .Values.autoscaling.target_inflight | toString | quote }}
+        query: {{ printf "sum(vllm:num_requests_running{namespace=%q}) + sum(vllm:num_requests_waiting{namespace=%q})" .Release.Namespace .Release.Namespace | quote }}
+{{- end }}

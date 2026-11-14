@@ -1,0 +1,112 @@
+# Copyright (c) 2020-2022 Oracle and/or its affiliates. All rights reserved.
+# Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
+variables {
+  profile = {
+    model   = { repository = "org/model", resolved_revision = "pinned" }, architecture = { kind = "dense" },
+    weights = { checkpoint_download_bytes = 4100000000, tensor_data_bytes = 4000000000 },
+    memory  = { status = "estimated", reasons = [], weight_bytes = 4000000000, kv_bytes = 2000000000, runtime_allowance_bytes = 1000000000, recommended_aggregate_bytes = 8400000000, assumptions = { context_length = 4096, concurrency = 4, safety_margin_fraction = 0.2 } }
+  }
+  assessment            = { recommended_selection_id = "selected", shape_observations = [], blocking_reasons = [] }
+  scan                  = { observation_id = "fixture", assessed_regions = ["region-one"] }
+  serving_configuration = { status = "requires_validation" }
+  options = { selected = {
+    region               = "region-one", availability_domain = "AD-1", gpu_shape = "GPU.8", gpus_per_node = 8, node_count = 1,
+    replicas             = 2, replicas_per_node = 2, requested_minimum_replicas = 1, tensor_parallel_size = 4, pipeline_parallel_size = 1,
+    available_instances  = 17, entitled_instances = 2, capacity_observed_at = "2026-11-13T00:00:00Z", estimated_rank_bytes = 30000000000,
+    configuration_status = "suggested_requires_validation", runtime_validation = "not_run"
+  } }
+  publications = { selected = { launch_url = "https://cloud.oracle.com/resourcemanager/stacks/create?region=region-one&zipUrl=fixture", download_url = "https://objectstorage.example/p/fixture.zip", published_at = "2026-11-13T01:00:00Z", expires_at = "2026-11-14T01:00:00Z" } }
+  regions = [{
+    inventory = { region = "region-one", availability_domains = [for ad in ["AD-1", "AD-2"] : { name = ad, shapes = [{ shape = "GPU.8", gpus = 8, gpu_memory_bytes_per_gpu = 40000000000 }] }] },
+    capacity  = { region = "region-one", availability_domains = [for ad, count in { "AD-1" = 17, "AD-2" = 3 } : { name = ad, assessment = { observed_at = "2026-11-13T00:00:00Z", shapes = [{ shape = "GPU.8", available_instances = count, requested_instances = 1, availability_status = "AVAILABLE", fault_domain = null }] } }] }
+  }]
+}
+run "actual_capacity_packing_memory_and_all_links_are_compact" {
+  command = plan
+  assert {
+    condition     = output.summary.options.selected.capacity.ad_available_hosts == 17 && output.summary.options.selected.capacity.ad_available_gpus == 136 && output.summary.options.selected.allocation.required_hosts == 1 && output.summary.options.selected.allocation.allocated_gpus == 8 && output.summary.options.selected.allocation.required_gpus_per_replica == 4 && output.summary.options.selected.allocation.replicas == 2 && output.summary.options.selected.allocation.unused_gpus == 0
+    error_message = "Observed physical capacity must not be confused with the synthetic request threshold, required hosts, or per-replica GPU count."
+  }
+  assert {
+    condition     = output.summary.regional_capacity[0].coverage == "complete" && output.summary.regional_capacity[0].available_gpus == 160 && output.summary.options.selected.capacity.entitled_hosts == 2 && output.summary.model.memory_gb.resident_weights == 4 && output.summary.model.memory_gb.kv_per_replica == 2 && output.summary.options.selected.memory_gb.per_gpu == 40
+    error_message = "Aggregate physical capacity only across unique ADs of the exact shape; keep entitlement separate and label decimal GB consistently."
+  }
+  assert {
+    condition     = output.summary.option_count == 1 && output.summary.options.selected.links.launch_url == var.publications.selected.launch_url && output.summary.options.selected.links.download_url == var.publications.selected.download_url && output.summary.options.selected.links.expires_at == var.publications.selected.expires_at && output.summary.diagnostics == null
+    error_message = "The compact native JSON must contain every option and its full launch/download URLs without requiring the optional HTML or diagnostics."
+  }
+}
+run "partial_ad_coverage_has_no_false_regional_total" {
+  command = plan
+  variables { regions = [for region in var.regions : merge(region, { capacity = merge(region.capacity, { availability_domains = [region.capacity.availability_domains[0]] }) })] }
+  assert {
+    condition     = output.summary.regional_capacity[0].coverage == "partial" && output.summary.regional_capacity[0].available_gpus == null && output.summary.regional_capacity[0].known_reported_gpus == 136 && output.summary.regional_capacity[0].known_ads == 1 && output.summary.regional_capacity[0].expected_ads == 2
+    error_message = "An unassessed AD leaves the regional total unknown while retaining the count actually reported by known ADs."
+  }
+}
+run "duplicate_identical_ad_reports_are_not_counted_twice" {
+  command = plan
+  variables { regions = [for region in var.regions : merge(region, { capacity = merge(region.capacity, { availability_domains = concat(region.capacity.availability_domains, [region.capacity.availability_domains[0]]) }) })] }
+  assert {
+    condition     = output.summary.regional_capacity[0].available_hosts == 20 && output.summary.regional_capacity[0].available_gpus == 160
+    error_message = "Repeated identical observations of one AD must not inflate regional GPU totals."
+  }
+}
+run "conflicting_ad_reports_are_ambiguous_not_additive" {
+  command = plan
+  variables { regions = [for region in var.regions : merge(region, { capacity = merge(region.capacity, { availability_domains = concat(region.capacity.availability_domains, [{ name = "AD-1", assessment = { observed_at = "other", shapes = [{ shape = "GPU.8", available_instances = 10, availability_status = "AVAILABLE", fault_domain = null }] } }]) }) })] }
+  assert {
+    condition     = output.summary.regional_capacity[0].available_gpus == null && output.summary.regional_capacity[0].known_reported_gpus == 24
+    error_message = "Conflicting observations do not establish one whole-AD count; only unambiguous ADs contribute to the known lower bound."
+  }
+}
+run "fault_domain_counts_are_not_whole_ad_capacity" {
+  command = plan
+  variables { regions = [for region in var.regions : merge(region, { capacity = merge(region.capacity, { availability_domains = [for ad in region.capacity.availability_domains : merge(ad, { assessment = merge(ad.assessment, { shapes = [for shape in ad.assessment.shapes : merge(shape, { fault_domain = "FD-1" })] }) })] }) })] }
+  assert {
+    condition     = output.summary.regional_capacity[0].coverage == "partial" && output.summary.regional_capacity[0].available_gpus == null && output.summary.regional_capacity[0].known_ads == 0
+    error_message = "A fault-domain report must never be silently presented as full AD or regional capacity."
+  }
+}
+run "alternative_shapes_keep_independent_regional_counts" {
+  command = plan
+  variables {
+    regions = [for region in var.regions : merge(region, {
+      inventory = merge(region.inventory, { availability_domains = [for ad in region.inventory.availability_domains : merge(ad, { shapes = concat(ad.shapes, [{ shape = "GPU.4", gpus = 4, gpu_memory_bytes_per_gpu = 24000000000 }]) })] }),
+      capacity  = merge(region.capacity, { availability_domains = [for ad in region.capacity.availability_domains : merge(ad, { assessment = merge(ad.assessment, { shapes = concat(ad.assessment.shapes, [{ shape = "GPU.4", available_instances = 5, availability_status = "AVAILABLE", fault_domain = null }]) }) })] })
+    })]
+  }
+  assert {
+    condition     = length(output.summary.regional_capacity) == 2 && sum([for row in output.summary.regional_capacity : row.available_gpus if row.gpu_shape == "GPU.4"]) == 40 && sum([for row in output.summary.regional_capacity : row.available_gpus if row.gpu_shape == "GPU.8"]) == 160 && !contains(keys(output.summary), "total_available_gpus")
+    error_message = "Exact shape groups may share supply and cannot be merged into an apparent total regional GPU inventory."
+  }
+}
+run "unsupported_memory_remains_unknown_and_failure_is_actionable" {
+  command = plan
+  variables {
+    options      = {}
+    publications = {}
+    profile      = { model = { repository = "org/custom" }, memory = { status = "unsupported", reasons = ["Hybrid memory estimator unavailable"] } }
+    assessment   = { blocking_reasons = ["No supported serving layout"], shape_observations = [] }
+  }
+  assert {
+    condition     = output.summary.model.memory_gb.resident_weights == null && output.summary.model.memory_gb.kv_per_replica == null && output.summary.option_count == 0 && contains(output.summary.failure_summary, "No supported serving layout") && output.summary.status == "no_confirmed_options"
+    error_message = "Unknown memory is null, not zero; an empty option list must retain an explanation."
+  }
+}
+run "diagnostic_evidence_is_explicitly_opt_in" {
+  command = plan
+  variables { include_diagnostics = true }
+  assert {
+    condition     = output.summary.diagnostics.profile == var.profile && output.summary.diagnostics.regions == var.regions
+    error_message = "Detailed evidence remains available only when explicitly requested."
+  }
+}
+run "html_payload_cannot_close_the_data_script" {
+  command = plan
+  variables { profile = merge(var.profile, { model = { repository = "</script><script>pwn()</script>", resolved_revision = "fixture" } }) }
+  assert {
+    condition     = !strcontains(output.html, "</script><script>pwn()") && strcontains(output.html, "\\u003c/script\\u003e") && !strcontains(output.html, ".innerHTML")
+    error_message = "Use Terraform jsonencode escaping and DOM textContent; model metadata must not become executable markup."
+  }
+}

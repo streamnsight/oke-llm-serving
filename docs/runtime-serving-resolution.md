@@ -24,25 +24,9 @@ recipe_features = ["reasoning", "tool_calling"]
 
 The recorded feature definitions supply the `glm47` reasoning/tool parsers and related flags. Unknown features and complex modes/companions need explicit review rather than silently omitted settings.
 
-## One JSON handoff
+## Frozen stage handoff
 
-```sh
-mkdir -p work
-terraform output -json deployment_inputs \
-  > work/deployment-inputs.tfvars.json
-```
-
-This produces one object: `{"discovery": {...}}`. It contains the model profile, workload assumptions, assessment choices, recipe provenance/requirements/features and digest-pinned engine/platform candidates. Repeated raw regional inventory and per-choice copies of the shared engine are omitted. The separate full `discovery` report remains available for investigation.
-
-For local Terraform, pass that file unchanged alongside target infrastructure and deployment choices:
-
-```sh
-terraform -chdir=templates/deployment plan \
-  -var-file="$PWD/work/deployment-inputs.tfvars.json" \
-  -var-file="$PWD/work/target.json"
-```
-
-For RMS, paste the chosen `deployment_handoffs[ID].inline_json` into **Discovery JSON**. Do not paste the entire report: each RMS variable is limited to 8192 bytes. The compact payload contains one frozen selection and preserves literal recipe placeholders. Select the existing cluster; images, known networking and CPU defaults are resolved automatically in preview mode. Larger payloads use authenticated Object Storage input. See [the compact handoff and preview guide](deployment-preview.md).
+Discovery exposes one consolidated `discovery` JSON. Its chosen infrastructure ZIP carries the complete selected configuration internally; infrastructure publishes the model ZIP bound to actual platform IDs. No discovery JSON is pasted into RMS variables. Recipe/image overrides belong to the model stack and remain editable defaults. See [model binding](model-binding.md).
 
 ## Three distinct results
 
@@ -58,7 +42,7 @@ For BF16 Flint, structured GQA full/sliding layer metadata permits a full-contex
 
 ## Expert handoff
 
-Start with `templates/deployment/target.example.json`. For an undetermined option, add:
+Start with `templates/llm-deployment/target.example.json`. For an undetermined option, add:
 
 ```json
 {

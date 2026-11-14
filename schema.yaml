@@ -5,6 +5,11 @@ description: Inspect a public Hugging Face model and assess GPU shapes, entitlem
 schemaVersion: 1.1.0
 version: "0.1.0"
 outputs:
+  comparison_report_url:
+    type: link
+    title: Compare all confirmed options
+    displayText: Compare all options
+    description: Opens a separate Object Storage HTML page. The native discovery JSON below also contains every count and launch/download URL.
   recommended_launch_url:
     type: link
     title: Recommended option only
@@ -12,21 +17,26 @@ outputs:
   deployment_option_count:
     type: number
     title: Available infrastructure options
-  deployment_options:
+  discovery:
     type: json
-    title: All regions and GPU options (choose any launch_url)
-primaryOutputButton: ${recommended_launch_url}
+    title: Model, GPU capacity and all deployment options
+primaryOutputButton: ${comparison_report_url}
 variableGroups:
   - title: Model and serving assumptions
     variables: [model, revision, context_length, concurrency, monitoring_enabled, autoscaling_enabled, model_storage_mode]
   - title: Capacity observation
-    variables: [observation_id, compartment_id, regions, shape_names, query_resource_availability, only_shapes_with_limits]
+    variables: [observation_id, compartment_id, regions, shape_names, query_resource_availability, only_shapes_with_limits, include_diagnostics]
   - title: Infrastructure launch bundles
     variables: [publish_infrastructure_bundles, artifact_compartment_id, par_lifetime_hours, skip_gpu_allocation]
   - title: OCI context
     visible: false
     variables: [tenancy_ocid, compartment_ocid, region]
 variables:
+  include_diagnostics:
+    type: boolean
+    default: false
+    title: Include detailed diagnostic evidence
+    description: Adds full model, engine and regional evidence to the consolidated JSON. Does not run unused alternative-engine/cache lookups.
   model_storage_mode:
     type: enum
     enum: [direct_huggingface, object_storage]
@@ -99,7 +109,7 @@ variables:
   observation_id:
     type: string
     title: Capacity observation identifier
-    description: Change for each new capacity report. Reusing this identifier preserves the previous snapshot.
+    description: A label for this observation. Discovery requests fresh capacity reports whenever the CLI data source is read; reusing the label does not retain an old snapshot.
   compartment_id:
     type: oci:identity:compartment:id
     title: Intended deployment compartment (optional)

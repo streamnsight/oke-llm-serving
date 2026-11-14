@@ -17,7 +17,7 @@ override_data {
  values = {status_code=200,response_body="{\"model\": {\"model_id\": \"Qwen/Qwen3.8-27B\", \"install\": {\"extras\": [{\"command\": \"uv pip install \\\"transformers>=5.8.0\\\"\"}]}}, \"variants\": {\"default\": {\"precision\": \"bf16\", \"vram_minimum_gb\": 67}}, \"meta\": {\"tasks\": [\"text\", \"multimodal\"]}}"}
 }
 override_data {
- target = data.http.recipe_rendering["a10"]
+ target = data.http.recipe_rendering["hardware=h100&variant=default&strategy=single_node_tp"]
  values = {status_code=200,response_body="{\"hf_id\": \"Qwen/Qwen3.8-27B\", \"hardware\": \"h100\", \"strategy\": \"single_node_tp\", \"variant\": \"default\", \"node_count\": 1, \"deploy_type\": \"single_node\", \"env\": {\"VLLM_USE_RUST_FRONTEND\": \"1\"}, \"docker_image\": \"vllm/vllm-openai:qwen38\", \"command\": \"vllm serve Qwen/Qwen3.8-27B \\\\\\n  --tensor-parallel-size 1 \\\\\\n  --enable-auto-tool-choice \\\\\\n  --tool-call-parser qwen3_coder \\\\\\n  --reasoning-parser qwen3 \\\\\\n  --mm-encoder-tp-mode data\", \"argv\": [\"vllm\", \"serve\", \"Qwen/Qwen3.8-27B\", \"--tensor-parallel-size\", \"1\", \"--enable-auto-tool-choice\", \"--tool-call-parser\", \"qwen3_coder\", \"--reasoning-parser\", \"qwen3\", \"--mm-encoder-tp-mode\", \"data\"], \"docker_command\": \"docker run --gpus all \\\\\\n  --privileged --ipc=host -p 8000:8000 \\\\\\n  -v ~/.cache/huggingface:/root/.cache/huggingface \\\\\\n  -e VLLM_USE_RUST_FRONTEND=1 \\\\\\n  vllm/vllm-openai:qwen38 Qwen/Qwen3.8-27B \\\\\\n  --tensor-parallel-size 1 \\\\\\n  --enable-auto-tool-choice \\\\\\n  --tool-call-parser qwen3_coder \\\\\\n  --reasoning-parser qwen3 \\\\\\n  --mm-encoder-tp-mode data\", \"docker_argv\": [\"docker\", \"run\", \"--gpus\", \"all\", \"--privileged\", \"--ipc=host\", \"-p\", \"8000:8000\", \"-v\", \"~/.cache/huggingface:/root/.cache/huggingface\", \"-e\", \"VLLM_USE_RUST_FRONTEND=1\", \"vllm/vllm-openai:qwen38\", \"Qwen/Qwen3.8-27B\", \"--tensor-parallel-size\", \"1\", \"--enable-auto-tool-choice\", \"--tool-call-parser\", \"qwen3_coder\", \"--reasoning-parser\", \"qwen3\", \"--mm-encoder-tp-mode\", \"data\"], \"selection\": {\"hardware\": \"h100\", \"variant\": \"default\", \"strategy\": \"single_node_tp\", \"nodes\": 1, \"features\": [\"tool_calling\", \"reasoning\", \"encoder_parallel\"], \"modes\": {\"spec_decoding\": \"mtp\"}, \"advanced\": [], \"frontend\": \"rust\", \"kv_offload\": null, \"pd\": null, \"preset\": null, \"point\": null, \"adjusted\": []}, \"page_url\": \"https://recipes.vllm.ai/Qwen/Qwen3.8-27B?hardware=h100&variant=default&strategy=single_node_tp\", \"markdown_url\": \"https://recipes.vllm.ai/Qwen/Qwen3.8-27B.md?hardware=h100&variant=default&strategy=single_node_tp\"}"}
 }
 override_data {
@@ -35,6 +35,62 @@ run "adapt_bf16_to_four_a10s_without_a_complete_estimator" {
     error_message="Parsers, image digest and dependency evidence must survive, with topology managed separately."
   }
 }
+run "unselected_cache_alternatives_do_not_make_requests" {
+ command=plan
+ override_data {
+  target=data.http.recipe_metadata[0]
+  values={status_code=200,response_body="{\"model\":{\"model_id\":\"Qwen/Qwen3.8-27B\"},\"variants\":{\"default\":{\"precision\":\"bf16\",\"vram_minimum_gb\":67}},\"meta\":{\"tasks\":[\"text\"]},\"kv_offload_support\":{\"offloading_cpu\":\"verified\"}}"}
+ }
+ assert {
+  condition=length(data.http.cache_option)==0 && length(output.assessment.recipe_options.cache_options)==0 && length(output.assessment.suggestions)==1
+  error_message="Normal recipe discovery must not fetch unused cache alternatives merely because the model supports offloading."
+ }
+}
+run "declared_non_text_recipe_tasks_are_preserved_without_a_false_smoke_claim" {
+ command=plan
+ override_data {
+  target=data.http.recipe_metadata[0]
+  values={status_code=200,response_body="{\"model\":{\"model_id\":\"Qwen/Qwen3.8-27B\"},\"variants\":{\"default\":{\"precision\":\"bf16\",\"vram_minimum_gb\":67}},\"meta\":{\"tasks\":[\"audio\"]}}"}
+ }
+ assert {
+  condition=length(output.assessment.suggestions)==1 && output.assessment.suggestions[0].serving_configuration.recipe.serving_tasks==["audio"] && output.assessment.suggestions[0].serving_configuration.recipe.modality_validation=="not_run_requires_task_specific_validation"
+  error_message="A supplied recipe rendering must not be rejected solely because it lacks the text task, or claim text smoke tests validate other modalities."
+ }
+}
+run "shared_full_queries_are_requested_once_and_ranking_uses_total_allocated_gpus" {
+ command=plan
+ variables {
+  replicas=5
+  assess_cache_alternatives=true
+  regions=[{inventory={region="region-one",availability_domains=[{name="AD-1",shapes=[{shape="BM.GPU.A10.4",gpus=4,rdma_ports=0,quota_names=["gpu-count"]},{shape="BM.GPU.H100.8",gpus=8,rdma_ports=0,quota_names=["gpu-count"]}]}],limits=[{name="gpu-count",description="GPUs for test instances",scope_type="AD",availability_domain="AD-1",tenancy_limit=64,resource_availability={status="observed",available=64}}]},capacity={region="region-one",availability_domains=[{name="AD-1",assessment={observed_at="test",shapes=[{shape="BM.GPU.A10.4",available_instances=5,availability_status="AVAILABLE"},{shape="BM.GPU.H100.8",available_instances=5,availability_status="AVAILABLE"}]}}]}}]
+ }
+ override_data {
+  target=data.http.recipe_metadata[0]
+  values={status_code=200,response_body="{\"model\":{\"model_id\":\"Qwen/Qwen3.8-27B\"},\"variants\":{\"default\":{\"precision\":\"bf16\",\"vram_minimum_gb\":67}},\"meta\":{\"tasks\":[\"text\"]},\"kv_offload_support\":{\"offloading_cpu\":\"verified\"}}"}
+ }
+ override_data {
+  target=data.http.cache_option["hardware=h100&variant=default&strategy=single_node_tp&kv_offload=simple"]
+  values={status_code=404,response_body="{}"}
+ }
+ override_data {
+  target=data.http.cache_option["hardware=h100&variant=default&strategy=single_node_tp&kv_offload=lmcache"]
+  values={status_code=404,response_body="{}"}
+ }
+ assert {
+  condition=length(data.http.recipe_rendering)==1 && length(data.http.cache_option)==2 && length(output.assessment.suggestions)==2 && output.assessment.suggestions[0].gpu_shape=="BM.GPU.H100.8" && output.assessment.suggestions[0].node_count==1 && output.assessment.suggestions[1].node_count==5
+  error_message="A10 and H100 share one exact render request and two distinct cache queries. Ranking must prefer eight total allocated GPUs over twenty, rather than comparing GPUs per host."
+ }
+}
+run "an_exact_previously_resolved_image_tag_does_not_repeat_registry_lookup" {
+ command=plan
+ variables {
+  serving_resolution={engine={platform="linux/amd64",image="fixture",image_tag="qwen38",available_images={"linux/amd64"="vllm/vllm-openai@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"},id="stable",version="0.33.0",architectures=["Qwen3_5ForConditionalGeneration"],gpu_compute_capabilities=[86,90],multi_node_backend="mp"},recipe={feature_options={},compatible_strategies=["single_node_tp"]}}
+ }
+ assert {
+  condition=length(data.http.recipe_image)==0 && output.assessment.suggestions[0].serving_configuration.engine.image=="vllm/vllm-openai@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+  error_message="Reuse immutable platform digests only when the renderer requests the exact already-resolved repository/tag; do not repeat that registry HTTP request."
+ }
+}
 run "one_a10_is_not_a_bf16_suggestion" {
  command=plan
  variables {
@@ -48,7 +104,7 @@ run "one_a10_is_not_a_bf16_suggestion" {
 run "API_substitution_does_not_become_a_recipe_match" {
  command=plan
  override_data {
-  target=data.http.recipe_rendering["a10"]
+  target=data.http.recipe_rendering["hardware=h100&variant=default&strategy=single_node_tp"]
   values={status_code=200,response_body="{\"hf_id\": \"Qwen/Qwen3.8-27B\", \"hardware\": \"h100\", \"strategy\": \"single_node_tp\", \"variant\": \"default\", \"node_count\": 1, \"deploy_type\": \"single_node\", \"env\": {\"VLLM_USE_RUST_FRONTEND\": \"1\"}, \"docker_image\": \"vllm/vllm-openai:qwen38\", \"command\": \"vllm serve Qwen/Qwen3.8-27B \\\\\\n  --tensor-parallel-size 1 \\\\\\n  --enable-auto-tool-choice \\\\\\n  --tool-call-parser qwen3_coder \\\\\\n  --reasoning-parser qwen3 \\\\\\n  --mm-encoder-tp-mode data\", \"argv\": [\"vllm\", \"serve\", \"Qwen/Qwen3.8-27B\", \"--tensor-parallel-size\", \"1\", \"--enable-auto-tool-choice\", \"--tool-call-parser\", \"qwen3_coder\", \"--reasoning-parser\", \"qwen3\", \"--mm-encoder-tp-mode\", \"data\"], \"docker_command\": \"docker run --gpus all \\\\\\n  --privileged --ipc=host -p 8000:8000 \\\\\\n  -v ~/.cache/huggingface:/root/.cache/huggingface \\\\\\n  -e VLLM_USE_RUST_FRONTEND=1 \\\\\\n  vllm/vllm-openai:qwen38 Qwen/Qwen3.8-27B \\\\\\n  --tensor-parallel-size 1 \\\\\\n  --enable-auto-tool-choice \\\\\\n  --tool-call-parser qwen3_coder \\\\\\n  --reasoning-parser qwen3 \\\\\\n  --mm-encoder-tp-mode data\", \"docker_argv\": [\"docker\", \"run\", \"--gpus\", \"all\", \"--privileged\", \"--ipc=host\", \"-p\", \"8000:8000\", \"-v\", \"~/.cache/huggingface:/root/.cache/huggingface\", \"-e\", \"VLLM_USE_RUST_FRONTEND=1\", \"vllm/vllm-openai:qwen38\", \"Qwen/Qwen3.8-27B\", \"--tensor-parallel-size\", \"1\", \"--enable-auto-tool-choice\", \"--tool-call-parser\", \"qwen3_coder\", \"--reasoning-parser\", \"qwen3\", \"--mm-encoder-tp-mode\", \"data\"], \"selection\": {\"hardware\": \"h200\", \"variant\": \"default\", \"strategy\": \"single_node_tp\", \"nodes\": 1, \"features\": [\"tool_calling\", \"reasoning\", \"encoder_parallel\"], \"modes\": {\"spec_decoding\": \"mtp\"}, \"advanced\": [], \"frontend\": \"rust\", \"kv_offload\": null, \"pd\": null, \"preset\": null, \"point\": null, \"adjusted\": [{\"param\": \"hardware\", \"requested\": \"h100\", \"used\": \"h200\"}]}, \"page_url\": \"https://recipes.vllm.ai/Qwen/Qwen3.8-27B?hardware=h100&variant=default&strategy=single_node_tp\", \"markdown_url\": \"https://recipes.vllm.ai/Qwen/Qwen3.8-27B.md?hardware=h100&variant=default&strategy=single_node_tp\"}"}
  }
  assert {
@@ -71,16 +127,17 @@ run "known_unsupported_precision_is_not_adapted_to_A10" {
 
 run "cache_companion_plans_are_preserved_without_enabling_them" {
  command=plan
+ variables { assess_cache_alternatives = true }
  override_data {
  target=data.http.recipe_metadata[0]
  values={status_code=200,response_body="{\"model\": {\"model_id\": \"Qwen/Qwen3.8-27B\"}, \"variants\": {\"default\": {\"precision\": \"bf16\", \"vram_minimum_gb\": 67}}, \"meta\": {\"tasks\": [\"text\"]}, \"kv_offload_support\": {\"offloading_cpu\": \"verified\"}}"}
  }
  override_data {
- target=data.http.cache_option["a10/lmcache"]
+ target=data.http.cache_option["hardware=h100&variant=default&strategy=single_node_tp&kv_offload=lmcache"]
  values={status_code=200,response_body="{\"hf_id\": \"Qwen/Qwen3.8-27B\", \"hardware\": \"h100\", \"strategy\": \"single_node_tp\", \"variant\": \"default\", \"node_count\": 1, \"deploy_type\": \"single_node\", \"env\": {\"VLLM_USE_RUST_FRONTEND\": \"1\"}, \"docker_image\": \"vllm/vllm-openai:qwen38\", \"command\": \"vllm serve Qwen/Qwen3.8-27B \\\\\\n  --tensor-parallel-size 1 \\\\\\n  --enable-auto-tool-choice \\\\\\n  --tool-call-parser qwen3_coder \\\\\\n  --reasoning-parser qwen3 \\\\\\n  --kv-transfer-config '{\\\"kv_connector\\\":\\\"LMCacheMPConnector\\\",\\\"kv_role\\\":\\\"kv_both\\\",\\\"kv_connector_extra_config\\\":{\\\"lmcache.mp.port\\\":5555,\\\"lmcache.mp.mq_timeout\\\":300}}'\", \"argv\": [\"vllm\", \"serve\", \"Qwen/Qwen3.8-27B\", \"--tensor-parallel-size\", \"1\", \"--enable-auto-tool-choice\", \"--tool-call-parser\", \"qwen3_coder\", \"--reasoning-parser\", \"qwen3\", \"--kv-transfer-config\", \"{\\\"kv_connector\\\":\\\"LMCacheMPConnector\\\",\\\"kv_role\\\":\\\"kv_both\\\",\\\"kv_connector_extra_config\\\":{\\\"lmcache.mp.port\\\":5555,\\\"lmcache.mp.mq_timeout\\\":300}}\"], \"kv_offload_install\": [{\"command\": \"uv pip install \\\"lmcache==0.5.1\\\"\"}], \"docker_command\": \"docker run --gpus all \\\\\\n  --privileged --ipc=host -p 8000:8000 \\\\\\n  -v ~/.cache/huggingface:/root/.cache/huggingface \\\\\\n  -e VLLM_USE_RUST_FRONTEND=1 \\\\\\n  vllm/vllm-openai:qwen38 Qwen/Qwen3.8-27B \\\\\\n  --tensor-parallel-size 1 \\\\\\n  --enable-auto-tool-choice \\\\\\n  --tool-call-parser qwen3_coder \\\\\\n  --reasoning-parser qwen3 \\\\\\n  --kv-transfer-config '{\\\"kv_connector\\\":\\\"LMCacheMPConnector\\\",\\\"kv_role\\\":\\\"kv_both\\\",\\\"kv_connector_extra_config\\\":{\\\"lmcache.mp.port\\\":5555,\\\"lmcache.mp.mq_timeout\\\":300}}'\", \"docker_argv\": [\"docker\", \"run\", \"--gpus\", \"all\", \"--privileged\", \"--ipc=host\", \"-p\", \"8000:8000\", \"-v\", \"~/.cache/huggingface:/root/.cache/huggingface\", \"-e\", \"VLLM_USE_RUST_FRONTEND=1\", \"vllm/vllm-openai:qwen38\", \"Qwen/Qwen3.8-27B\", \"--tensor-parallel-size\", \"1\", \"--enable-auto-tool-choice\", \"--tool-call-parser\", \"qwen3_coder\", \"--reasoning-parser\", \"qwen3\", \"--kv-transfer-config\", \"{\\\"kv_connector\\\":\\\"LMCacheMPConnector\\\",\\\"kv_role\\\":\\\"kv_both\\\",\\\"kv_connector_extra_config\\\":{\\\"lmcache.mp.port\\\":5555,\\\"lmcache.mp.mq_timeout\\\":300}}\"], \"companions\": [{\"feature\": \"kv_offload:lmcache\", \"label\": \"LMCache Server\", \"description\": \"Run on the same node in a separate terminal, before vllm serve \\u2014 owns the shared CPU-DRAM KV pool. Requires: uv pip install \\\"lmcache==0.5.1\\\"\", \"command\": \"# --port must match \\\"lmcache.mp.port\\\" in --kv-transfer-config.\\n# Size --l1-size-gb to ~75% of the host DRAM you can dedicate \\u2014 pinned\\n# memory is unswappable; the pool grows lazily from --l1-init-size-gb.\\n# --max-gpu-workers 1 avoids concurrent-GPU-transfer stalls under heavy\\n# async-load pressure; CPU-side workers stay at 8.\\nlmcache server \\\\\\n  --port 5555 \\\\\\n  --http-port 8080 \\\\\\n  --l1-size-gb 512 \\\\\\n  --l1-init-size-gb 20 \\\\\\n  --max-gpu-workers 1 \\\\\\n  --max-cpu-workers 8 \\\\\\n  --chunk-size 1024 \\\\\\n  --l1-align-bytes 16384 \\\\\\n  --eviction-trigger-watermark 0.85 \\\\\\n  --eviction-ratio 0.10 \\\\\\n  --eviction-policy LRU \\\\\\n  --supported-transfer-mode lmcache_driven\"}], \"selection\": {\"hardware\": \"h100\", \"variant\": \"default\", \"strategy\": \"single_node_tp\", \"nodes\": 1, \"features\": [\"tool_calling\", \"reasoning\"], \"modes\": {\"spec_decoding\": \"mtp\"}, \"advanced\": [], \"frontend\": \"rust\", \"kv_offload\": \"lmcache\", \"pd\": null, \"preset\": null, \"point\": null, \"adjusted\": []}, \"page_url\": \"https://recipes.vllm.ai/Qwen/Qwen3.8-27B?hardware=h100&features=tool_calling%2Creasoning&kv_offload=lmcache\", \"markdown_url\": \"https://recipes.vllm.ai/Qwen/Qwen3.8-27B.md?hardware=h100&features=tool_calling%2Creasoning&kv_offload=lmcache\"}"}
  }
  override_data {
- target=data.http.cache_option["a10/simple"]
+ target=data.http.cache_option["hardware=h100&variant=default&strategy=single_node_tp&kv_offload=simple"]
  values={status_code=200,response_body="{\"selection\": {\"hardware\": \"h100\", \"variant\": \"default\", \"kv_offload\": \"simple\"}, \"argv\": [\"vllm\", \"serve\", \"Qwen/Qwen3.8-27B\"]}"}
  }
  assert {
@@ -165,7 +222,7 @@ run "replicas_require_enough_full_hosts_and_GPU_entitlement" {
 run "recipe_companions_and_unknown_features_remain_explicit_in_the_platform_plan" {
   command = plan
   override_data {
-    target = data.http.recipe_rendering["a10"]
+    target = data.http.recipe_rendering["hardware=h100&variant=default&strategy=single_node_tp"]
     values = { status_code = 200, response_body = "{\"selection\":{\"hardware\":\"h100\",\"variant\":\"default\",\"strategy\":\"single_node_tp\",\"features\":[\"tool_calling\",\"future_feature\"],\"modes\":{\"spec_decoding\":\"mtp\"},\"kv_offload\":\"lmcache\",\"pd\":null,\"adjusted\":[]},\"argv\":[\"vllm\",\"serve\",\"Qwen/Qwen3.8-27B\",\"--tensor-parallel-size\",\"1\"],\"docker_image\":\"vllm/vllm-openai:qwen38\",\"env\":{},\"kv_offload_install\":[{\"command\":\"uv pip install lmcache==0.5.1\"}],\"companions\":[{\"feature\":\"kv_offload:lmcache\",\"command\":\"lmcache server --l1-size-gb 512\"}]}" }
   }
   assert {

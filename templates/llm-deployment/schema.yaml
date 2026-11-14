@@ -1,0 +1,46 @@
+# Copyright (c) 2020-2022 Oracle and/or its affiliates. All rights reserved.
+# Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
+title: Deploy a model on retained OKE GPU infrastructure
+description: Creates model-only DevOps pipelines in the existing infrastructure project. First onboard the exact model pipeline IDs through the trusted platform pipeline, then run model deploy. Apply does not launch workloads or change GPU pools.
+schemaVersion: 1.1.0
+version: '1.0'
+locale: en
+variableGroups:
+  - title: Existing infrastructure binding
+    visible: true
+    variables: [tenancy_ocid, compartment_ocid, region]
+  - title: Model and runtime
+    variables: [model_name, namespace, model_id, model_revision, serving_image, tensor_parallel_size, pipeline_parallel_size, hosts_per_replica, gpus_per_pod, replicas, context_length, concurrency, hf_token_secret]
+  - title: Storage and routing
+    variables: [storage_mode, model_pvc_name, model_path, workspace_gib, router_enabled]
+  - title: Optional validation, benchmarking and scaling
+    variables: [inference_probe, benchmark_backend, autoscaling_enabled, min_replicas, max_replicas, prometheus_url, target_inflight]
+variables:
+  tenancy_ocid: {type: string, visible: false}
+  compartment_ocid: {type: string, visible: false}
+  region: {type: string, title: Infrastructure region}
+  model_name: {type: string, title: Model instance name}
+  namespace: {type: string, title: Onboarded model namespace, description: Must remain under the infrastructure platform namespace prefix.}
+  model_id: {type: string, title: Hugging Face repository}
+  model_revision: {type: string, title: Immutable Hugging Face commit}
+  serving_image: {type: string, title: Digest-pinned serving image}
+  tensor_parallel_size: {type: integer, minimum: 1, title: Tensor parallel size within each host}
+  pipeline_parallel_size: {type: integer, minimum: 1, title: Pipeline parallel size}
+  hosts_per_replica: {type: integer, minimum: 1, title: Hosts per replica}
+  gpus_per_pod: {type: integer, minimum: 1, title: GPUs per host pod}
+  replicas: {type: integer, minimum: 1, title: Complete model replicas}
+  context_length: {type: integer, minimum: 1, title: Context tokens per replica}
+  concurrency: {type: integer, minimum: 1, title: Concurrent sequences per replica}
+  hf_token_secret: {type: string, title: Existing Hugging Face token Secret, description: Optional Secret in the model namespace with key token. Supply its name only.}
+  storage_mode: {type: enum, enum: [direct_hf, existing_pvc, staged_object_storage], default: direct_hf, title: Weight delivery}
+  model_pvc_name: {type: string, title: Existing retained model PVC}
+  model_path: {type: string, default: /models/model, title: Model path inside the mounted PVC}
+  workspace_gib: {type: integer, minimum: 1, title: Local workspace GiB per serving pod}
+  router_enabled: {type: boolean, default: false, title: Prefix-aware router, description: Automatically enabled for multiple replicas or an autoscaling maximum above one.}
+  inference_probe: {type: enum, enum: [none, completions, chat], default: none, title: Optional inference probe, description: Health and model identity are always checked. Other modalities need task-specific payloads.}
+  benchmark_backend: {type: enum, enum: [unsupported, openai, openai-chat], default: unsupported, title: Benchmark task adapter}
+  autoscaling_enabled: {type: boolean, default: false, title: Enable request-based autoscaling, description: Uses retained KEDA/Prometheus and cannot grow beyond complete model slots in the retained GPU allocation.}
+  min_replicas: {type: integer, default: 1, minimum: 1, title: Minimum replicas}
+  max_replicas: {type: integer, default: 1, minimum: 1, title: Maximum replicas}
+  prometheus_url: {type: string, title: Existing Prometheus endpoint}
+  target_inflight: {type: integer, default: 8, minimum: 1, title: Target in-flight requests per replica}

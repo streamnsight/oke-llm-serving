@@ -1,0 +1,74 @@
+<!doctype html>
+<!-- Copyright (c) 2020-2022 Oracle and/or its affiliates. All rights reserved.
+Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl. -->
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>OKE LLM deployment options</title>
+<style>
+body{font:15px/1.5 system-ui,sans-serif;color:#202933;background:#f5f7f8;margin:0;padding:32px}main{max-width:1600px;margin:auto}h1{margin-bottom:6px}h2{font-size:19px}.muted{color:#53616e}.cards{display:flex;flex-wrap:wrap;gap:12px;margin:20px 0}.card{background:white;border:1px solid #d8e0e5;border-radius:8px;padding:12px 16px;min-width:140px}.card strong{display:block;font-size:19px}.toolbar{display:flex;gap:12px;margin:18px 0}input,select{font:inherit;padding:9px;border:1px solid #b8c7d1;border-radius:5px}input{flex:1;max-width:520px}.table-wrap{overflow:auto;background:white;border:1px solid #d8e0e5;border-radius:8px}table{border-collapse:collapse;width:100%;font-size:14px}th,td{padding:12px;text-align:left;vertical-align:top;border-bottom:1px solid #e4e9ec}th{background:#edf2f5;white-space:nowrap}td div{white-space:nowrap}td small{display:block;color:#53616e;max-width:280px}a{color:#065fa3}td a{display:block;white-space:nowrap;margin-bottom:6px}.recommended{background:#eef8f0}details{margin-top:22px}li{margin:7px 0}#failures{color:#8a3222}@media(max-width:700px){body{padding:16px}.toolbar{flex-wrap:wrap}}
+</style></head><body><main>
+<h1>Compare deployment options</h1><div id="model" class="muted"></div><div id="scan" class="muted"></div><p class="muted">Allocations shown are planned. Discovery does not allocate GPU hosts. This page opens separately from Resource Manager; the same options and links remain in its native discovery JSON.</p>
+<div id="metrics" class="cards"></div><div id="failures"></div>
+<div class="toolbar"><input id="search" aria-label="Filter options" placeholder="Filter by region, shape or availability domain"><select id="sort" aria-label="Sort options"><option value="region">Region, shape and AD</option><option value="allocated">Fewest allocated GPUs</option><option value="capacity">Most available GPUs in AD</option></select></div>
+<div class="table-wrap"><table><thead><tr><th>Region / AD / GPU shape</th><th>Available GPUs at scan</th><th>Deployment / replica packing</th><th>GPU memory</th><th>Configuration</th><th>Launch / download</th></tr></thead><tbody id="options"></tbody></table></div>
+<details open><summary>How to read these estimates</summary><ul id="notices"></ul></details>
+</main><script id="report-data" type="application/json">${report_json}</script>
+<script>
+"use strict";
+const report = JSON.parse(document.getElementById("report-data").textContent);
+const text = (value) => value === null || value === undefined ? "Unknown" : String(value);
+const label = (value) => text(value).replace(/_/g," ");
+const number = (value) => value === null || value === undefined ? "Unknown" : Number(value).toLocaleString(undefined,{maximumFractionDigits:2});
+const gb = (value) => number(value) + (value === null || value === undefined ? "" : " GB");
+function element(tag, value) { const node=document.createElement(tag); if(value!==undefined) node.textContent=value; return node; }
+function line(parent, value, small=false) { parent.appendChild(element(small?"small":"div",value)); }
+function link(parent, label, value) {
+  if(!value) return;
+  let url; try { url=new URL(value); } catch { return; }
+  if(url.protocol!=="https:") return;
+  const node=element("a",label); node.href=url.href; node.target="_blank"; node.rel="noopener noreferrer"; parent.appendChild(node);
+}
+const model=report.model;
+document.getElementById("model").textContent=text(model.repository)+" · revision "+text(model.revision)+" · context "+number(model.context_length)+" tokens · concurrency "+number(model.concurrency_per_replica)+" per replica";
+document.getElementById("scan").textContent="Assessed regions: "+(report.scan.assessed_regions||[]).join(", ")+" · "+number(report.option_count)+" confirmed capacity options. Choose any row; the highlighted row is the recommendation.";
+for(const [label,value] of [["Checkpoint download",model.memory_gb.checkpoint_download],["Checkpoint tensor data",model.memory_gb.checkpoint_tensors],["Resident weights",model.memory_gb.resident_weights],["KV cache / replica",model.memory_gb.kv_per_replica],["Estimated total / replica",model.memory_gb.total_estimated]]) {
+  const card=element("div"); card.className="card"; card.appendChild(element("span",label)); card.appendChild(element("strong",gb(value))); document.getElementById("metrics").appendChild(card);
+}
+for(const reason of report.failure_summary||[]) line(document.getElementById("failures"),reason);
+for(const notice of report.notices||[]) document.getElementById("notices").appendChild(element("li",notice));
+if(model.memory_status!=="estimated") document.getElementById("notices").appendChild(element("li","Model memory estimate: "+text(model.memory_status)+". "+(model.memory_reasons||[]).join(" ")));
+const entries=Object.entries(report.options);
+function render() {
+  const filter=document.getElementById("search").value.toLowerCase();
+  const mode=document.getElementById("sort").value;
+  const visible=entries.filter(([id,row])=>[id,row.region,row.availability_domain,row.gpu_shape].join(" ").toLowerCase().includes(filter));
+  visible.sort((a,b)=>{
+    if(mode==="allocated") return (a[1].allocation.allocated_gpus??Infinity)-(b[1].allocation.allocated_gpus??Infinity)||a[0].localeCompare(b[0]);
+    if(mode==="capacity") return (b[1].capacity.ad_available_gpus??-1)-(a[1].capacity.ad_available_gpus??-1)||a[0].localeCompare(b[0]);
+    return [a[1].region,a[1].gpu_shape,a[1].availability_domain,a[0]].join(" ").localeCompare([b[1].region,b[1].gpu_shape,b[1].availability_domain,b[0]].join(" "));
+  });
+  const body=document.getElementById("options"); body.replaceChildren();
+  for(const [id,row] of visible) {
+    const tr=element("tr"); if(id===report.recommended_option_id) tr.className="recommended";
+    const cells=Array.from({length:6},()=>element("td")); cells.forEach(cell=>tr.appendChild(cell));
+    line(cells[0],row.region); line(cells[0],row.availability_domain); line(cells[0],row.gpu_shape); if(row.gpu_type) line(cells[0],row.gpu_type,true); line(cells[0],id,true);
+    line(cells[1],"AD: "+number(row.capacity.ad_available_gpus)+" GPUs / "+number(row.capacity.ad_available_hosts)+" hosts");
+    line(cells[1],"Region, same shape: "+number(row.capacity.regional_available_gpus)+" GPUs");
+    if(row.capacity.regional_coverage!=="complete") line(cells[1],"Partial AD coverage; known reported: "+number(row.capacity.regional_known_reported_gpus)+" GPUs",true);
+    line(cells[1],"Entitlement ceiling for this AD option: "+number(row.capacity.entitled_hosts)+" hosts",true); line(cells[1],"Observed: "+text(row.capacity.observed_at),true);
+    const allocation=row.allocation;
+    line(cells[2],number(allocation.required_gpus_per_replica)+" GPUs / replica (TP "+number(allocation.tensor_parallel_size)+", PP "+number(allocation.pipeline_parallel_size)+")");
+    line(cells[2],number(allocation.required_hosts)+" allocated hosts / "+number(allocation.allocated_gpus)+" GPUs");
+    line(cells[2],number(allocation.replicas)+" replicas; "+number(allocation.replicas_per_host)+" per host"); line(cells[2],number(allocation.unused_gpus)+" unused GPUs",true);
+    line(cells[3],gb(row.memory_gb.per_gpu)+" per GPU"); line(cells[3],gb(row.memory_gb.estimated_per_gpu)+" estimated per rank"); line(cells[3],label(row.memory_method),true);
+    line(cells[4],label(row.configuration_status)); line(cells[4],"Runtime: "+label(row.runtime_validation),true); line(cells[4],"Declared tasks: "+((row.tasks||[]).join(", ")||"unknown"),true); line(cells[4],"Platform requirements: "+(row.components.map(label).join(", ")||"none"),true);
+    if(row.integration_requirements.length) line(cells[4],row.integration_requirements.map(label).join(", "),true);
+    link(cells[5],"Create infrastructure stack",row.links.launch_url); link(cells[5],"Download ZIP (PAR)",row.links.download_url); line(cells[5],"Expires: "+text(row.links.expires_at),true);
+    if(!row.links.launch_url) line(cells[5],"Apply discovery to publish launch links",true);
+    if(row.skip_gpu_allocation) line(cells[5],"Debug default: GPU allocation disabled",true);
+    body.appendChild(tr);
+  }
+}
+document.getElementById("search").addEventListener("input",render);
+document.getElementById("sort").addEventListener("change",render);
+render();
+</script></body></html>

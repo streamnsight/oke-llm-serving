@@ -105,3 +105,8 @@ variable "model_storage_mode" {
     error_message = "Choose direct_huggingface or object_storage."
   }
 }
+variable "include_diagnostics" {
+  description = "Include detailed model, engine and regional evidence in the consolidated JSON. This does not run unselected engine/cache alternative lookups."
+  type        = bool
+  default     = false
+}

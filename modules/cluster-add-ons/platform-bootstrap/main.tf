@@ -102,7 +102,7 @@ locals {
       "set -euo pipefail", "export REGION CLUSTER_ID PLATFORM_NAME PLATFORM_MODE RESULT_REPOSITORY_ID OCI_CLI_AUTH OCI_CLI_REGION OCI_DEPLOYMENT_ID OCI_PIPELINE_ID"
     ], [for script in sort(tolist(local.scripts)) : "printf '%s  %s\\n' '${filesha256("${path.module}/scripts/${script}")}' '${script}' | sha256sum -c -"], ["printf '%s  platform.json\\n' '${sha256(jsonencode(local.config))}' | sha256sum -c -", "bash ./platform.sh"])) }]
   }) }
-  all_pipeline_ids = concat(module.components.all_pipeline_ids, [for pipeline in oci_devops_deploy_pipeline.platform : pipeline.id])
+  all_pipeline_ids = concat(module.components.all_pipeline_ids, [for pipeline in oci_devops_deploy_pipeline.platform : pipeline.id], [oci_devops_deploy_pipeline.model_onboarding.id])
 }
 resource "oci_generic_artifacts_content_artifact_by_path" "script" {
   for_each      = local.scripts
@@ -205,19 +205,29 @@ output "bootstrap_rbac" {
 }
 output "platform" {
   value = {
-    schema_version         = "2.0", platform_name = var.name, generation = local.generation, region = var.config.region, cluster_id = var.config.cluster_id,
-    allocation             = var.config.allocation, gpu_shape = var.config.gpu_shape, node_count = var.config.node_count, gpu_count_per_host = var.config.gpu_count_per_host,
-    validation_scope       = try(var.config.gpu_allocation_enabled, true) ? "platform_and_gpu_capacity" : "cpu_components_only",
-    gpu_selector           = "oke-llm/allocation=${var.name}", cpu_placement = "existing_cluster_cpu_pools", cpu_budget = local.component_budget,
-    project_id             = oci_devops_project.platform.id, bootstrap_pipeline_id = oci_devops_deploy_pipeline.platform["deploy"].id,
-    script_repository_id   = oci_artifacts_repository.scripts.id, result_repository_id = oci_artifacts_repository.results.id,
-    component_pipeline_ids = module.components.component_pipeline_ids, undeploy_pipeline_ids = module.components.undeploy_pipeline_ids,
-    validation_pipeline_id = oci_devops_deploy_pipeline.platform["validate"].id,
-    component_generations  = module.components.generations, chart_repositories = module.components.chart_repositories,
-    specification          = { repository_id = oci_artifacts_repository.scripts.id, path = oci_generic_artifacts_content_artifact_by_path.specification.artifact_path, version = oci_generic_artifacts_content_artifact_by_path.specification.version },
-    evidence               = { repository_id = oci_artifacts_repository.results.id, prefix = "${var.name}/platform/${local.generation}", version = "execution UUID; no mutable latest report" },
-    required_components    = keys(local.component_specs), monitoring_enabled = local.monitoring_enabled, autoscaling_enabled = local.autoscaling_enabled,
-    cluster_authorization  = try(var.config.cluster_authorization_mode, "iam"),
-    runtime_readiness      = "not_asserted_by_terraform; run deploy/validate and inspect immutable execution evidence"
+    schema_version               = "2.0", platform_name = var.name, generation = local.generation, region = var.config.region, cluster_id = var.config.cluster_id,
+    allocation                   = var.config.allocation, gpu_shape = var.config.gpu_shape, node_count = var.config.node_count, gpu_count_per_host = var.config.gpu_count_per_host,
+    validation_scope             = try(var.config.gpu_allocation_enabled, true) ? "platform_and_gpu_capacity" : "cpu_components_only",
+    gpu_selector                 = "oke-llm/allocation=${var.name}", cpu_placement = "existing_cluster_cpu_pools", cpu_budget = local.component_budget,
+    project_id                   = oci_devops_project.platform.id, bootstrap_pipeline_id = oci_devops_deploy_pipeline.platform["deploy"].id,
+    script_repository_id         = oci_artifacts_repository.scripts.id, result_repository_id = oci_artifacts_repository.results.id,
+    component_pipeline_ids       = module.components.component_pipeline_ids, undeploy_pipeline_ids = module.components.undeploy_pipeline_ids,
+    validation_pipeline_id       = oci_devops_deploy_pipeline.platform["validate"].id,
+    component_generations        = module.components.generations, chart_repositories = module.components.chart_repositories,
+    specification                = { repository_id = oci_artifacts_repository.scripts.id, path = oci_generic_artifacts_content_artifact_by_path.specification.artifact_path, version = oci_generic_artifacts_content_artifact_by_path.specification.version },
+    evidence                     = { repository_id = oci_artifacts_repository.results.id, prefix = "${var.name}/platform/${local.generation}", version = "execution UUID; no mutable latest report" },
+    required_components          = keys(local.component_specs), monitoring_enabled = local.monitoring_enabled, autoscaling_enabled = local.autoscaling_enabled,
+    components                   = { for key, c in local.component_specs : key => { mode = c.mode, namespace = c.namespace, release_name = c.release_name, chart_version = c.chart.version, crd_names = c.crd_names, owner_name = module.components.owner_names[key], generation = module.components.generations[key], deployment_names = c.deployment_names } },
+    prometheus_url               = try(local.component_specs.prometheus.mode != "retire" ? "http://llm-monitoring-kube-prom-prometheus.${local.component_specs.prometheus.namespace}.svc.cluster.local:9090" : null, null),
+    cluster_authorization        = try(var.config.cluster_authorization_mode, "iam"),
+    cluster_compartment_id       = var.config.target.cluster_compartment_id, kubernetes_version = var.config.target.kubernetes_version,
+    deploy_environment_id        = oci_devops_deploy_environment.cluster.id, runner_subnet_id = var.subnet_id, runner_nsg_ids = var.nsg_ids,
+    model_onboarding_pipeline_id = oci_devops_deploy_pipeline.model_onboarding.id,
+    model_onboarding = {
+      pipeline_id        = oci_devops_deploy_pipeline.model_onboarding.id, namespace_prefix = "${var.name}-model-",
+      owner_label        = "oke-llm/platform-owner", owner_value = substr(sha256("${var.name}/${var.config.cluster_id}"), 0, 32),
+      required_arguments = ["MODEL_NAMESPACE", "MODEL_PIPELINE_IDS"], operations = ["grant", "revoke"], automatically_started = false
+    },
+    runtime_readiness = "not_asserted_by_terraform; run deploy/validate and inspect immutable execution evidence"
   }
 }

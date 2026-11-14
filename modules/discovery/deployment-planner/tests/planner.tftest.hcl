@@ -25,6 +25,10 @@ run "single_gpu_candidate" {
     condition     = length(output.assessment.candidates) == 2 && output.assessment.candidates[0].node_count == 1 && output.assessment.candidates[0].runtime_validation == "not_run" && output.assessment.candidates[0].entitlement == "confirmed_for_quantity"
     error_message = "A catalogued single GPU should produce a candidate without claiming runtime or quantity-specific quota validation."
   }
+  assert {
+    condition = output.assessment.recommended_selection_id == output.assessment.candidates[0].id && output.assessment.recommendation_basis == "analytical_infrastructure_option_requires_expert_serving_validation"
+    error_message = "Candidate-only discovery must provide a qualified infrastructure recommendation rather than publishing choices with a null primary selection."
+  }
 }
 run "unsupported_memory" {
   command = plan

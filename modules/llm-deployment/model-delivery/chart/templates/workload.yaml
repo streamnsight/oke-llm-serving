@@ -1,0 +1,59 @@
+# Copyright (c) 2020-2022 Oracle and/or its affiliates. All rights reserved.
+# Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
+{{- if eq (int .Values.hosts) 1 }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}
+  labels: {{- include "model.labels" . | nindent 4 }}
+spec:
+  replicas: {{ int .Values.replicas }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate: {maxSurge: 0, maxUnavailable: 1}
+  selector:
+    matchLabels: {app.kubernetes.io/instance: {{ .Release.Name }}, oke-llm/endpoint: "true"}
+  template:
+    metadata:
+      labels:
+        {{- include "model.labels" . | nindent 8 }}
+        oke-llm/endpoint: "true"
+    spec: {{- include "model.podSpec" (dict "root" . "worker" false) | nindent 6 }}
+{{- else }}
+apiVersion: leaderworkerset.x-k8s.io/v1
+kind: LeaderWorkerSet
+metadata:
+  name: {{ .Release.Name }}
+  labels: {{- include "model.labels" . | nindent 4 }}
+spec:
+  replicas: {{ int .Values.replicas }}
+  startupPolicy: LeaderCreated
+  rolloutStrategy:
+    type: RollingUpdate
+    rollingUpdateConfiguration: {maxSurge: 0, maxUnavailable: 1}
+  leaderWorkerTemplate:
+    size: {{ int .Values.hosts }}
+    restartPolicy: RecreateGroupOnPodRestart
+    leaderTemplate:
+      metadata:
+        labels:
+          {{- include "model.labels" . | nindent 10 }}
+          oke-llm/endpoint: "true"
+      spec: {{- include "model.podSpec" (dict "root" . "worker" false) | nindent 8 }}
+    workerTemplate:
+      metadata:
+        labels:
+          {{- include "model.labels" . | nindent 10 }}
+          oke-llm/endpoint: "false"
+      spec: {{- include "model.podSpec" (dict "root" . "worker" true) | nindent 8 }}
+{{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}
+  labels: {{- include "model.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector: {app.kubernetes.io/instance: {{ .Release.Name }}, oke-llm/endpoint: "true"}
+  ports: [{name: http, port: 8000, targetPort: http}]

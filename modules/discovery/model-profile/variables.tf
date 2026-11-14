@@ -52,3 +52,9 @@ variable "margin" {
     error_message = "margin must be between zero and one."
   }
 }
+
+variable "recipe_metadata" {
+  description = "Optional shared immutable recipe lookup {url,status_code,body}. The discovery root supplies it once; standalone module callers may omit it."
+  type        = any
+  default     = null
+}

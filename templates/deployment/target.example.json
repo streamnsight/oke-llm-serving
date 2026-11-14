@@ -1,7 +1,0 @@
-{
-  "tenancy_ocid": "ocid1.tenancy.REPLACE",
-  "cluster_id": "ocid1.cluster.REPLACE",
-  "name": "my-model",
-  "selection_id": "REPLACE_WITH_ASSESSMENT_ID",
-  "provision_resources": false
-}

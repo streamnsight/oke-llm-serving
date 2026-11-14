@@ -45,7 +45,7 @@ run "default_platform_only_requires_monitoring" {
     error_message = "Native chart stages need the selected private OKE environment and matching runner networking."
   }
   assert {
-    condition     = length(output.bootstrap_rbac.subjects) == 4 && contains([for subject in output.bootstrap_rbac.subjects : subject.name], output.platform.bootstrap_pipeline_id) && contains([for subject in output.bootstrap_rbac.subjects : subject.name], output.platform.validation_pipeline_id) && contains([for subject in output.bootstrap_rbac.subjects : subject.name], output.platform.component_pipeline_ids.prometheus) && contains([for subject in output.bootstrap_rbac.subjects : subject.name], output.platform.undeploy_pipeline_ids.prometheus) && output.bootstrap_rbac.roleRef.name == "cluster-admin"
+    condition     = length(output.bootstrap_rbac.subjects) == 5 && contains([for subject in output.bootstrap_rbac.subjects : subject.name], output.platform.bootstrap_pipeline_id) && contains([for subject in output.bootstrap_rbac.subjects : subject.name], output.platform.validation_pipeline_id) && contains([for subject in output.bootstrap_rbac.subjects : subject.name], output.platform.component_pipeline_ids.prometheus) && contains([for subject in output.bootstrap_rbac.subjects : subject.name], output.platform.undeploy_pipeline_ids.prometheus) && output.bootstrap_rbac.roleRef.name == "cluster-admin"
     error_message = "Only the actual orchestration, validation, component deployment and teardown pipeline principals receive Kubernetes authorization."
   }
   assert {
@@ -80,7 +80,7 @@ run "all_optional_components_can_be_disabled" {
   command = apply
   variables { config = merge(var.config, { monitoring_enabled = false, autoscaling_enabled = false, enable_lws = false }) }
   assert {
-    condition     = length(output.platform.required_components) == 0 && length(output.platform.component_pipeline_ids) == 0 && length(output.platform.undeploy_pipeline_ids) == 0 && length(output.platform.chart_repositories) == 0 && length(output.bootstrap_rbac.subjects) == 2 && output.platform.cpu_budget.cpu_requests_millicores == 0 && output.platform.cpu_budget.persistent_volume_gib == 0
+    condition     = length(output.platform.required_components) == 0 && length(output.platform.component_pipeline_ids) == 0 && length(output.platform.undeploy_pipeline_ids) == 0 && length(output.platform.chart_repositories) == 0 && length(output.bootstrap_rbac.subjects) == 3 && output.platform.cpu_budget.cpu_requests_millicores == 0 && output.platform.cpu_budget.persistent_volume_gib == 0
     error_message = "An all-off platform keeps only its orchestration/validation entry points and creates no component pipelines, chart repositories or CPU/storage request budget."
   }
 }
@@ -89,7 +89,7 @@ run "external_monitoring_is_reused_without_teardown_or_chart_mirroring" {
   command = apply
   variables { config = merge(var.config, { component_modes = { prometheus = "reuse" } }) }
   assert {
-    condition     = local.component_specs.prometheus.mode == "reuse" && keys(output.platform.component_pipeline_ids) == ["prometheus"] && length(output.platform.undeploy_pipeline_ids) == 0 && length(output.platform.chart_repositories) == 0 && length(output.bootstrap_rbac.subjects) == 3 && jsondecode(oci_generic_artifacts_content_artifact_by_path.specification.content).components.prometheus.mode == "reuse"
+    condition     = local.component_specs.prometheus.mode == "reuse" && keys(output.platform.component_pipeline_ids) == ["prometheus"] && length(output.platform.undeploy_pipeline_ids) == 0 && length(output.platform.chart_repositories) == 0 && length(output.bootstrap_rbac.subjects) == 4 && jsondecode(oci_generic_artifacts_content_artifact_by_path.specification.content).components.prometheus.mode == "reuse"
     error_message = "Reusing an existing controller gets a validation pipeline but neither native Helm ownership/mirroring nor an uninstall pipeline."
   }
 }
@@ -98,7 +98,7 @@ run "retire_keeps_only_an_explicit_teardown_pipeline" {
   command = apply
   variables { config = merge(var.config, { monitoring_enabled = false, component_modes = { prometheus = "retire" } }) }
   assert {
-    condition     = local.component_specs.prometheus.mode == "retire" && length(output.platform.component_pipeline_ids) == 0 && keys(output.platform.undeploy_pipeline_ids) == ["prometheus"] && length(output.platform.chart_repositories) == 0 && length(output.bootstrap_rbac.subjects) == 3 && jsondecode(oci_generic_artifacts_content_artifact_by_path.specification.content).components.prometheus.pipeline_id == null
+    condition     = local.component_specs.prometheus.mode == "retire" && length(output.platform.component_pipeline_ids) == 0 && keys(output.platform.undeploy_pipeline_ids) == ["prometheus"] && length(output.platform.chart_repositories) == 0 && length(output.bootstrap_rbac.subjects) == 4 && jsondecode(oci_generic_artifacts_content_artifact_by_path.specification.content).components.prometheus.pipeline_id == null
     error_message = "Retiring a component preserves its explicit teardown path without leaving a deploy pipeline or new chart mirror."
   }
 }
@@ -114,15 +114,30 @@ run "private_oke_environment_rejects_ipv6_enabled_runner_subnets" {
 run "kubernetes_iam_permission_is_scoped_without_nodepool_management" {
   command = plan
   assert {
-    condition = length([for rule in oci_identity_policy.bootstrap.statements : rule if strcontains(rule,"request.permission = 'CLUSTER_MANAGE'") && strcontains(rule,"target.cluster.id = 'cluster'")]) == 1 && alltrue([for rule in oci_identity_policy.bootstrap.statements : !strcontains(rule,"manage cluster-family") && !strcontains(rule,"manage cluster-node-pools")])
+    condition     = length([for rule in oci_identity_policy.bootstrap.statements : rule if strcontains(rule, "request.permission = 'CLUSTER_MANAGE'") && strcontains(rule, "target.cluster.id = 'cluster'")]) == 1 && alltrue([for rule in oci_identity_policy.bootstrap.statements : !strcontains(rule, "manage cluster-family") && !strcontains(rule, "manage cluster-node-pools")])
     error_message = "Automatic Kubernetes administration must be constrained to this cluster and CLUSTER_MANAGE, excluding OCI infrastructure changes."
   }
 }
 run "explicit_rbac_mode_omits_kubernetes_iam_administration" {
   command = plan
-  variables { config = merge(var.config,{cluster_authorization_mode="rbac"}) }
+  variables { config = merge(var.config, { cluster_authorization_mode = "rbac" }) }
   assert {
-    condition = alltrue([for rule in oci_identity_policy.bootstrap.statements : !strcontains(rule,"CLUSTER_MANAGE")]) && output.platform.cluster_authorization == "rbac" && length(output.bootstrap_rbac.subjects)>0
+    condition     = alltrue([for rule in oci_identity_policy.bootstrap.statements : !strcontains(rule, "CLUSTER_MANAGE")]) && output.platform.cluster_authorization == "rbac" && length(output.bootstrap_rbac.subjects) > 0
     error_message = "RBAC mode must retain explicit binding output without granting IAM Kubernetes administration."
+  }
+}
+run "trusted_model_onboarding_is_separate_and_binding_is_complete" {
+  command = apply
+  assert {
+    condition     = output.platform.deploy_environment_id == oci_devops_deploy_environment.cluster.id && output.platform.runner_subnet_id == "runner" && toset(output.platform.runner_nsg_ids) == toset(["runner-nsg"]) && output.platform.kubernetes_version == "v1.34.1" && output.platform.cluster_compartment_id == "cluster-compartment"
+    error_message = "The generated model bundle must reference the existing private OKE environment, project and runner network."
+  }
+  assert {
+    condition     = output.platform.model_onboarding_pipeline_id == oci_devops_deploy_pipeline.model_onboarding.id && contains([for subject in output.bootstrap_rbac.subjects : subject.name], oci_devops_deploy_pipeline.model_onboarding.id) && output.platform.model_onboarding.namespace_prefix == "fixture-model-" && output.platform.model_onboarding.owner_value == substr(sha256("fixture/cluster"), 0, 32) && !output.platform.model_onboarding.automatically_started
+    error_message = "Only the trusted platform principal onboards exact model principals; no model pipeline starts automatically."
+  }
+  assert {
+    condition     = oci_devops_deploy_stage.model_onboarding.deploy_stage_type == "SHELL" && oci_devops_deploy_artifact.model_onboarding.argument_substitution_mode == "NONE" && oci_devops_deploy_artifact.model_onboarding.deploy_artifact_source[0].deploy_artifact_source_type == "GENERIC_ARTIFACT" && oci_generic_artifacts_content_artifact_by_path.model_onboarding_command.version == sha256(local.model_onboarding_command) && length(yamldecode(local.model_onboarding_command).inputArtifacts) == 3 && yamldecode(local.model_onboarding_command).env.variables.MODEL_NAMESPACE == "$${MODEL_NAMESPACE}" && local.model_onboarding_parameters.MODEL_PIPELINE_IDS == "[]" && !strcontains(local.model_onboarding_command, "base64")
+    error_message = "Onboarding uses editable non-secret arguments and verified Generic Artifact script files, never arbitrary manifests or inline encoded code."
   }
 }

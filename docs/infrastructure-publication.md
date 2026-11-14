@@ -10,13 +10,13 @@ Discovery is the repository root. `make package` builds one entry ZIP containing
 
 ## Run and choose
 
-Run discovery Plan and Apply in RMS. The primary button opens **only the recommended option**, not a selector. `deployment_option_count` shows how many choices are available. To select another region/AD/shape, open that entry's `launch_url` in the `deployment_options` JSON map. Entries include host count, capacity observation time, configuration status, ZIP SHA256, expiry and download URL. Zero/unknown-capacity choices remain diagnostics. A launch link does not reserve hosts or provision infrastructure.
+Run discovery Plan and Apply in RMS. The primary button opens the separate HTML comparison page; RMS also displays the complete consolidated `discovery` JSON. `deployment_option_count` shows the choices. Select any region/AD/shape through `discovery.options[ID].links.launch_url`; `recommended_launch_url` is a secondary convenience link. Entries include host count, capacity observation time, configuration status, ZIP SHA256, expiry and download URL. Zero/unknown-capacity choices remain diagnostics. A launch link does not reserve hosts or provision infrastructure.
 
 ```sh
 terraform init
 terraform plan -var-file=/path/to/request.tfvars.json -out=work/discovery.tfplan
 terraform apply work/discovery.tfplan
-terraform output -json deployment_options > work/deployment-options.json
+terraform output -json discovery > work/discovery.json
 terraform output -raw recommended_launch_url
 ```
 
@@ -30,13 +30,13 @@ Existing cloud objects and URLs are unchanged until discovery is updated with th
 
 ## Rendering and editability
 
-The native archive resource generates ZIPs at Apply. The publisher copies the infrastructure root and its six-module dependency closure, without parent templates, publisher, providers, tests, state or private tfvars. Unsupported binary assets fail rather than being corrupted. Each ZIP has root main.tf/schema.yaml/modules plus:
+The native archive resource generates ZIPs at Apply. The publisher copies the infrastructure root and its grouped runtime/module closure and the next model template, without the parent discovery publisher, provider caches, tests, state or private tfvars. Unsupported binary assets fail rather than being corrupted. Each ZIP has root main.tf/schema.yaml/modules plus:
 
 - `recommendations_override.tf.json`: Terraform declaration defaults matching the generated schema. Console/environment edits take precedence.
 - `inputs/infrastructure-spec.json`: the chosen option, model identity/revision/workload assumptions and template provenance. Files can exceed 8192 bytes without using an RMS input variable.
 - `bundle-manifest.json`: option ID, expected region, publication/run identity and template/payload hashes. The final ZIP hash is returned in publication outputs.
 
-The cluster picker/stack compartment remain dynamic. The actual RMS region is not replaced by a generated default. Expert edits to recommended hardware/storage appear in preview and invalidate the original sizing claim. Allocation rechecks live quantity-specific capacity and entitlement. Disk recommendations reserve two checkpoint copies plus 100 GiB, with a 200 GiB minimum; runtime cache sizing remains a model concern.
+The cluster picker/stack compartment remain dynamic. The actual RMS region is not replaced by a generated default. Expert edits to recommended hardware/storage appear in preview and invalidate the original sizing claim. Allocation rechecks live quantity-specific capacity and entitlement. Disk recommendations reserve two checkpoint copies per packed serving pod plus 100 GiB, with a 200 GiB minimum; runtime cache sizing remains a model concern.
 
 ## Lifetime and ownership
 

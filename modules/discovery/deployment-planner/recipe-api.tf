@@ -4,7 +4,7 @@ locals {
   recipe_id = try(local.profile.model.repository, "")
 }
 data "http" "recipe_metadata" {
-  count              = var.recipe_api_enabled ? 1 : 0
+  count              = var.recipe_api_enabled && var.recipe_metadata == null ? 1 : 0
   url                = "https://recipes.vllm.ai/${local.recipe_id}.json"
   request_timeout_ms = 60000
   lifecycle {
@@ -15,18 +15,19 @@ data "http" "recipe_metadata" {
   }
 }
 locals {
-  api                  = try(jsondecode(data.http.recipe_metadata[0].response_body), {})
+  api                  = jsondecode(var.recipe_metadata != null ? jsonencode(var.recipe_metadata.body) : try(data.http.recipe_metadata[0].response_body, "{}"))
   api_variants         = [for name, v in try(local.api.variants, {}) : name if try(v.model_id, local.api.model.model_id, "") == try(local.profile.model.repository, "unknown")]
   api_variant          = try(local.api.recommended_command.variant, contains(local.api_variants, "default") ? "default" : one(local.api_variants), null)
   api_variant_metadata = try(local.api.variants[local.api_variant], {})
   # A10 is absent from the API taxonomy. Adapt only the portable BF16 baseline,
   # never a quantized profile whose kernels may require a different architecture.
-  api_targets  = { for row in local.sizing_rows : row.hardware => lookup({ a10 = "h100", "a100-40gb" = "h100", "a100-80gb" = "h100", l40s = "h100", "rtx-pro-6000-blackwell" = "rtx_pro_6000" }, row.hardware, row.hardware)... if var.recipe_api_enabled && local.api_variant != null && try(row.gpu.compute_capability >= 80, false) }
-  api_hardware = { for hardware, targets in local.api_targets : hardware => targets[0] if !contains(["a10", "a100-40gb", "a100-80gb", "l40s"], hardware) || try(local.api_variant_metadata.precision == "bf16", false) }
+  api_targets       = { for row in local.sizing_rows : row.hardware => lookup({ a10 = "h100", "a100-40gb" = "h100", "a100-80gb" = "h100", l40s = "h100", "rtx-pro-6000-blackwell" = "rtx_pro_6000" }, row.hardware, row.hardware)... if var.recipe_api_enabled && local.api_variant != null && try(row.gpu.compute_capability >= 80, false) }
+  api_hardware      = { for hardware, targets in local.api_targets : hardware => targets[0] if !contains(["a10", "a100-40gb", "a100-80gb", "l40s"], hardware) || try(local.api_variant_metadata.precision == "bf16", false) }
+  rendering_queries = { for hardware, target in local.api_hardware : hardware => "hardware=${urlencode(target)}&variant=${urlencode(local.api_variant)}&strategy=single_node_tp" }
 }
 data "http" "recipe_rendering" {
-  for_each           = local.api_hardware
-  url                = "https://recipes.vllm.ai/${local.recipe_id}.json?hardware=${each.value}&variant=${local.api_variant}&strategy=single_node_tp"
+  for_each           = toset(values(local.rendering_queries))
+  url                = "https://recipes.vllm.ai/${local.recipe_id}.json?${each.key}"
   request_timeout_ms = 60000
   lifecycle {
     postcondition {
@@ -36,9 +37,14 @@ data "http" "recipe_rendering" {
   }
 }
 locals {
-  renderings       = { for hardware, response in data.http.recipe_rendering : hardware => jsondecode(response.response_body) if response.status_code == 200 }
+  renderings       = { for hardware, query in local.rendering_queries : hardware => jsondecode(data.http.recipe_rendering[query].response_body) if data.http.recipe_rendering[query].status_code == 200 }
   valid_renderings = { for hardware, r in local.renderings : hardware => r if try(r.selection.hardware == local.api_hardware[hardware] && r.selection.variant == local.api_variant && r.selection.strategy == "single_node_tp" && length(r.selection.adjusted) == 0 && r.argv[0] == "vllm" && r.argv[1] == "serve" && r.argv[2] == local.profile.model.repository, false) }
-  api_images       = toset([for r in values(local.valid_renderings) : r.docker_image if can(regex("^vllm/vllm-openai:[A-Za-z0-9_.-]+$", r.docker_image))])
+  rendering_images = toset([for r in values(local.valid_renderings) : r.docker_image if can(regex("^vllm/vllm-openai:[A-Za-z0-9_.-]+$", r.docker_image))])
+  resolved_recipe_images = { for image in local.rendering_images : image => var.serving_resolution.engine.available_images if try(
+    image == "vllm/vllm-openai:${var.serving_resolution.engine.image_tag}" && length(var.serving_resolution.engine.available_images) > 0 &&
+    alltrue([for reference in values(var.serving_resolution.engine.available_images) : can(regex("^vllm/vllm-openai@sha256:[a-f0-9]{64}$", reference))]), false
+  ) }
+  api_images = setsubtract(local.rendering_images, toset(keys(local.resolved_recipe_images)))
 }
 data "http" "recipe_image" {
   for_each           = local.api_images
@@ -52,7 +58,7 @@ data "http" "recipe_image" {
   }
 }
 locals {
-  recipe_images = { for image, response in data.http.recipe_image : image => { for platform in ["amd64", "arm64"] : "linux/${platform}" => "vllm/vllm-openai@${one([for i in try(jsondecode(response.response_body).images, []) : i.digest if i.os == "linux" && i.architecture == platform])}" if length([for i in try(jsondecode(response.response_body).images, []) : i if i.os == "linux" && i.architecture == platform && can(regex("^sha256:[a-f0-9]{64}$", i.digest))]) == 1 } }
+  recipe_images = merge(local.resolved_recipe_images, { for image, response in data.http.recipe_image : image => { for platform in ["amd64", "arm64"] : "linux/${platform}" => "vllm/vllm-openai@${one([for i in try(jsondecode(response.response_body).images, []) : i.digest if i.os == "linux" && i.architecture == platform])}" if length([for i in try(jsondecode(response.response_body).images, []) : i if i.os == "linux" && i.architecture == platform && can(regex("^sha256:[a-f0-9]{64}$", i.digest))]) == 1 } })
   # Recipe guidelines are a heuristic budget, not a per-rank allocation proof.
   heuristic_payload = try(local.api_variant_metadata.precision == "bf16" && local.profile.weights.tensor_data_bytes > 0 && alltrue([for n in [local.a.layers, local.a.kv_heads, local.a.head_dim] : n > 0]) ? (
     max(local.profile.weights.tensor_data_bytes, local.profile.weights.tensor_elements * (local.profile.memory.assumptions.kv_dtype == "float32" ? 4 : 2)) +
@@ -90,27 +96,30 @@ locals {
       recipe = merge(var.serving_resolution.recipe, {
         args         = [for i, arg in slice(row.rendering.argv, 3, length(row.rendering.argv)) : arg if !contains(local.recipe_managed_flags, split("=", arg)[0]) && !try(contains(local.recipe_managed_flags, slice(row.rendering.argv, 3, length(row.rendering.argv))[i - 1]), false)]
         env          = row.rendering.env, selected_features = row.rendering.selection.features, selected_hardware = row.hardware
-        api          = { url = data.http.recipe_rendering[row.hardware].url, sha256 = sha256(data.http.recipe_rendering[row.hardware].response_body), selection = row.rendering.selection, original_argv = row.rendering.argv, original_image = row.rendering.docker_image, rendering = row.rendering }
+        api          = { url = data.http.recipe_rendering[local.rendering_queries[row.hardware]].url, sha256 = sha256(data.http.recipe_rendering[local.rendering_queries[row.hardware]].response_body), selection = row.rendering.selection, original_argv = row.rendering.argv, original_image = row.rendering.docker_image, rendering = row.rendering }
         dependencies = try(local.api.model.install.extras, []), companions = try(row.rendering.companions, [])
-        serving_mode = "text", modality_validation = "text_only_test_pipeline"
+        serving_mode = try(local.api.meta.tasks[0], "unknown"), serving_tasks = try(local.api.meta.tasks, []), modality_validation = "not_run_requires_task_specific_validation"
       })
     }
     recommendation_reason = "Smallest enumerated intra-host TP layout meeting a heuristic memory budget; spare GPUs on allocated hosts run complete extra replicas. Full host quantities have confirmed capacity/headroom; no price or throughput prediction."
     warnings              = ["Untested configuration; run deployment validation and benchmarking.", "Memory budget divides upstream guidance approximately; sharding balance, recurrent/vision state, CUDA graphs and workload KV fit are not proven.", "Recipe dependency commands are evidence, not executed; validate their availability in the pinned image.", row.hardware == "a10" ? "A10 adapts the H100 BF16 baseline; TP may cross PCIe and is not upstream validated." : "GPU model match alone does not establish validation of this image/variant/TP/workload."]
-  } if try(row.capacity_status == "positive" && row.capacity.available_instances >= row.node_count && row.limit_status == "positive" && row.entitled_instances >= row.node_count, false) && try(contains(local.api.meta.tasks, "text"), false) && try(!contains(keys(local.api_variant_metadata), "supported_hardware") || contains(local.api_variant_metadata.supported_hardware, row.hardware), true)]
+  } if try(row.capacity_status == "positive" && row.capacity.available_instances >= row.node_count && row.limit_status == "positive" && row.entitled_instances >= row.node_count, false) && try(!contains(keys(local.api_variant_metadata), "supported_hardware") || contains(local.api_variant_metadata.supported_hardware, row.hardware), true)]
   recipe_managed_flags = ["--tensor-parallel-size", "-tp", "--pipeline-parallel-size", "-pp", "--max-model-len", "--max-num-seqs", "--dtype", "--kv-cache-dtype", "--gpu-memory-utilization"]
 }
 
 locals {
-  suggestion_rank_index = { for s in local.suggestions : format("%03d-%03d-%s", s.gpus_per_node, s.tensor_parallel_size, s.id) => s }
+  suggestion_rank_index = { for s in local.suggestions : format("%08d-%04d-%03d-%s", s.gpus_per_node * s.node_count, s.node_count, s.tensor_parallel_size, s.id) => s }
   ranked_suggestions    = [for key in sort(keys(local.suggestion_rank_index)) : local.suggestion_rank_index[key]]
 }
 
 # Companion services need Kubernetes resource/memory configuration. Retain their
 # complete API plans for review without silently enabling a second process.
+locals {
+  cache_queries = { for pair in setproduct(keys(local.valid_renderings), ["simple", "lmcache"]) : "${pair[0]}/${pair[1]}" => "${local.rendering_queries[pair[0]]}&kv_offload=${urlencode(pair[1])}" if var.assess_cache_alternatives && try(local.api.kv_offload_support.offloading_cpu != "unsupported", false) }
+}
 data "http" "cache_option" {
-  for_each           = { for pair in setproduct(keys(local.valid_renderings), ["simple", "lmcache"]) : "${pair[0]}/${pair[1]}" => pair if try(local.api.kv_offload_support.offloading_cpu != "unsupported", false) }
-  url                = "https://recipes.vllm.ai/${local.recipe_id}.json?hardware=${local.api_hardware[each.value[0]]}&variant=${local.api_variant}&strategy=single_node_tp&kv_offload=${each.value[1]}"
+  for_each           = toset(values(local.cache_queries))
+  url                = "https://recipes.vllm.ai/${local.recipe_id}.json?${each.key}"
   request_timeout_ms = 60000
   lifecycle {
     postcondition {
@@ -120,9 +129,9 @@ data "http" "cache_option" {
   }
 }
 locals {
-  cache_options = { for key, response in data.http.cache_option : key => {
-    configuration_status = "requires_cache_integration", source_url = response.url, sha256 = sha256(response.response_body)
-    plan                 = jsondecode(response.response_body)
+  cache_options = { for key, query in local.cache_queries : key => {
+    configuration_status = "requires_cache_integration", source_url = data.http.cache_option[query].url, sha256 = sha256(data.http.cache_option[query].response_body)
+    plan                 = jsondecode(data.http.cache_option[query].response_body)
     remaining_checks     = ["Configure Kubernetes companion processes, readiness and shared transport.", "Size host cache memory against the selected OCI shape; recipe defaults are not allocation recommendations."]
-  } if response.status_code == 200 }
+  } if data.http.cache_option[query].status_code == 200 }
 }

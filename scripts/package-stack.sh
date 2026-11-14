@@ -6,7 +6,7 @@ set -euo pipefail
 [[ $# -eq 1 ]] || { echo 'Usage: package-stack.sh OUTPUT.zip' >&2; exit 2; }
 repo=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 package_stack=${PACKAGE_STACK:-discovery}
-case "$package_stack" in discovery|infrastructure|deployment) ;; *) echo 'PACKAGE_STACK must be discovery, infrastructure or deployment' >&2; exit 2;; esac
+case "$package_stack" in discovery|infrastructure|llm-deployment) ;; *) echo 'PACKAGE_STACK must be discovery, infrastructure or llm-deployment' >&2; exit 2;; esac
 output=$1
 [[ "$output" == /* ]] || output="$PWD/$output"
 staging=$(mktemp -d)
@@ -32,7 +32,7 @@ for file in "$package/"*.tf; do
   sed -e 's|"../../modules/|"./modules/|g' -e 's|${path.module}/../../modules/|${path.module}/modules/|g' "$file" > "$file.relocated"
   mv "$file.relocated" "$file"
 done
-jq -n --arg selected "$package_stack" --arg commit "$(git -C "$repo" rev-parse HEAD)" '{stack:$selected,source_commit:$commit,working_directory:".",templates:(if $selected=="discovery" then ["infrastructure","deployment"] else [] end)}' > "$package/package-manifest.json"
+jq -n --arg selected "$package_stack" --arg commit "$(git -C "$repo" rev-parse HEAD)" '{stack:$selected,source_commit:$commit,working_directory:".",templates:(if $selected=="discovery" then ["infrastructure","llm-deployment"] else [] end)}' > "$package/package-manifest.json"
 (cd "$package" && zip -qr "$staging/stack.zip" .)
 mkdir -p "$(dirname "$output")"
 mv "$staging/stack.zip" "$output"

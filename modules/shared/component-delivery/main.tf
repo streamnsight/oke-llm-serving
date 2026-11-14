@@ -9,7 +9,7 @@ data "oci_objectstorage_namespace" "registry" { compartment_id = var.compartment
 
 locals {
   managed       = { for key, c in var.components : key => c if c.mode == "managed" }
-  scripts       = toset(["component.sh", "lock.sh", "tools.sh"])
+  scripts       = toset(["archive.sh", "component.sh", "lock.sh", "tools.sh"])
   registry_host = coalesce(var.registry_host, "${var.region}.ocir.io")
   mirror_paths  = { for key, c in local.managed : key => "${var.name}/${substr(sha256(var.cluster_id), 0, 12)}/${key}/${c.chart.name}" }
   specifications = { for key, c in var.components : key => merge(c, {
@@ -19,6 +19,7 @@ locals {
     lock_name             = "oke-llm-${substr(sha256("${var.cluster_id}/${c.namespace}/${c.release_name}"), 0, 40)}",
     lock_duration_seconds = 3 * c.timeout_seconds + 1800,
     script_digests        = { for script in local.scripts : script => filesha256("${path.module}/scripts/${script}") }
+    runtime_digests       = { for path, content in var.runtime_files : path => sha256(content) }
   }) }
   generations = { for key, c in local.specifications : key => sha256(jsonencode(c)) }
   # Retire intentionally removes deploy, not undeploy. Removing the map entry
@@ -44,9 +45,26 @@ resource "oci_artifacts_container_repository" "chart" {
 resource "oci_generic_artifacts_content_artifact_by_path" "script" {
   for_each      = local.scripts
   repository_id = var.source_repository_id
-  artifact_path = "component-delivery/scripts/${each.key}"
+  artifact_path = "${var.name}/component-delivery/scripts/${each.key}"
   version       = filesha256("${path.module}/scripts/${each.key}")
   content       = file("${path.module}/scripts/${each.key}")
+}
+resource "oci_generic_artifacts_content_artifact_by_path" "runtime" {
+  for_each      = var.runtime_files
+  repository_id = var.source_repository_id
+  artifact_path = "${var.name}/component-delivery/runtime/${each.key}"
+  version       = sha256(each.value)
+  content       = each.value
+}
+locals {
+  chart_files = merge({}, [for key, c in local.managed : { for path, content in c.chart.files : "${key}/${path}" => { component = key, path = path, content = content } }]...)
+}
+resource "oci_generic_artifacts_content_artifact_by_path" "chart_file" {
+  for_each      = local.chart_files
+  repository_id = var.source_repository_id
+  artifact_path = "${var.name}/components/${each.value.component}/chart/${each.value.path}"
+  version       = sha256(each.value.content)
+  content       = each.value.content
 }
 resource "oci_generic_artifacts_content_artifact_by_path" "specification" {
   for_each      = var.components
@@ -126,14 +144,18 @@ locals {
         artifactId = oci_generic_artifacts_content_artifact_by_path.script[script].artifact_id
       }],
       [{ name = "specification", type = "GENERIC_ARTIFACT", location = "./specification.json",
-      artifactId = oci_generic_artifacts_content_artifact_by_path.specification[stage.component].artifact_id }]
+      artifactId = oci_generic_artifacts_content_artifact_by_path.specification[stage.component].artifact_id }],
+      [for path, artifact in oci_generic_artifacts_content_artifact_by_path.runtime : { name = "runtime-${substr(sha256(path), 0, 16)}", type = "GENERIC_ARTIFACT", location = "./runtime/${path}", artifactId = artifact.artifact_id }],
+      [for key, artifact in oci_generic_artifacts_content_artifact_by_path.chart_file : { name = "chart-${substr(sha256(key), 0, 16)}", type = "GENERIC_ARTIFACT", location = "./chart/${local.chart_files[key].path}", artifactId = artifact.artifact_id } if local.chart_files[key].component == stage.component]
     ),
     steps = [{ type = "Command", name = "${stage.operation}-${stage.component}", timeoutInSeconds = var.components[stage.component].timeout_seconds,
       command = join("\n", concat([
         "set -euo pipefail",
         "export ${join(" ", sort(concat(keys(local.parameters[stage.component]), ["DELIVERY_OPERATION", "DELIVERY_GENERATION", "DELIVERY_RESULT_REPOSITORY", "DELIVERY_REGION", "DELIVERY_DEPLOYMENT_ID", "DELIVERY_PIPELINE_ID", "DELIVERY_REGISTRY_HOST", "OCI_CLI_AUTH", "OCI_CLI_REGION", "OCI_DEPLOYMENT_ID", "OCI_PIPELINE_ID"])))}",
         "printf '%s  specification.json\\n' '${local.generations[stage.component]}' | sha256sum -c -"
-      ], [for script in sort(tolist(local.scripts)) : "printf '%s  ${script}\\n' '${filesha256("${path.module}/scripts/${script}")}' | sha256sum -c -"], ["bash ./component.sh"]))
+        ], [for script in sort(tolist(local.scripts)) : "printf '%s  ${script}\\n' '${filesha256("${path.module}/scripts/${script}")}' | sha256sum -c -"],
+        [for path, content in var.runtime_files : "printf '%s  runtime/${path}\\n' '${sha256(content)}' | sha256sum -c -"],
+      [for path, content in var.components[stage.component].chart.files : "printf '%s  chart/${path}\\n' '${sha256(content)}' | sha256sum -c -"], ["bash ./component.sh"]))
     }]
   }) }
 }
@@ -224,7 +246,7 @@ resource "oci_devops_deploy_stage" "helm" {
   is_uninstall_on_stage_delete      = false
   is_force_enabled                  = false
   should_not_wait                   = false
-  should_skip_crds                  = false
+  should_skip_crds                  = !each.value.manage_crds
   should_reset_values               = true
   should_reuse_values               = false
   are_hooks_enabled                 = true

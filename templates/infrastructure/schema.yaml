@@ -5,6 +5,16 @@ description: Apply creates DevOps platform resources and GPU infrastructure in a
 schemaVersion: 1.1.0
 version: "0.1.0"
 outputs:
+  model_launch_url:
+    type: link
+    title: Create model deployment stack
+    displayText: Create model pipelines for this platform
+  model_deployment:
+    type: json
+    title: Configured model ZIP, provenance and onboarding instructions
+  model_platform_binding:
+    type: json
+    title: Existing platform and retained allocation binding
   infrastructure_preview:
     type: json
     title: Selected infrastructure and debug scope

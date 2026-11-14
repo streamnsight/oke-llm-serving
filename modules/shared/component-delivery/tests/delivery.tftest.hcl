@@ -50,7 +50,7 @@ run "conditional_native_helm_delivery" {
     error_message = "Editable chart versions and values placeholders must reach native Helm."
   }
   assert {
-    condition     = alltrue([for spec in values(local.command_specs) : strcontains(yamldecode(spec).steps[0].command, "export ") && strcontains(yamldecode(spec).steps[0].command, "sha256sum -c -") && length(yamldecode(spec).inputArtifacts) == 4]) && alltrue([for artifact in values(oci_devops_deploy_artifact.command) : artifact.deploy_artifact_source[0].deploy_artifact_source_type == "GENERIC_ARTIFACT"])
+    condition     = alltrue([for spec in values(local.command_specs) : strcontains(yamldecode(spec).steps[0].command, "export ") && strcontains(yamldecode(spec).steps[0].command, "sha256sum -c -") && length(yamldecode(spec).inputArtifacts) == 5]) && alltrue([for artifact in values(oci_devops_deploy_artifact.command) : artifact.deploy_artifact_source[0].deploy_artifact_source_type == "GENERIC_ARTIFACT"])
     error_message = "Command specifications and verified file inputs must use Artifact Registry with exported editable parameters."
   }
   assert {

@@ -38,6 +38,15 @@ variable "registry_host" {
   default     = null
   description = "OCIR host override for other realms; defaults to the commercial region.ocir.io endpoint."
 }
+variable "runtime_files" {
+  type        = map(string)
+  default     = {}
+  description = "Trusted caller-owned source files, delivered as immutable inputs under runtime/. Fixed preflight.sh, validate.sh and retired.sh hooks run under the component lease; these are source code, never user-supplied command strings."
+  validation {
+    condition     = alltrue([for path in keys(var.runtime_files) : can(regex("^[A-Za-z0-9_-][A-Za-z0-9_./-]*$", path)) && !strcontains(path, "..")])
+    error_message = "Runtime file names must be relative paths without traversal."
+  }
+}
 variable "components" {
   description = "Declaration-based lifecycle: managed deploys/upgrades, reuse validates an external release, retire retains only the explicit uninstall pipeline. Values may contain literal $${PARAMETER} placeholders; parameters supply their editable defaults. dependencies are prerequisite Helm releases; blocker_kinds are Kubernetes resource types whose instances prevent uninstall. No arbitrary commands are accepted."
   type = map(object({
@@ -46,17 +55,22 @@ variable "components" {
     release_name    = string
     ownership_token = string
     chart = object({
-      repository = string
+      repository = optional(string, "")
       name       = string
       version    = string
+      files      = optional(map(string), {})
     })
-    values_yaml      = optional(string, "{}")
-    parameters       = optional(map(string), {})
-    dependencies     = optional(list(object({ namespace = string, release_name = string })), [])
-    blocker_kinds    = optional(list(string), [])
-    crd_names        = optional(list(string), [])
-    deployment_names = optional(list(string), [])
-    timeout_seconds  = optional(number, 600)
+    namespace_mode         = optional(string, "create")
+    lock_namespace         = optional(string, "kube-system")
+    manage_crds            = optional(bool, true)
+    values_yaml            = optional(string, "{}")
+    parameters             = optional(map(string), {})
+    non_release_parameters = optional(list(string), [])
+    dependencies           = optional(list(object({ namespace = string, release_name = string })), [])
+    blocker_kinds          = optional(list(string), [])
+    crd_names              = optional(list(string), [])
+    deployment_names       = optional(list(string), [])
+    timeout_seconds        = optional(number, 600)
   }))
   validation {
     condition = alltrue([for key, c in var.components :
@@ -65,7 +79,11 @@ variable "components" {
       can(regex("^[a-z0-9]([-a-z0-9]*[a-z0-9])?$", c.release_name)) && length(c.release_name) <= 53 &&
       length(c.ownership_token) >= 16 && c.timeout_seconds >= 60 && c.timeout_seconds <= 1800 &&
       c.timeout_seconds == floor(c.timeout_seconds) &&
-      can(regex("^(https://|oci://)", c.chart.repository)) &&
+      contains(["create", "existing"], c.namespace_mode) &&
+      can(regex("^[a-z0-9]([-a-z0-9]*[a-z0-9])?$", c.lock_namespace)) &&
+      (length(c.chart.files) > 0 || can(regex("^(https://|oci://)", c.chart.repository))) &&
+      alltrue([for path in keys(c.chart.files) : can(regex("^[A-Za-z0-9_-][A-Za-z0-9_./-]*$", path)) && !strcontains(path, "..")]) &&
+      alltrue([for k in c.non_release_parameters : contains(keys(c.parameters), k)]) &&
       can(regex("^[A-Za-z0-9][A-Za-z0-9_.-]*$", c.chart.name)) &&
       can(regex("^v?[0-9]+\\.[0-9]+\\.[0-9]+([+-][A-Za-z0-9.-]+)?$", c.chart.version)) &&
       alltrue([for k in keys(c.parameters) : can(regex("^[A-Z][A-Z0-9_]*$", k)) && !contains([

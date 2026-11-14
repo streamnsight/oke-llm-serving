@@ -26,16 +26,41 @@ module "infrastructure_publication" {
     storage_mode              = var.model_storage_mode,
     context_length            = var.context_length, concurrency = var.concurrency
   }
+  model_profile      = module.model_profile.profile
+  serving_resolution = module.serving_resolution.resolution
 }
-output "deployment_options" {
-  description = "Confirmed infrastructure ZIPs and region-specific RMS launch URLs. PARs grant read access to the ZIP until expiry or refresh."
-  value       = try(module.infrastructure_publication[0].deployment_options, {})
+locals {
+  published_options     = try(module.infrastructure_publication[0].deployment_options, {})
+  publication_location  = try(module.infrastructure_publication[0].artifact_location, null)
+  comparison_report_url = try(oci_objectstorage_preauthrequest.comparison[0].full_path, null)
+}
+resource "oci_objectstorage_object" "comparison" {
+  count               = var.publish_infrastructure_bundles && length(local.infrastructure_options) > 0 ? 1 : 0
+  namespace           = local.publication_location.namespace
+  bucket              = local.publication_location.bucket
+  object              = "reports/discovery-${substr(sha256(module.discovery_report.html), 0, 20)}.html"
+  content             = module.discovery_report.html
+  content_type        = "text/html; charset=utf-8"
+  content_disposition = "inline"
+}
+resource "oci_objectstorage_preauthrequest" "comparison" {
+  count        = var.publish_infrastructure_bundles && length(local.infrastructure_options) > 0 ? 1 : 0
+  namespace    = local.publication_location.namespace
+  bucket       = local.publication_location.bucket
+  object_name  = oci_objectstorage_object.comparison[0].object
+  name         = "discovery-comparison"
+  access_type  = "ObjectRead"
+  time_expires = timeadd(local.publication_location.published_at, "${var.par_lifetime_hours}h")
+}
+output "comparison_report_url" {
+  description = "Compare every confirmed option in the HTML report; contains scoped expiring launch/download links."
+  value       = local.comparison_report_url
 }
 output "recommended_launch_url" {
   description = "Open the recommended infrastructure stack in the selected region, then select an existing cluster and review preview."
-  value       = try(module.infrastructure_publication[0].deployment_options[module.planner.assessment.recommended_selection_id].launch_url, null)
+  value       = try(local.published_options[module.planner.assessment.recommended_selection_id].launch_url, null)
 }
 output "deployment_option_count" {
-  description = "Number of confirmed infrastructure choices in deployment_options. The primary button opens only the recommendation."
-  value       = length(try(module.infrastructure_publication[0].deployment_options, {}))
+  description = "Confirmed GPU options, including discovery-only choices whose launch links are not yet published."
+  value       = length(local.infrastructure_options)
 }

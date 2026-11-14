@@ -66,8 +66,8 @@ run "apply_renders_zip_and_creates_scoped_links" {
     error_message = "Keep recommendations editable, size disk from checkpoint bytes and preserve the actual RMS region input."
   }
   assert {
-    condition     = alltrue([for name in keys(local.files["selected"]) : !startswith(name, "templates/") && !startswith(name, "modules/discovery/infrastructure-publisher/") && !strcontains(name, "/.terraform/") && !strcontains(name, "/tests/")])
-    error_message = "Child ZIPs must exclude parents, publisher, tests, provider caches and private state."
+    condition     = alltrue([for name in keys(local.files["selected"]) : (!startswith(name, "templates/") || startswith(name, "templates/llm-deployment/")) && !startswith(name, "modules/discovery/infrastructure-publisher/") && !strcontains(name, "/.terraform/") && !strcontains(name, "/tests/")]) && contains(keys(local.files["selected"]), "templates/llm-deployment/main.tf") && contains(keys(local.files["selected"]), "modules/discovery/model-publisher/main.tf")
+    error_message = "Infrastructure includes its model-only child template/publisher once, excluding parent infrastructure templates, tests, caches and state."
   }
 }
 run "long_model_archive_path_does_not_lengthen_the_launch_url" {
@@ -152,5 +152,26 @@ run "component_and_transport_choices_reach_both_editable_defaults" {
   assert {
     condition     = local.defaults.configured.enable_lws && local.defaults.configured.enable_disaggregated_set && !local.defaults.configured.monitoring_enabled && local.defaults.configured.autoscaling_enabled && local.defaults.configured.rdma_mode == "rdma" && alltrue([for key, value in local.defaults.configured : jsondecode(local.files.configured["recommendations_override.tf.json"]).variable[key].default == value && yamldecode(local.files.configured["schema.yaml"]).variables[key].default == value]) && contains(keys(local.files.configured), "modules/shared/component-delivery/scripts/component.sh") && contains(keys(local.files.configured), "modules/llm-deployment/model-storage/scripts/download.sh")
     error_message = "Generated ZIPs must carry selected component/network defaults in both HCL and RMS and contain every new module dependency."
+  }
+}
+run "model_handoff_retains_full_recipe_profile_and_original_publication_region" {
+  command = apply
+  variables {
+    model_profile      = { model = { repository = "org/model", resolved_revision = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }, memory = { assumptions = { context_length = 16384, concurrency = 7 } } }
+    serving_resolution = { engine = { image = "vllm/vllm-openai@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" }, recipe = { args = ["--reasoning-parser", "qwen3"], env = { RECIPE_FLAG = "retained" }, companions = [{ name = "optional-cache", configuration_status = "requires_validation" }] } }
+  }
+  assert {
+    condition     = local.specifications.selected.model_spec.selection == var.options.selected && local.specifications.selected.model_spec.profile.memory.assumptions.context_length == 16384 && local.specifications.selected.model_spec.serving_configuration.recipe == var.serving_resolution.recipe && local.specifications.selected.publication.region == "us-ashburn-1" && local.specifications.selected.publication.bucket_name == oci_objectstorage_bucket.artifacts[0].name && output.artifact_location.namespace == "fixture" && output.artifact_location.region == "us-ashburn-1"
+    error_message = "Infrastructure must carry complete model/recipe/workload provenance and reuse the actual discovery publication bucket/region for the later configured model ZIP."
+  }
+}
+run "packed_replicas_each_reserve_their_full_weight_workspace" {
+  command = plan
+  variables {
+    options = { packed = { region = "us-phoenix-1", availability_domain = "AD-1", gpu_shape = "BM.GPU.H100.8", node_count = 1, availability = "available_at_scan", replicas = 2, replicas_per_node = 2 } }
+  }
+  assert {
+    condition     = local.defaults.packed.boot_volume_gib == 500 && local.specifications.packed.storage_budget.replicas_per_host == 2 && local.specifications.packed.storage_budget.selected_snapshot_bytes == 107374182400
+    error_message = "Two engine Pods with independent caches need two full snapshot workspaces per host; TP/replica packing must not under-size retained host disks."
   }
 }

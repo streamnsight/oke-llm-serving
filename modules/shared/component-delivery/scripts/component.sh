@@ -21,11 +21,12 @@ component=$(jq -er .component specification.json)
 platform=$(jq -er .platform specification.json)
 owner=$(jq -er .ownership_token specification.json)
 lock_name=$(jq -er .lock_name specification.json)
+lock_namespace=$(jq -r '.lock_namespace // "kube-system"' specification.json)
 lock_duration=$(jq -er .lock_duration_seconds specification.json)
 timeout=$(jq -er .timeout_seconds specification.json)
 owner_name="oke-llm-owner-$(printf '%s' "$namespace/$release" | sha256sum | cut -c1-24)"
 settings_sha256=$(jq -cn --slurpfile specification specification.json \
-  '((($specification[0].parameters|keys)+["CHART_VERSION"])|map(. as $key|{key:$key,value:env[$key]})|from_entries)' | sha256sum | cut -d' ' -f1)
+  '(((($specification[0].parameters|keys)-($specification[0].non_release_parameters//[]))+["CHART_VERSION"])|map(. as $key|{key:$key,value:env[$key]})|from_entries)' | sha256sum | cut -d' ' -f1)
 lock_held=false
 keep_lock=false
 status=failed
@@ -160,7 +161,11 @@ mirror_chart() {
   mirror=$(jq -er .mirror_url specification.json)
   [[ $CHART_VERSION =~ ^v?[0-9]+\.[0-9]+\.[0-9]+([+-][A-Za-z0-9.-]+)?$ ]] || { message="CHART_VERSION must be an explicit semantic version"; return 2; }
   mkdir -p upstream mirrored
-  if [[ $repository == oci://* ]]; then
+  if jq -e '(.chart.files // {})|length>0' specification.json >/dev/null; then
+    [[ $CHART_VERSION == "$(jq -r .chart.version specification.json)" ]] || { message="Local chart version is frozen with its source; update the model stack to change it"; return 2; }
+    source ./archive.sh
+    delivery_archive "$chart" chart "upstream/$chart-$CHART_VERSION.tgz"
+  elif [[ $repository == oci://* ]]; then
     helm pull "${repository%/}/$chart" --version "$CHART_VERSION" --destination upstream
   else
     helm pull "$chart" --repo "$repository" --version "$CHART_VERSION" --destination upstream
@@ -202,6 +207,7 @@ mirror_chart() {
 case "$DELIVERY_OPERATION" in
   prepare)
     lock_acquire
+    if [[ -f runtime/preflight.sh ]]; then bash runtime/preflight.sh; fi
     dependencies_ready
     release_read
     if [[ $(jq length releases.json) != 0 ]]; then owner_assert; fi
@@ -210,9 +216,13 @@ case "$DELIVERY_OPERATION" in
     if [[ -s existing-owner.json ]]; then jq -e --arg owner "$owner" '.data.ownership_token==$owner' existing-owner.json >/dev/null; fi
     render_values
     mirror_chart
-    kubectl create namespace "$namespace" --dry-run=client -o json | kubectl apply -f - >/dev/null
+    if [[ $(jq -r '.namespace_mode // "create"' specification.json) == existing ]]; then
+      kubectl get namespace "$namespace" -o json > namespace.json
+    else
+      kubectl create namespace "$namespace" --dry-run=client -o json | kubectl apply -f - >/dev/null
+    fi
     owner_write applying
-    crds_update
+    if [[ $(jq -r 'if has("manage_crds") then .manage_crds else true end' specification.json) == true ]]; then crds_update; fi
     status=prepared; message="Owned native Helm upgrade may proceed"
     evidence 0
     keep_lock=true
@@ -236,6 +246,7 @@ case "$DELIVERY_OPERATION" in
     yq -o=json effective-values.yaml | jq -S '. // {}' > expected-values.json
     helm get values "$release" -n "$namespace" -o json | jq -S '. // {}' > installed-values.json
     cmp -s expected-values.json installed-values.json || { message="Installed Helm values differ from the prepared arguments"; exit 2; }
+    if [[ -f runtime/validate.sh ]]; then bash runtime/validate.sh; fi
     status=ready; message="Helm release and declared controllers validated"
     evidence 0
     owner_write ready
@@ -249,6 +260,8 @@ case "$DELIVERY_OPERATION" in
     [[ ${CONFIRM_UNINSTALL:-false} == true ]] || { message="Explicit CONFIRM_UNINSTALL=true required"; exit 2; }
     lock_acquire
     release_read
+    kubectl -n "$namespace" get configmap "$owner_name" --ignore-not-found -o json > existing-owner.json
+    if [[ -s existing-owner.json ]]; then jq -e --arg owner "$owner" '.data.ownership_token==$owner' existing-owner.json >/dev/null; fi
     if [[ $(jq length releases.json) != 0 ]]; then
       owner_assert
       helm get manifest "$release" -n "$namespace" > release-manifest.yaml
@@ -256,8 +269,9 @@ case "$DELIVERY_OPERATION" in
       uninstall_consumers_guard
       owner_write retiring
       helm uninstall "$release" --namespace "$namespace" --wait --timeout "${timeout}s"
-      owner_write retired
     fi
+    if [[ -f runtime/retired.sh ]]; then bash runtime/retired.sh; fi
+    if [[ -s existing-owner.json ]] || [[ -f owner.json ]]; then owner_write retired; fi
     status=retired; message="Owned release absent; namespace, CRDs, data and GPU nodes retained"
     ;;
   *) message="Unknown fixed delivery operation"; exit 2;;

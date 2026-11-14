@@ -110,10 +110,10 @@ locals {
 output "assessment" {
   value = {
     schema_version                 = "1.0"
-    control_plane                  = module.control_plane.requirements
-    candidates                     = local.candidates
+    candidates                     = local.ranked_candidates
     status                         = length(local.suggestions) > 0 ? "suggestions_available" : length(local.candidates) > 0 ? "candidates_found" : length(local.sizing_options) > 0 ? "expert_options_available" : "requires_validation"
-    recommended_selection_id       = try(local.ranked_suggestions[0].id, null)
+    recommended_selection_id       = try(local.ranked_suggestions[0].id, local.ranked_candidates[0].id, null)
+    recommendation_basis           = length(local.suggestions) > 0 ? "untested_recipe_suggestion" : length(local.candidates) > 0 ? "analytical_infrastructure_option_requires_expert_serving_validation" : "none"
     suggestions                    = local.ranked_suggestions
     recipe_options                 = { features = try(local.api.features, {}), kv_offload_support = try(local.api.kv_offload_support, {}), cache_options = local.cache_options, source = try(local.api.source, {}) }
     recipe_alternatives            = try(local.api.variants, {})

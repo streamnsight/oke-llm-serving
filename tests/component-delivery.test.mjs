@@ -71,7 +71,7 @@ function fixture(initial={}) {
   const dir=mkdtempSync(`${tmpdir()}/component-delivery-`);
   mkdirSync(`${dir}/bin`);
   for(const tool of ['kubectl','helm','oci','yq'])writeFileSync(`${dir}/bin/${tool}`,`#!${process.execPath}\n${mock}`,{mode:0o755});
-  for(const script of ['component.sh','lock.sh'])copyFileSync(`${modulePath}/scripts/${script}`,`${dir}/${script}`);
+  for(const script of ['archive.sh','component.sh','lock.sh'])copyFileSync(`${modulePath}/scripts/${script}`,`${dir}/${script}`);
   writeFileSync(`${dir}/tools.sh`,'delivery_tools() { :; }\n');
   writeFileSync(`${dir}/specification.json`,JSON.stringify(spec));
   writeFileSync(`${dir}/state.json`,JSON.stringify({calls:[],results:[],...initial}));
@@ -168,4 +168,29 @@ test('uninstall excludes exact owned manifest consumers, tolerates absent APIs a
 });
 test('Shell sources parse with Bash',()=>{
   for(const file of ['component.sh','lock.sh','tools.sh'])execFileSync('bash',['-n',`${modulePath}/scripts/${file}`]);
+});
+
+test('existing namespace mode and fixed source hooks keep model delivery namespace scoped without CRD writes',()=>{
+ const f=fixture();try{
+  writeFileSync(`${f.dir}/specification.json`,JSON.stringify({...spec,namespace_mode:'existing',lock_namespace:'lws-system',manage_crds:false}));
+  mkdirSync(`${f.dir}/runtime`);writeFileSync(`${f.dir}/runtime/preflight.sh`,'printf preflight > hook-preflight\n');writeFileSync(`${f.dir}/runtime/validate.sh`,'printf validate > hook-validate\n');
+  let r=f.run('prepare');assert.equal(r.status,0,r.stderr);assert.equal(r.state.lease.metadata.namespace,'lws-system');assert.equal(readFileSync(`${f.dir}/hook-preflight`,'utf8'),'preflight');
+  assert(!r.state.calls.some(c=>c.tool==='kubectl'&&c.args.includes('namespace')&&c.args.includes('create')));
+  assert(!r.state.calls.some(c=>c.tool==='helm'&&c.args.slice(0,2).join(' ')==='show crds'));
+  f.set({...f.read(),releases:[{name:'lws'}]});r=f.run('finish');assert.equal(r.status,0,r.stderr);assert.equal(readFileSync(`${f.dir}/hook-validate`,'utf8'),'validate');
+ }finally{f.close();}
+});
+test('failed preflight hook releases its lease before native Helm or any namespace creation',()=>{
+ const f=fixture();try{mkdirSync(`${f.dir}/runtime`);writeFileSync(`${f.dir}/runtime/preflight.sh`,'echo "GPU allocation missing" >&2; exit 9\n');const r=f.run('prepare');assert.equal(r.status,9,r.stderr);assert.match(r.stderr,/GPU allocation missing/);assert.equal(r.state.lease.spec.holderIdentity,'');assert(!r.state.calls.some(c=>c.tool==='helm'));}finally{f.close();}
+});
+test('local chart versions cannot be overridden independently from their immutable source',()=>{
+ const f=fixture();try{writeFileSync(`${f.dir}/specification.json`,JSON.stringify({...spec,chart:{name:'lws',repository:'',version:'1.0.0',files:{'Chart.yaml':'apiVersion: v2\nname: lws\nversion: 1.0.0\n'}}}));const r=f.run('prepare',{CHART_VERSION:'1.1.0'});assert.equal(r.status,2,r.stderr);assert(!r.state.calls.some(c=>c.tool==='helm'&&c.args[0]==='push'));assert.equal(r.state.lease.spec.holderIdentity,'');}finally{f.close();}
+});
+const gnuTar=spawnSync('tar',['--version'],{encoding:'utf8'}).stdout?.includes('GNU tar');
+test('local chart archive bytes are unchanged after a time gap and source mtime/mode changes',{skip:!gnuTar},async()=>{
+ const d=mkdtempSync(`${tmpdir()}/local-chart-archive-`);try{
+  mkdirSync(`${d}/chart/templates`,{recursive:true});writeFileSync(`${d}/chart/Chart.yaml`,'apiVersion: v2\nname: fixture\nversion: 0.1.0\n');writeFileSync(`${d}/chart/templates/service.yaml`,'apiVersion: v1\nkind: Service\n');
+  const build=()=>execFileSync('bash',['-c',`set -euo pipefail; source '${modulePath}/scripts/archive.sh'; delivery_archive fixture chart result.tgz`],{cwd:d});
+  build();const first=readFileSync(`${d}/result.tgz`);await new Promise(r=>setTimeout(r,1100));execFileSync('touch',[`${d}/chart/Chart.yaml`]);execFileSync('chmod',['0600',`${d}/chart/templates/service.yaml`]);build();assert.deepEqual(readFileSync(`${d}/result.tgz`),first);
+ }finally{rmSync(d,{recursive:true,force:true});}
 });

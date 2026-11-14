@@ -8,12 +8,13 @@ locals {
   version_override = try(length(trimspace(var.engine_version)) > 0, false) ? trimspace(var.engine_version) : null
   model            = var.profile.model.repository
   arches           = try(var.profile.architecture.architectures, [])
-  metadata         = try(jsondecode(data.http.recipe_metadata.response_body), {})
+  metadata         = jsondecode(var.recipe_metadata != null ? jsonencode(var.recipe_metadata.body) : try(data.http.recipe_metadata[0].response_body, "{}"))
   repository       = try(local.metadata.source.repo, "vllm-project/vllm")
   source_ref       = try(local.metadata.source.sha, "main")
   path             = try(local.metadata.source.path, "recipes/models/${local.model}.yaml")
 }
 data "http" "recipe_metadata" {
+  count              = var.recipe_metadata == null ? 1 : 0
   url                = "https://recipes.vllm.ai/${local.model}.json"
   request_timeout_ms = 60000
   lifecycle {
@@ -24,6 +25,7 @@ data "http" "recipe_metadata" {
   }
 }
 data "http" "recipe_commit" {
+  count              = var.recipe_metadata == null ? 1 : 0
   url                = "https://api.github.com/repos/${local.repository}/commits/${local.source_ref}"
   request_headers    = { Accept = "application/vnd.github+json" }
   request_timeout_ms = 60000
@@ -35,7 +37,8 @@ data "http" "recipe_commit" {
   }
 }
 data "http" "recipe" {
-  url                = "https://raw.githubusercontent.com/${local.repository}/${jsondecode(data.http.recipe_commit.response_body).sha}/${local.path}"
+  count              = var.recipe_metadata == null ? 1 : var.recipe_metadata.status_code == 200 ? 1 : 0
+  url                = "https://raw.githubusercontent.com/${local.repository}/${coalesce(local.recipe_sha, "unresolved")}/${local.path}"
   request_timeout_ms = 60000
   lifecycle {
     postcondition {
@@ -45,10 +48,10 @@ data "http" "recipe" {
   }
 }
 locals {
-  recipe_status = data.http.recipe.status_code
-  recipe_body   = data.http.recipe.response_body
-  recipe_url    = data.http.recipe.url
-  recipe_sha    = jsondecode(data.http.recipe_commit.response_body).sha
+  recipe_status = try(data.http.recipe[0].status_code, 404)
+  recipe_body   = try(data.http.recipe[0].response_body, "{}")
+  recipe_url    = try(data.http.recipe[0].url, var.recipe_metadata.url, null)
+  recipe_sha    = var.recipe_metadata != null ? try(local.metadata.source.sha, null) : jsondecode(data.http.recipe_commit[0].response_body).sha
 }
 locals {
   recipe            = try(yamldecode(local.recipe_body), {})
@@ -94,11 +97,13 @@ data "http" "tags" {
   }
 }
 locals {
-  stable_tags = { for t in jsondecode(data.http.tags.response_body) : join(".", [for n in split(".", trimprefix(t.name, "v")) : format("%08d", tonumber(n))]) => t if can(regex("^v[0-9]+\\.[0-9]+\\.[0-9]+$", t.name)) }
-  latest_tag  = try(local.stable_tags[reverse(sort(keys(local.stable_tags)))[0]].name, "unresolved")
-  stable_tag  = local.version_override != null ? "v${local.version_override}" : local.latest_tag
+  stable_tags    = { for t in jsondecode(data.http.tags.response_body) : join(".", [for n in split(".", trimprefix(t.name, "v")) : format("%08d", tonumber(n))]) => t if can(regex("^v[0-9]+\\.[0-9]+\\.[0-9]+$", t.name)) }
+  latest_tag     = try(local.stable_tags[reverse(sort(keys(local.stable_tags)))[0]].name, "unresolved")
+  stable_tag     = local.version_override != null ? "v${local.version_override}" : local.latest_tag
+  tag_source_sha = try(one([for tag in values(local.stable_tags) : tag.commit.sha if tag.name == local.stable_tag && can(regex("^[a-f0-9]{40}$", tag.commit.sha))]), null)
 }
 data "http" "stable_commit" {
+  count              = local.tag_source_sha == null ? 1 : 0
   url                = "https://api.github.com/repos/vllm-project/vllm/commits/${local.stable_tag}"
   request_timeout_ms = 60000
   lifecycle {
@@ -108,8 +113,11 @@ data "http" "stable_commit" {
     }
   }
 }
+locals {
+  stable_source_sha = coalesce(local.tag_source_sha, try(jsondecode(data.http.stable_commit[0].response_body).sha, null), "unresolved")
+}
 data "http" "stable_registry" {
-  url                = "https://raw.githubusercontent.com/vllm-project/vllm/${try(jsondecode(data.http.stable_commit.response_body).sha, "unresolved")}/vllm/model_executor/models/registry.py"
+  url                = "https://raw.githubusercontent.com/vllm-project/vllm/${local.stable_source_sha}/vllm/model_executor/models/registry.py"
   request_timeout_ms = 60000
   lifecycle {
     postcondition {
@@ -150,7 +158,7 @@ locals {
   image_tag        = local.use_nightly ? "nightly" : local.stable_tag
   registry_body    = local.use_nightly ? data.http.nightly_registry[0].response_body : data.http.stable_registry.response_body
   supported_arches = [for a in local.arches : a if strcontains(local.registry_body, "\"${a}\"")]
-  source_sha       = try(local.use_nightly ? jsondecode(data.http.nightly_commit[0].response_body).sha : jsondecode(data.http.stable_commit.response_body).sha, null)
+  source_sha       = try(local.use_nightly ? jsondecode(data.http.nightly_commit[0].response_body).sha : local.stable_source_sha, null)
 }
 data "http" "image" {
   url                = "https://hub.docker.com/v2/repositories/vllm/vllm-openai/tags/${local.image_tag}"

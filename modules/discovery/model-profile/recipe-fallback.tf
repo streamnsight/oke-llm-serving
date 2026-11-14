@@ -3,7 +3,7 @@
 # Some GGUF variants intentionally omit config/tokenizer; follow only the recipe's
 # explicit structured references, pinning their Hub revisions independently.
 data "http" "fallback_recipe" {
-  count              = data.http.config.status_code == 404 ? 1 : 0
+  count              = data.http.config.status_code == 404 && var.recipe_metadata == null ? 1 : 0
   url                = "https://recipes.vllm.ai/${local.repository}.json"
   request_timeout_ms = 60000
   lifecycle {
@@ -14,8 +14,8 @@ data "http" "fallback_recipe" {
   }
 }
 locals {
-  fallback_metadata     = try(jsondecode(data.http.fallback_recipe[0].response_body), {})
-  fallback_variants     = [for v in try(local.fallback_metadata.variants, {}) : v if try(v.model_id, "") == local.repository]
+  fallback_metadata     = jsondecode(var.recipe_metadata != null ? jsonencode(var.recipe_metadata.body) : try(data.http.fallback_recipe[0].response_body, "{}"))
+  fallback_variants     = [for v in try(local.fallback_metadata.variants, {}) : v if data.http.config.status_code == 404 && try(v.model_id, "") == local.repository]
   fallback_args         = try(one(local.fallback_variants).extra_args, [])
   config_repository     = try(local.fallback_args[index(local.fallback_args, "--hf-config-path") + 1], null)
   tokenizer_repository  = try(local.fallback_args[index(local.fallback_args, "--tokenizer") + 1], local.config_repository)

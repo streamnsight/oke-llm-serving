@@ -2,61 +2,71 @@
 Copyright (c) 2020-2022 Oracle and/or its affiliates. All rights reserved.
 Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
 -->
-
 # OCI OKE LLM serving
 
-Deploy open-weight models onto GPUs in an existing OKE cluster through a model-first workflow. The intended flow separates **discovery**, **retained GPU infrastructure/shared controllers**, and **model deployment**. Current work focuses on infrastructure; model deployment/undeploy will follow.
+A model-first workflow for an existing OKE cluster: discover the model and available GPU choices, provision retained GPU infrastructure/shared controllers, then manage model releases independently. Model deployment must never resize or destroy the GPU allocation.
 
-## Start here
-
-The repository root is the discovery stack: [main.tf](main.tf) and [schema.yaml](schema.yaml). Supply a public Hugging Face model URL, context length and concurrency. It returns a model profile, GPU shapes, limit/headroom observations and AD-scoped host capacity across READY subscribed regions.
+## Start with discovery
 
 ```sh
-mkdir -p work
-terraform init
-terraform plan -var-file=/path/to/request.tfvars.json -out=/path/to/discovery.tfplan
-terraform apply /path/to/discovery.tfplan
-terraform output -json deployment_inputs > work/deployment-inputs.tfvars.json
+make package
 ```
 
-Run `make package` to build `work/packages/oke-llm-discovery.zip` from committed HEAD. Source and entry ZIP share discovery at root, reusable `modules/`, and downstream roots under `templates/`. `make check-packages` validates discovery and both embedded roots. CI publishes only this entry ZIP. On discovery Apply, confirmed choices produce configured infrastructure ZIPs in private Object Storage and expiring region-specific RMS launch URLs. Model-only deployment remains deferred; the older combined template is not published as a model stack. See [bundle publication](docs/infrastructure-publication.md).
+Upload `work/packages/oke-llm-discovery.zip` to OCI Resource Manager, using the ZIP root as its working directory. Enter a public Hugging Face model URL/ID, context length and concurrent sequences per replica. Empty region/shape filters scan READY subscribed regions and visible GPU shapes. Discovery allocates no GPUs.
 
-If linking RMS directly to the Git repository instead of uploading a packaged ZIP, set the working directory to `.`. Its `schema.yaml` describes the user inputs. See [RMS setup, scope and limitations](docs/rms-discovery.md).
+The main output is **one `discovery` JSON object**:
 
-Hugging Face profiling and recipe/variant lookup use live HTTP data and HCL; no static model/engine catalog or catalog build tool is required. OCI regional discovery uses Bash, OCI CLI and jq through `hashicorp/external`, dynamically scanning subscribed regions without provider aliases. These tools must be installed on the execution host (OCI CLI was verified on the tested RMS host). There is no Go build, custom Python script or nested Terraform invocation. Deployment admission/allocation remains native `oracle/oci`.
+- Model identity/revision, context/concurrency assumptions, checkpoint size, estimated resident weights/KV/runtime memory, margins and estimation limits.
+- Every eligible region/AD/shape option, with observed host/GPU capacity, entitlement, requested hosts, GPUs per replica, allocated/unused GPUs and complete replicas that fit the allocation.
+- Image/configuration provenance, required components, expiring ZIP download and region-specific RMS create URLs.
+- Useful exclusions when no option is available; detailed diagnostics are opt-in.
 
-Discovery creates reports, not GPU allocations. Counts represent available instances at the observation time and do not reserve them. Hub-published model counts are declared metadata, not independent tensor inspection. Discovery now includes conservative per-rank GPU layouts and engine compatibility assessment. Execution evidence and remaining cloud validation are recorded in [project status](outputs/project-status.md).
+Capacity is an observation, not a reservation. Counts for alternative shapes and repeated quota ceilings must not be added together. Unsupported memory remains unknown. GB and GiB are labeled distinctly.
 
-## Deploy GPU infrastructure first
+RMS displays the JSON directly. The additional **Compare all options** link opens a separate HTML page from private Object Storage through an expiring read PAR; RMS does not render HTML. This page supplements the native JSON and contains the same choices and links.
 
-After discovery Apply, open `recommended_launch_url` or choose a link in `deployment_options`. The generated ZIP prefills editable hardware, networking and component defaults; select an existing cluster in that region. [The infrastructure template](templates/infrastructure) creates retained GPU infrastructure and independent DevOps component pipelines on existing CPU pools. The temporary `skip_gpu_allocation=true` switch skips GPU allocation only.
+For local Terraform use:
 
-Monitoring defaults on; KEDA workload autoscaling is opt-in. LWS/DisaggregatedSet follows the selected topology. Shared charts use native OCI Helm stages, mirrored through OCIR, with file inputs and immutable reports in Generic Artifact Registry. Explicit guarded uninstall pipelines preserve shared APIs/data and GPU nodes. [Optional model staging](docs/model-storage.md) uses a separate retained data bucket and CPU download Job; direct pinned Hugging Face download needs no bucket. See [bootstrap instructions](docs/infrastructure-bootstrap.md).
+```sh
+terraform init
+terraform plan -var-file=/path/to/request.tfvars.json -out=work/discovery.tfplan
+terraform apply work/discovery.tfplan
+terraform output -json discovery > work/discovery.json
+```
 
-Discovery recommends complete fixed replicas that use spare GPUs inside required hosts, independently of autoscaling. Multiple replicas require model-layer routing; cache-aware routing and actual replica deployment remain in the next model-stack phase. No large discovery JSON is entered in RMS. `make package-infrastructure` is a standalone developer build; published discovery includes the current infrastructure template and its module closure.
+Recipe metadata is shared across profiling, serving resolution and planning. Hardware render requests are deduplicated; unselected nightly/cache alternatives do not run during ordinary discovery. HF/recipe lookup uses Terraform HTTP/HCL. Regional OCI lookup uses one module-owned OCI CLI/Bash/jq scanner, with no nested Terraform, custom Python or Go program.
 
-## Earlier combined deployment path
+## Infrastructure, then model deployment
 
-The deployment stack at `templates/deployment` defaults to a read-only OCI preview. In RMS, paste one `deployment_handoffs[ID].inline_json` and select an existing OKE cluster; the compartment defaults to the stack's compartment. OKE images, existing subnets/NSGs, CPU sizing and storage defaults are resolved automatically. The full `deployment_inputs` report remains usable locally or through authenticated Object Storage; it exceeds RMS's 8192-byte variable limit for typical reports. See [preview and handoff instructions](docs/deployment-preview.md).
+1. Choose any infrastructure RMS link in discovery. Its ZIP contains editable recommendations; select an existing OKE cluster in that region. Existing CPU pools host controllers. The infrastructure owner manages GPU pools/Compute Cluster placement, shared controllers, one DevOps project, its OKE environment and artifact repositories.
+2. Run shared component pipelines as required. Prometheus defaults on; KEDA is opt-in; LWS follows topology. Reuse OKE GPU/network add-ons. Known missing native prerequisites block enhanced-cluster GPU allocation; automatic add-on configuration and GPU exporter scraping remain unfinished.
+3. Open the **model stack link produced by infrastructure**. The configured model ZIP binds the selected model/recipe to that cluster, allocation, project, OKE environment and repositories. Terraform creates the model's pipelines and delivery metadata; it does not start inference.
+4. Grant the model principals namespace-scoped access through the trusted platform onboarding pipeline. Then run model deploy, validate, benchmark or undeploy independently. GPU execution remains a separate hardware-validation step.
 
-Review `deployment_preview` before enabling `provision_resources`. Provisioning creates retained GPU/CPU pools, supported RDMA Compute Cluster placement when required, and OCI DevOps deploy, validation and benchmark pipelines. No GPU resources are allocated or released by the default preview. Overrides are optional advanced controls.
+The model release uses a repository-owned workload chart for Deployment or LWS instances and an optional pinned upstream Production Stack router dependency. Shared operators/CRDs are not installed by the model release. Multiple packed replicas default to prefix-aware routing; this is distinct from event-driven KV routing and durable conversation history.
 
-Discovery now uses the vLLM Recipes JSON API to provide ranked, untested hardware-specific suggestions with frozen images and parser flags. Choose an ID from `assessment.suggestions`; `assessment.recommended_selection_id` identifies the resource-oriented default. See [recipe-derived suggestions and limitations](docs/recipe-derived-suggestions.md).
+Scripts, specifications, values and execution reports use Generic Artifact Registry. Helm charts use OCIR. Object Storage holds discovery/model stack bundles and optional retained model data. No software-artifact evidence bucket is created by the model stack.
 
-See the [complete deployment workflow](docs/deployment-workflow.md) for the target-file example, RMS handoff, Kubernetes RBAC bootstrap, official vLLM CPU benchmark container and validation boundaries. Cloud/GPU/DevOps execution remains pending a selected target. Durable Responses conversation storage remains a separate API-layer feature.
+Undeploy removes only the owned model release and its model-specific resources. It preserves namespaces, retained data, shared controllers/project and GPU hosts. Terraform destruction of pipeline definitions alone does not uninstall an imperative Helm release; use the explicit guarded undeploy flow first.
 
-Runtime scripts and data live with their Terraform modules; root `scripts/` contains packaging tools and root `tests/` contains development checks. See [repository layout and asset ownership](docs/repository-layout.md).
+## Current validation limits
 
-## Documentation
+The shared CPU component flow was validated live: LWS reuse, parallel Prometheus/KEDA installation, fresh readiness, and KEDA uninstall/reinstall retaining its six CRDs. The model-only workflow is being validated for Terraform, chart/script behavior, packaging and RMS pipeline creation with GPU allocation disabled. Actual GPU placement, CUDA/NCCL/RDMA, inference, cache hits and performance require later GPU testing.
 
-[Runtime recipe/image resolution and expert deployment](docs/runtime-serving-resolution.md) explains dynamic stable/nightly lookup, frozen arguments and GPU alternatives. [Flint assessment](docs/flint-assessment.md) records the upstream evidence and remaining estimation/runtime limits.
+A vLLM operator is optional. LMCache does not universally need a database: local RAM/disk, remote stores and multiprocess/P-D transfer have different requirements. Recipe connector flags do not provision those services. Native Responses forwarding or `previous_response_id` support does not establish durable, shared conversation state. See [component ownership and missing capabilities](docs/model-layer-components.md).
 
-- [Model profile inputs, arithmetic and evidence](docs/model-profile.md)
-- [GPU-only infrastructure and shared-controller bootstrap](docs/infrastructure-bootstrap.md)
-- [Native OCI inventory and capacity modules](docs/oci-discovery.md)
-- [Current status and implementation checklist](outputs/project-status.md)
-- [Live validation record](outputs/oci-discovery-validation.md)
-- [Architecture and deployment plan](outputs/oci-oke-model-deployment-plan.md)
-- [Kubernetes LLM serving ecosystem research](outputs/kubernetes-llm-serving-report.md)
+## Layout and development
 
-User-specific reports/state stay in ignored local artifacts; reusable modules, examples and provider locks are checked in.
+Discovery is the repository root. Modules are grouped under `modules/discovery`, `modules/infrastructure`, `modules/cluster-add-ons`, `modules/llm-deployment` and `modules/shared`. Downstream roots are `templates/infrastructure` and `templates/llm-deployment`. Runtime assets stay inside their owning modules. See [module ownership](docs/repository-layout.md).
+
+CI publishes only the discovery entry ZIP, containing both downstream templates. `make package-infrastructure` and `make package-model` are developer builds; configured model ZIPs are generated from actual infrastructure outputs. Existing published objects/PARs do not change when a local ZIP is rebuilt; rerun discovery with the new source to generate updated launch links.
+
+Useful documentation:
+
+- [Project status](outputs/project-status.md) and [active implementation plan](outputs/model-layer-implementation-plan.md)
+- [RMS discovery inputs](docs/rms-discovery.md) and [model profile arithmetic](docs/model-profile.md)
+- [Shared infrastructure/component lifecycle](docs/infrastructure-bootstrap.md)
+- [Optional weight staging and its validation limits](docs/model-storage.md)
+- [Serving ecosystem research](outputs/kubernetes-llm-serving-report.md)
+
+Local state, request files, execution evidence and ZIPs stay in ignored `work/` or local state files. Node/YAML is a development-test dependency and is not shipped to RMS.

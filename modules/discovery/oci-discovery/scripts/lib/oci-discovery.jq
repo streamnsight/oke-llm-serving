@@ -10,7 +10,7 @@ def inventory_shapes($catalog): [ .[] | . as $s | $catalog.shapes[.shape].memory
   gpu_memory_source:(if $memory>0 then $catalog.source else null end), nvlink_topology:null
 }];
 def limit_plan($q; $defs; $quotas):
-  [.[] | select((.name as $n | $quotas|index($n)) or (($q.shape_names|length)==0 and (.name|ascii_downcase|contains("gpu")))) |
+  [.[] | select(.name as $n | $quotas|index($n)) |
    . + {matched_shape_quota_name:(.name as $n | ($quotas|index($n))!=null), description:$defs[.name].description,
      availability_supported:($defs[.name].is_resource_availability_supported // false)}] |
   sort_by([if .matched_shape_quota_name then 0 else 1 end, .name,.scope_type,.availability_domain]);

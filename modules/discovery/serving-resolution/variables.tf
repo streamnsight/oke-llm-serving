@@ -37,3 +37,9 @@ variable "assess_alternatives" {
   type        = bool
   default     = false
 }
+
+variable "recipe_metadata" {
+  description = "Optional shared immutable recipe lookup {url,status_code,body}. The discovery root supplies it once; standalone module callers may omit it."
+  type        = any
+  default     = null
+}
