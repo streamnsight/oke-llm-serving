@@ -77,8 +77,8 @@ run "autoscaling_is_opt_in_and_requires_metrics_even_without_monitoring" {
     autoscaling_enabled = true
   }
   assert {
-    condition     = alltrue([for c in output.assessment.candidates : c.platform_plan.autoscaling.enabled && !c.platform_plan.monitoring.enabled && c.platform_plan.components.prometheus.required && c.platform_plan.components.keda.required && c.platform_plan.autoscaling.max_replicas == null && c.platform_plan.cpu_budget.additional_cpu_nodes == 0])
-    error_message = "KEDA still requires Prometheus metrics when optional monitoring is disabled; unknown scaling bounds and CPU capacity must remain explicit."
+    condition     = alltrue([for c in output.assessment.candidates : c.platform_plan.autoscaling.enabled && !c.platform_plan.monitoring.enabled && c.platform_plan.components.prometheus.required && c.platform_plan.components.keda.required && c.platform_plan.autoscaling.min_replicas == 1 && c.platform_plan.autoscaling.initial_replicas == 1 && c.platform_plan.autoscaling.max_replicas == c.replicas && c.platform_plan.cpu_budget.additional_cpu_nodes == 0])
+    error_message = "KEDA requires Prometheus metrics; workload bounds must remain inside the complete retained replica capacity with the requested minimum."
   }
 }
 

@@ -29,12 +29,15 @@ locals {
     }
     monitoring = { enabled = var.monitoring_enabled, source = "install_or_reuse", prometheus_required = var.monitoring_enabled || var.autoscaling_enabled }
     autoscaling = {
-      enabled        = var.autoscaling_enabled
-      metrics_source = "prometheus"
-      target_kind    = local.platform_capabilities[id].pd_selected ? "DisaggregatedSetRoleScaler" : p.option.pipeline_parallel_size > 1 ? "LeaderWorkerSet" : "Deployment"
-      min_replicas   = p.option.replicas
-      max_replicas   = null
-      status         = var.autoscaling_enabled ? "requires_workload_metrics_and_maximum" : "disabled"
+      enabled                                 = var.autoscaling_enabled
+      metrics_source                          = "prometheus"
+      target_kind                             = local.platform_capabilities[id].pd_selected ? "DisaggregatedSetRoleScaler" : p.option.pipeline_parallel_size > 1 ? "LeaderWorkerSet" : "Deployment"
+      min_replicas                            = var.replicas
+      max_replicas                            = p.option.replicas
+      initial_replicas                        = var.autoscaling_enabled ? var.replicas : p.option.replicas
+      capacity_scope                          = "complete_replicas_inside_the_retained_allocation"
+      additional_capacity_required_for_growth = var.autoscaling_enabled && p.option.replicas <= var.replicas
+      status                                  = var.autoscaling_enabled ? "requires_workload_metrics_validation" : "disabled"
     }
     topology = {
       strategy                   = local.platform_capabilities[id].pd_selected ? "disaggregated_requires_adapter" : p.option.pipeline_parallel_size > 1 ? "multi_node_tp_pp" : "single_node_tp"
@@ -96,6 +99,7 @@ locals {
     }
     diagnostics = concat(
       [{ code = "runtime_not_validated", status = "requires_validation", message = "GPU placement, per-rank memory, node drivers/network and serving behavior have not been validated by this plan." }],
+      var.autoscaling_enabled && p.option.replicas <= var.replicas ? [{ code = "autoscaling_has_no_growth_headroom", status = "requires_configuration", message = "The retained allocation has no complete replica slot above the requested minimum. Scaling growth needs a different layout or larger allocation with a new quantity-specific capacity check." }] : [],
       p.option.replicas > 1 || local.platform_capabilities[id].pd_selected ? [{ code = "routing_adapter_required", status = "requires_validation", message = "A compatible routing adapter must be selected and validated before model deployment; no complex routing stack is silently enabled." }] : [],
       length(local.platform_capabilities[id].companions) > 0 ? [{ code = "recipe_companion_adapter_required", status = "requires_validation", message = "Complete recipe companion commands are preserved as evidence. Kubernetes resources, placement, readiness and resource limits are not inferred or executed." }] : [],
       length(local.platform_capabilities[id].dependencies) > 0 ? [{ code = "recipe_dependencies_unverified", status = "requires_validation", message = "Verify recipe dependencies exist in the selected immutable image; dependency installation commands are not executed." }] : [],
