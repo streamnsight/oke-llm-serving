@@ -29,7 +29,11 @@ Discovery creates reports, not GPU allocations. Counts represent available insta
 
 ## Deploy GPU infrastructure first
 
-After discovery Apply, open `recommended_launch_url` or choose a link in `deployment_options`. The generated ZIP prefills the hardware/storage recommendation; select an existing cluster in that region. [The infrastructure template](templates/infrastructure) creates DevOps platform resources and GPU infrastructure on Apply, and reuses existing CPU pools. The temporary `skip_gpu_allocation=true` debug switch skips only GPU allocation. Independent LWS and validation pipelines use editable environment settings and script files supplied by Artifact Registry; Object Storage holds specification/readiness evidence, not models. No large discovery JSON is entered. See [bootstrap instructions](docs/infrastructure-bootstrap.md). `make package-infrastructure` remains a standalone developer build. CPU-only RMS/bootstrap validation is documented under outputs/; GPU serving remains unvalidated.
+After discovery Apply, open `recommended_launch_url` or choose a link in `deployment_options`. The generated ZIP prefills editable hardware, networking and component defaults; select an existing cluster in that region. [The infrastructure template](templates/infrastructure) creates retained GPU infrastructure and independent DevOps component pipelines on existing CPU pools. The temporary `skip_gpu_allocation=true` switch skips GPU allocation only.
+
+Monitoring defaults on; KEDA workload autoscaling is opt-in. LWS/DisaggregatedSet follows the selected topology. Shared charts use native OCI Helm stages, mirrored through OCIR, with file inputs and immutable reports in Generic Artifact Registry. Explicit guarded uninstall pipelines preserve shared APIs/data and GPU nodes. [Optional model staging](docs/model-storage.md) uses a separate retained data bucket and CPU download Job; direct pinned Hugging Face download needs no bucket. See [bootstrap instructions](docs/infrastructure-bootstrap.md).
+
+Discovery recommends complete fixed replicas that use spare GPUs inside required hosts, independently of autoscaling. Multiple replicas require model-layer routing; cache-aware routing and actual replica deployment remain in the next model-stack phase. No large discovery JSON is entered in RMS. `make package-infrastructure` is a standalone developer build; published discovery includes the current infrastructure template and its module closure.
 
 ## Earlier combined deployment path
 

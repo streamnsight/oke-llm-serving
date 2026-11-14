@@ -4,7 +4,7 @@ Licensed under the Universal Permissive License v 1.0 as shown at http://oss.ora
 -->
 # Discovery-driven node pools and component delivery
 
-Status: design/audit completed; implementation pending the two discovery-policy answers below. This supersedes the LWS-only bootstrap scope. No new cloud resources or workloads were changed during this audit. Existing staged AGENTS.md belongs to the user and remains excluded from commits.
+Status: implementation in progress; discovery-policy defaults confirmed. This supersedes the LWS-only bootstrap scope. GPU allocation remains disabled for development validation. Existing staged AGENTS.md belongs to the user and remains excluded from commits.
 
 ## Required outcome
 
@@ -12,10 +12,11 @@ Discovery produces a selected, provenance-bearing deployment capability plan: GP
 
 The infrastructure stack binds an existing OKE cluster, creates or attaches the retained GPU allocation and one cluster-owned component DevOps project, and creates delivery/retirement pipelines only for needed managed capabilities. Reused capabilities get validation without installation or ownership transfer. Model-specific serving/cache/route/scaling instances retain the separate model lifecycle agreed earlier.
 
-## Questions pending
+## Confirmed discovery policies
 
-1. Monitoring/autoscaling default: proposed monitoring enabled, autoscaling opt-in, one serving replica by default. Selecting autoscaling adds min/max serving replica inputs and sizes the retained allocation for the selected maximum. Workload autoscaling stays inside that allocation; no automatic GPU host scale-down.
-2. Storage boundary: proposed Object Storage only for discovery's RMS ZIP/PAR launch workflow. Pipeline scripts, values, manifests, desired specifications and execution results move to Artifact Registry. Removing the last ZIP publication bucket requires replacing the launch-link workflow.
+1. Monitoring is enabled by default; autoscaling is opt-in. Fixed serving replicas use complete spare GPU groups within already required hosts, independently of autoscaling. For example, a single-node TP=4 layout on an eight-GPU host defaults to two replicas if its estimated memory and placement requirements fit. Multinode replicas require complete host groups; no extra hosts are acquired merely to fill spare GPUs. More replicas target aggregate throughput/concurrency, with no claim of lower individual-request latency. Multiple replicas require a serving router; cache-aware routing is a separate model-layer capability and remains explicit until its adapter is validated. Workload autoscaling stays within retained allocation; no automatic GPU host scale-down.
+2. Object Storage remains the discovery RMS ZIP/PAR transport. Pipeline scripts, values, manifests, desired specifications and execution results belong in Generic Artifact Registry; mirrored Helm charts belong in OCIR. Model weights are data with a separate, retained storage lifecycle: direct pinned Hugging Face download needs no staging bucket; optional Object Storage staging gets its own download/verification pipeline and manifest. Engines still need a local checkpoint directory or a tested storage connector. Staging must not copy checkpoint payloads through the small DevOps Shell runner filesystem.
+3. VM.GPU visibility and exclusion reasons will be investigated separately; current discovery must retain capacity/entitlement and layout rejection diagnostics rather than assume bare metal is required.
 
 ## Architecture decisions
 
@@ -66,16 +67,18 @@ Native Workload/PodGroup gang scheduling requires actual served APIs and control
 | Request-aware scaling | KEDA and accessible metrics endpoint | ScaledObject, workload/role target and measured thresholds |
 | Admission/gang policy | Selected verified Kueue/native/scheduler integration | Queues, resource flavors and group policy |
 | Inference routing | Selected gateway/controller/API dependencies | InferencePool/routes/EPP or serving router |
+| Model distribution | Optional retained model-data bucket, access policy and CPU download job | Pinned source/revision manifest, staged object download to local disk/PVC and cache placement |
 
 LWS 1.0.0 supports DisaggregatedSet when enabled; this must become a selected chart capability, with CRD upgrades handled explicitly. Recipe examples are not a CPU-memory sizing policy: an illustrative LMCache 512-GiB pool cannot be copied into every OCI host recommendation. Third-party serving platforms are separate adapters with their own dependencies, not implicit consequences of choosing vLLM.
 
 ## Phases and tasks
 
 1. [x] Audit current discovery, native OCI Helm stages, artifact delivery, ownership and teardown in parallel.
-2. [ ] Freeze capability/ownership/lifecycle contracts and policy defaults. Add tests for dependency closure, disabled/reused modes and unknown recipe requirements.
+2. [x] Freeze capability/ownership/lifecycle contracts and policy defaults. Add tests for dependency closure, disabled/reused modes and unknown recipe requirements.
 3. [ ] Extend discovery beyond hardcoded single_node_tp: preserve complete recipe selections/companions, derive supported topology/transport and component needs, estimate enabled CPU/storage budgets, and generate editable schema/HCL defaults.
 4. [ ] Build the shared delivery foundation: OKE deploy environment, OCIR chart import, Artifact Registry source/results, parameter mapping, per-component identity/evidence and locking, and conditional pipeline resources. Refactor LWS to native Helm with explicit CRD/retire stages.
 5. [ ] Develop component adapters in parallel after the common contract is fixed: monitoring/metrics, KEDA, LWS/DAS/network and selected additional controller/gateway integrations. Reuse compatible existing installations; make unsupported integrations explicit.
+   - [ ] Add optional model storage/download adapter; verify immutable revision, authentication, resumability, manifest publication, storage limits and data-preserving teardown. GPU-local warmup and serving integration remain model-stack responsibilities.
 6. [ ] Integrate the deployment dependency graph, fresh aggregate validation, existing-platform/pool reuse and safe reverse-order retirement. Keep the teardown path until successful retirement, and preserve shared dependents/data.
 7. [ ] Protect retained pool bindings and correct home-region Compute Cluster IAM. Test component changes produce no GPU allocation changes; inspect RDMA eligibility and fallback diagnostics without allocating GPUs.
 8. [ ] Verify charts/CRDs, native Terraform, concurrency/failure/retry/retirement cases and repository-to-ZIP parity. Run CPU-only RMS deploy/update/reuse/retire and synthetic Prometheus/KEDA tests; document GPU/RDMA validation still outstanding.
@@ -91,6 +94,15 @@ LWS 1.0.0 supports DisaggregatedSet when enabled; this must become a selected ch
 - CRDs, namespaces, retained data, GPU pools and foreign add-ons survive ordinary component retirement.
 - Prometheus/KEDA work with synthetic CPU workloads while GPU allocation is skipped; GPU/DCGM/fabric assertions stay unvalidated until real devices exist.
 - Generated defaults, publisher dependency closure and packaged source match repository source. No production claim comes from mocked checks alone.
+
+## Implemented slices
+
+- Discovery packs complete intra-host replicas into allocated hosts, preserves complete recipe companion evidence and emits topology/component/routing/storage diagnostics. PP groups remain complete; the live recipe request still uses the supported single-node adapter. Additional P/D/Ray/gateway adapters are not implied by installing LWS.
+- Infrastructure defaults enable monitoring, opt into KEDA only when selected, and enable LWS/DAS by topology. Publisher embeds matching editable schema and HCL defaults plus the new module closure.
+- Independent managed/reuse/retire component delivery uses OCIR/native Helm, Generic Artifact inputs/results, bounded atomic release leases, owned raw CRD updates, retained templated CRDs and explicit dependency-guarded uninstall. Coordinator and fresh validator run separately; Terraform does not declare runtime readiness.
+- Optional retained model storage and CPU Job staging are implemented with pinned manifests, workload identity, resumability/checksums and separate data lifecycle. Its image build, live storage/identity checks and later GPU-local model warmup remain pending.
+- Retained allocation bindings are guarded against image/version/network changes, and Compute Cluster IAM uses the home provider. No GPU allocation/cycling is authorized for current validation.
+- CPU-only live RMS/component validation, final package refresh and integration remain in progress. Existing historical evidence must be preserved when replacing the old Object Storage report transport. RMS compatibility is checked with Terraform 1.5.7.
 
 ## Primary references
 

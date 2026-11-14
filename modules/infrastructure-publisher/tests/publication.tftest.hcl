@@ -141,3 +141,16 @@ run "reject_package_urls_that_would_create_invalid_origin_tags" {
   }
   expect_failures = [output.deployment_options]
 }
+run "component_and_transport_choices_reach_both_editable_defaults" {
+  command = plan
+  variables {
+    options = { configured = {
+      region        = "eu-frankfurt-1", availability_domain = "AD-1", gpu_shape = "BM.GPU.H100.8", node_count = 2, availability = "available_at_scan", replicas = 4, replicas_per_node = 2,
+      platform_plan = { components = { lws = { required = true, enable_disaggregated_set = true } }, monitoring = { enabled = false }, autoscaling = { enabled = true }, topology = { rdma_required = true } }
+    } }
+  }
+  assert {
+    condition     = local.defaults.configured.enable_lws && local.defaults.configured.enable_disaggregated_set && !local.defaults.configured.monitoring_enabled && local.defaults.configured.autoscaling_enabled && local.defaults.configured.rdma_mode == "rdma" && alltrue([for key, value in local.defaults.configured : jsondecode(local.files.configured["recommendations_override.tf.json"]).variable[key].default == value && yamldecode(local.files.configured["schema.yaml"]).variables[key].default == value]) && contains(keys(local.files.configured), "modules/component-delivery/scripts/component.sh") && contains(keys(local.files.configured), "modules/model-storage/scripts/download.sh")
+    error_message = "Generated ZIPs must carry selected component/network defaults in both HCL and RMS and contain every new module dependency."
+  }
+}

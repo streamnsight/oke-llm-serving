@@ -110,12 +110,14 @@ module "handoff" {
 output "deployment_handoffs" { value = module.handoff.handoffs }
 
 module "planner" {
-  source             = "./modules/deployment-planner"
-  recipe_api_enabled = true
-  profile            = module.model_profile.profile
-  regions            = local.regional_results
-  engines            = try(module.serving_resolution.resolution.engine.image != null && length(module.serving_resolution.resolution.engine_issues) == 0, false) ? [module.serving_resolution.resolution.engine] : []
-  serving_resolution = module.serving_resolution.resolution
+  source              = "./modules/deployment-planner"
+  recipe_api_enabled  = true
+  profile             = module.model_profile.profile
+  regions             = local.regional_results
+  engines             = try(module.serving_resolution.resolution.engine.image != null && length(module.serving_resolution.resolution.engine_issues) == 0, false) ? [module.serving_resolution.resolution.engine] : []
+  serving_resolution  = module.serving_resolution.resolution
+  monitoring_enabled  = var.monitoring_enabled
+  autoscaling_enabled = var.autoscaling_enabled
 }
 
 output "assessment" {
@@ -130,6 +132,7 @@ output "recommendations" {
     choices = [for s in try(module.planner.assessment.suggestions, []) : {
       id           = s.id, region = s.region, availability_domain = s.availability_domain, gpu_shape = s.gpu_shape,
       node_count   = s.node_count, tensor_parallel_size = s.tensor_parallel_size, pipeline_parallel_size = s.pipeline_parallel_size,
+      replicas     = try(s.replicas, null), platform_plan = try(s.platform_plan, null),
       availability = s.availability, configuration_origin = s.configuration_origin, runtime_validation = s.runtime_validation,
       image        = s.serving_configuration.engine.image, warnings = s.warnings, deployment_requirements = try(s.deployment_requirements, [])
     }]

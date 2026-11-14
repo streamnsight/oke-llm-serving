@@ -122,13 +122,32 @@ run "float32_resident_conversion_is_reserved" {
   }
 }
 run "storage_bytes_do_not_fabricate_quantized_GPU_memory" {
-  command=plan
+  command = plan
   override_data {
-    target=data.http.model
-    values={status_code=200,response_body="{\"sha\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"siblings\":[{\"rfilename\":\"model-00000.safetensors\",\"size\":1000},{\"rfilename\":\"model-00001.safetensors\",\"size\":2000}]}"}
+    target = data.http.model
+    values = { status_code = 200, response_body = "{\"sha\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"siblings\":[{\"rfilename\":\"model-00000.safetensors\",\"size\":1000},{\"rfilename\":\"model-00001.safetensors\",\"size\":2000}]}" }
   }
   assert {
-    condition=output.profile.weights.checkpoint_download_bytes==3000 && output.profile.memory.status=="unsupported" && output.profile.weights.tensor_data_bytes==null
-    error_message="File sizes can size checkpoint storage but cannot become a quantized resident-memory estimate."
+    condition     = output.profile.weights.checkpoint_download_bytes == 3000 && output.profile.memory.status == "unsupported" && output.profile.weights.tensor_data_bytes == null
+    error_message = "File sizes can size checkpoint storage but cannot become a quantized resident-memory estimate."
+  }
+}
+run "staging_manifest_uses_only_snapshot_data_and_lfs_sha256" {
+  command = plan
+  override_data {
+    target = data.http.model
+    values = {
+      status_code = 200
+      response_body = jsonencode({ sha = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", safetensors = { parameters = { BF16 = 6 }, total = 6 }, siblings = [
+        { rfilename = "model.safetensors", size = 12, lfs = { size = 12, sha256 = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" } },
+        { rfilename = "config.json", size = 200, blobId = "cccccccccccccccccccccccccccccccccccccccc" },
+        { rfilename = "modeling_custom.py", size = 100 },
+        { rfilename = "other-variant/model.safetensors", size = 9999 }
+      ] })
+    }
+  }
+  assert {
+    condition     = [for f in output.profile.weights.staging_files : f.path] == ["model.safetensors", "config.json"] && output.profile.weights.staging_files[0].sha256 == "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" && output.profile.weights.staging_files[1].sha256 == null
+    error_message = "Data allowlists must not execute/stage repository code, mix nested checkpoint variants, or call Git blob IDs SHA256 digests."
   }
 }

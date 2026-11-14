@@ -41,7 +41,7 @@ variable "advanced_settings" {
   default = false
 }
 variable "rdma_mode" {
-  description = "Auto follows shape topology. Ethernet explicitly disables RDMA placement."
+  description = "Auto follows the discovery execution topology; hardware RDMA support alone does not require a fabric."
   type        = string
   default     = "auto"
   validation {
@@ -52,7 +52,44 @@ variable "rdma_mode" {
 variable "enable_lws" {
   description = "Install/reuse the shared LeaderWorkerSet controller for multi-node serving."
   type        = bool
-  default     = true
+  default     = false
+}
+variable "monitoring_enabled" {
+  type    = bool
+  default = true
+}
+variable "autoscaling_enabled" {
+  description = "Install or reuse KEDA for later model workload autoscaling. Never scales GPU hosts."
+  type        = bool
+  default     = false
+}
+variable "enable_disaggregated_set" {
+  type    = bool
+  default = false
+}
+variable "lws_mode" {
+  type    = string
+  default = "managed"
+  validation {
+    condition     = contains(["managed", "reuse", "retire"], var.lws_mode)
+    error_message = "Select managed, reuse or retire."
+  }
+}
+variable "prometheus_mode" {
+  type    = string
+  default = "managed"
+  validation {
+    condition     = contains(["managed", "reuse", "retire"], var.prometheus_mode)
+    error_message = "Select managed, reuse or retire."
+  }
+}
+variable "keda_mode" {
+  type    = string
+  default = "managed"
+  validation {
+    condition     = contains(["managed", "reuse", "retire"], var.keda_mode)
+    error_message = "Select managed, reuse or retire."
+  }
 }
 variable "os_version" {
   type    = string
@@ -106,6 +143,25 @@ variable "devops_nsg_ids" {
 }
 variable "rdma_resource_name" {
   description = "Optional existing RDMA extended resource; otherwise detect a unique resource on the pool."
+  type        = string
+  default     = null
+}
+variable "model_storage_mode" {
+  description = "Optional model-data staging, independent of pipeline software artifacts."
+  type        = string
+  default     = "direct_huggingface"
+  validation {
+    condition     = contains(["direct_huggingface", "object_storage"], var.model_storage_mode)
+    error_message = "Choose direct_huggingface or object_storage."
+  }
+}
+variable "model_staging_image" {
+  description = "Digest-pinned CPU image built from modules/model-storage/image/Dockerfile; needed only for optional Object Storage staging."
+  type        = string
+  default     = null
+}
+variable "model_staging_cpu_shape" {
+  description = "Optional existing CPU shape override. Defaults to a CPU shape observed in the existing cluster pools; runner validates actual nodes."
   type        = string
   default     = null
 }

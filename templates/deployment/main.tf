@@ -5,6 +5,12 @@ terraform {
   required_providers { oci = { source = "oracle/oci", version = "~> 9.12" } }
 }
 provider "oci" { region = coalesce(var.region, local.region) }
+data "oci_identity_tenancy" "target" { tenancy_id = var.tenancy_ocid }
+data "oci_identity_regions" "available" {}
+provider "oci" {
+  alias  = "home"
+  region = one([for region in data.oci_identity_regions.available.regions : region.name if region.key == data.oci_identity_tenancy.target.home_region_key])
+}
 module "control_plane" { source = "../../modules/control-plane-sizing" }
 module "serving_runtime" {
   count  = var.provision_resources || var.inspect_serving_image ? 1 : 0
@@ -171,6 +177,7 @@ resource "terraform_data" "specification" {
   }
 }
 module "allocation" {
+  providers           = { oci = oci, oci.home = oci.home }
   count               = var.provision_resources ? 1 : 0
   source              = "../../modules/gpu-allocation"
   tenancy_ocid        = var.tenancy_ocid

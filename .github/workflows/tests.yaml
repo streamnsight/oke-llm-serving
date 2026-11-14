@@ -8,6 +8,26 @@ on:
 permissions:
   contents: read
 jobs:
+  rms-compatibility:
+    name: RMS Terraform 1.5.7 compatibility
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: 1.5.7
+          terraform_wrapper: false
+      - name: Validate entry and downstream roots with the RMS version
+        shell: bash
+        run: |
+          set -euo pipefail
+          for directory in . templates/infrastructure templates/deployment; do
+            terraform -chdir="$directory" init -backend=false -input=false -no-color
+            terraform -chdir="$directory" validate -no-color
+          done
   discover:
     runs-on: ubuntu-latest
     timeout-minutes: 5

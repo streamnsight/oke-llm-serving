@@ -2,6 +2,7 @@
 # Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
 # Copied into an extracted, actually rendered ZIP by the development checker.
 mock_provider "oci" {
+  mock_data "oci_core_subnet" { defaults = { ipv6cidr_block = "", ipv6cidr_blocks = [] } }
   mock_data "oci_identity_tenancy" { defaults = { home_region_key = "ORD" } }
   mock_data "oci_identity_regions" { defaults = { regions = [{ key = "ORD", name = "us-chicago-1" }] } }
 }

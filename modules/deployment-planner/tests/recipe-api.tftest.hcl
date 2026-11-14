@@ -162,3 +162,18 @@ run "replicas_require_enough_full_hosts_and_GPU_entitlement" {
  error_message="A single available host cannot confirm two replicas."
  }
 }
+run "recipe_companions_and_unknown_features_remain_explicit_in_the_platform_plan" {
+  command = plan
+  override_data {
+    target = data.http.recipe_rendering["a10"]
+    values = { status_code = 200, response_body = "{\"selection\":{\"hardware\":\"h100\",\"variant\":\"default\",\"strategy\":\"single_node_tp\",\"features\":[\"tool_calling\",\"future_feature\"],\"modes\":{\"spec_decoding\":\"mtp\"},\"kv_offload\":\"lmcache\",\"pd\":null,\"adjusted\":[]},\"argv\":[\"vllm\",\"serve\",\"Qwen/Qwen3.8-27B\",\"--tensor-parallel-size\",\"1\"],\"docker_image\":\"vllm/vllm-openai:qwen38\",\"env\":{},\"kv_offload_install\":[{\"command\":\"uv pip install lmcache==0.5.1\"}],\"companions\":[{\"feature\":\"kv_offload:lmcache\",\"command\":\"lmcache server --l1-size-gb 512\"}]}" }
+  }
+  assert {
+    condition     = length(output.assessment.suggestions) == 1 && output.assessment.suggestions[0].platform_plan.recipe_evidence.companions[0].command == "lmcache server --l1-size-gb 512" && output.assessment.suggestions[0].serving_configuration.recipe.api.rendering.kv_offload_install[0].command == "uv pip install lmcache==0.5.1" && output.assessment.suggestions[0].platform_plan.recipe_evidence.selection.modes.spec_decoding == "mtp" && !output.assessment.suggestions[0].platform_plan.auto_deploy_ready
+    error_message = "Keep the complete recipe rendering and companion evidence without executing commands, discarding the option, or treating example host memory as an allocation budget."
+  }
+  assert {
+    condition     = contains([for d in output.assessment.suggestions[0].platform_plan.diagnostics : d.code], "recipe_companion_adapter_required") && contains([for d in output.assessment.suggestions[0].platform_plan.diagnostics : d.code], "feature_integration_unclassified") && output.assessment.suggestions[0].platform_plan.storage_budget.kv_offload_bytes == null
+    error_message = "Unsupported companion integration and unclassified features must produce explicit diagnostics and unknown sizing."
+  }
+}

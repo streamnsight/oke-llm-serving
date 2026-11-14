@@ -27,12 +27,25 @@ variable "max_nodes_per_replica" {
   }
 }
 variable "replicas" {
-  type    = number
-  default = 1
+  description = "Minimum requested replicas; complete extra replicas fill spare GPUs on already allocated single-node hosts."
+  type        = number
+  default     = 1
   validation {
     condition     = var.replicas >= 1 && floor(var.replicas) == var.replicas
     error_message = "replicas must be a positive integer."
   }
+}
+
+variable "monitoring_enabled" {
+  description = "Include monitoring requirements in each selected platform plan."
+  type        = bool
+  default     = true
+}
+
+variable "autoscaling_enabled" {
+  description = "Opt into KEDA/Prometheus requirements; fixed replica packing does not require autoscaling."
+  type        = bool
+  default     = false
 }
 
 variable "serving_resolution" {

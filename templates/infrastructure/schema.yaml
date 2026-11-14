@@ -17,12 +17,18 @@ outputs:
   allocation:
     type: json
     title: Retained GPU allocation (absent when debug skipping is enabled)
+  model_storage:
+    type: json
+    title: Optional model-data staging and download pipeline
+  model_staging_bootstrap:
+    type: json
+    title: Optional staging namespace, identity and scratch storage
 variableGroups:
   - title: Existing cluster and GPU selection
     variables: [platform_name, compartment_id, cluster_id, availability_domain, gpu_shape, node_count, skip_gpu_allocation, advanced_settings]
   - title: Platform and storage overrides
     visible: advanced_settings
-    variables: [enable_lws, rdma_mode, os_version, boot_volume_gib, gpu_image_id, rdma_resource_name, observation_id]
+    variables: [enable_lws, enable_disaggregated_set, monitoring_enabled, autoscaling_enabled, lws_mode, prometheus_mode, keda_mode, model_storage_mode, model_staging_image, model_staging_cpu_shape, rdma_mode, os_version, boot_volume_gib, gpu_image_id, rdma_resource_name, observation_id]
   - title: Network overrides (must belong to the cluster VCN)
     visible: advanced_settings
     variables: [subnet_id, pod_subnet_id, devops_subnet_id, worker_nsg_ids, pod_nsg_ids, devops_nsg_ids]
@@ -30,6 +36,20 @@ variableGroups:
     visible: false
     variables: [tenancy_ocid, compartment_ocid, region]
 variables:
+  model_storage_mode:
+    type: enum
+    enum: [direct_huggingface, object_storage]
+    default: direct_huggingface
+    title: Model distribution
+    description: Direct mode creates no bucket or staging pipeline. Staging creates retained private model data, separate from software artifacts; GPU-local warmup happens later in model deployment.
+  model_staging_image:
+    type: string
+    title: Optional model stager image digest
+    description: Required for Object Storage staging. Build and validate modules/model-storage/image/Dockerfile, then provide its image@sha256 digest.
+  model_staging_cpu_shape:
+    type: string
+    title: Optional existing CPU shape for download jobs
+    description: Defaults to a CPU pool shape in this cluster; the pipeline checks actual schedulable nodes.
   tenancy_ocid:
     type: string
     required: true
@@ -83,14 +103,43 @@ variables:
     title: Show optional overrides
   enable_lws:
     type: boolean
-    default: true
+    default: false
     title: Shared LeaderWorkerSet controller
+  enable_disaggregated_set:
+    type: boolean
+    default: false
+    title: Enable DisaggregatedSet in LWS
+  monitoring_enabled:
+    type: boolean
+    default: true
+    title: Prometheus monitoring
+  autoscaling_enabled:
+    type: boolean
+    default: false
+    title: KEDA workload autoscaling
+    description: Installs the controller for the later model stack. GPU hosts stay allocated.
+  lws_mode:
+    type: enum
+    enum: [managed, reuse, retire]
+    default: managed
+    title: LWS lifecycle
+    description: Reuse validates an existing release. Retire retains a guarded uninstall pipeline; run it explicitly before removing the component.
+  prometheus_mode:
+    type: enum
+    enum: [managed, reuse, retire]
+    default: managed
+    title: Prometheus lifecycle
+  keda_mode:
+    type: enum
+    enum: [managed, reuse, retire]
+    default: managed
+    title: KEDA lifecycle
   rdma_mode:
     type: enum
     enum: [auto, ethernet, rdma]
     default: auto
     title: RDMA override
-    description: Auto follows the shape topology. Ethernet explicitly disables RDMA placement.
+    description: Auto follows the discovery execution plan. A single-host layout does not require a fabric merely because its hardware supports RDMA.
   os_version:
     type: enum
     enum: ["8", "9"]

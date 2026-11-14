@@ -164,6 +164,12 @@ output "profile" {
     weights = {
       selected_checkpoint       = local.has_index ? "model.safetensors.index.json" : local.canonical ? "model.safetensors" : null
       checkpoint_download_bytes = try(coalesce(local.checkpoint_download_bytes, one([for f in local.info.siblings : try(f.size, f.lfs.size) if endswith(f.rfilename, ".gguf")])), null)
+      # A staging allowlist, not executable repository code. LFS object IDs are
+      # content SHA256s; ordinary Git blob IDs are deliberately not called SHA256.
+      staging_files = [for f in try(local.info.siblings, []) : {
+        path = f.rfilename, size_bytes = try(f.size, f.lfs.size, null),
+        sha256 = try(can(regex("^[a-f0-9]{64}$", f.lfs.sha256)) ? f.lfs.sha256 : null, null)
+      } if !strcontains(f.rfilename, "/") && (endswith(f.rfilename, ".safetensors") || endswith(f.rfilename, ".json") || contains(["tokenizer.model", "tokenizer.tiktoken", "merges.txt", "vocab.txt", "chat_template.jinja"], f.rfilename))]
       storage_source            = "Hub-published root safetensors file sizes; storage only, never resident GPU memory"
       tensor_data_bytes         = local.weight_bytes
       tensor_elements           = try(local.info.safetensors.total, null)

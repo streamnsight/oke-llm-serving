@@ -33,11 +33,12 @@ locals {
     headroom_status        = row.mapping_complete ? row.headroom_status : "unknown"
     quota_mapping_complete = row.mapping_complete
     entitled_instances     = row.entitled_instances
-    eligible_at_scan       = try(row.capacity_status == "positive" && row.capacity.available_instances >= var.replicas && row.limit_status == "positive" && row.entitled_instances >= var.replicas, false)
+    eligibility_scope      = "one_complete_host_only_layout_quantities_assessed_per_option"
+    eligible_at_scan       = try(row.capacity_status == "positive" && row.capacity.available_instances >= 1 && row.limit_status == "positive" && row.entitled_instances >= 1, false)
     exclusion_reasons = compact([
-      row.capacity_status == "zero" ? "No physical capacity reported." : row.capacity_status != "positive" ? "No positive physical capacity report." : try(row.capacity.available_instances < var.replicas, true) ? "Insufficient physical instances for the requested replicas." : "",
+      row.capacity_status == "zero" ? "No physical capacity reported." : row.capacity_status != "positive" ? "No positive physical capacity report." : "",
       row.limit_status == "zero" ? "GPU limit is zero." : row.limit_status != "positive" ? "Applicable positive GPU limits are not confirmed." : "",
-      row.entitled_instances == null ? "Quantity-specific GPU headroom or its units are not confirmed." : row.entitled_instances < var.replicas ? "GPU headroom cannot cover the requested complete shape instances." : ""
+      row.entitled_instances == null ? "Quantity-specific GPU headroom or its units are not confirmed." : row.entitled_instances < 1 ? "GPU headroom cannot cover one complete shape instance." : ""
     ])
     limits = [for limit in row.headroom : {
       name                  = limit.name

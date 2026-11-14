@@ -3,7 +3,7 @@
 terraform {
   required_version = ">= 1.5.0"
   required_providers {
-    oci = { source = "oracle/oci", version = "~> 9.12" }
+    oci = { source = "oracle/oci", version = "~> 9.12", configuration_aliases = [oci.home] }
   }
 }
 
@@ -67,11 +67,26 @@ resource "oci_core_compute_cluster" "gpu" {
   lifecycle { prevent_destroy = true }
 }
 resource "oci_identity_policy" "compute_cluster" {
+  provider       = oci.home
   count          = var.requires_rdma ? 1 : 0
   compartment_id = var.compartment_id
   name           = "${var.name}-compute-cluster"
   description    = "Permit managed OKE node pools to launch inside this compute cluster."
   statements     = ["allow any-user to {COMPUTE_CLUSTER_LAUNCH_INSTANCE} in compartment id ${var.compartment_id} where all {request.principal.type = 'nodepool', target.resource.id = '${oci_core_compute_cluster.gpu[0].id}'}"]
+}
+
+# Capture the launch bindings once. Later component-only Applies must fail
+# before OKE can cycle retained GPUs to follow a newly discovered image/version.
+resource "terraform_data" "bindings" {
+  input = {
+    cluster_id         = var.cluster_id, availability_domain = var.availability_domain,
+    shape              = var.gpu_shape, image_id = var.gpu_image_id,
+    kubernetes_version = data.oci_containerengine_cluster.target.kubernetes_version,
+    subnet_id          = var.subnet_id, pod_subnet_id = var.pod_subnet_id,
+    gpu_nsg_ids        = sort(var.gpu_nsg_ids), pod_nsg_ids = sort(var.pod_nsg_ids),
+    boot_volume_gib    = var.boot_volume_gib, requires_rdma = var.requires_rdma
+  }
+  lifecycle { ignore_changes = [input] }
 }
 
 resource "oci_containerengine_node_pool" "gpu" {
@@ -117,6 +132,17 @@ resource "oci_containerengine_node_pool" "gpu" {
   lifecycle {
     prevent_destroy      = true
     replace_triggered_by = [terraform_data.identity]
+    precondition {
+      condition = terraform_data.bindings.output == {
+        cluster_id         = var.cluster_id, availability_domain = var.availability_domain,
+        shape              = var.gpu_shape, image_id = var.gpu_image_id,
+        kubernetes_version = data.oci_containerengine_cluster.target.kubernetes_version,
+        subnet_id          = var.subnet_id, pod_subnet_id = var.pod_subnet_id,
+        gpu_nsg_ids        = sort(var.gpu_nsg_ids), pod_nsg_ids = sort(var.pod_nsg_ids),
+        boot_volume_gib    = var.boot_volume_gib, requires_rdma = var.requires_rdma
+      }
+      error_message = "Retained GPU launch bindings changed. Use an explicit pool maintenance procedure; component updates must not cycle GPUs or silently follow a newer image/Kubernetes version."
+    }
     precondition {
       condition     = var.specification_id != "" && length(local.owned_pools) <= 1
       error_message = "The specification must pass validation and the state-owned allocation identity must be unique."

@@ -2,6 +2,10 @@
   "name": "oke-llm-serving-validation",
   "private": true,
   "type": "module",
-  "scripts": {"test": "node --test tests/*.test.mjs"},
-  "devDependencies": {"yaml": "2.8.1"}
+  "scripts": {
+    "test": "node --test tests/*.test.mjs modules/model-storage/tests/*.test.mjs"
+  },
+  "devDependencies": {
+    "yaml": "2.8.1"
+  }
 }

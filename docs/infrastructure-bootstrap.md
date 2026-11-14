@@ -2,109 +2,59 @@
 Copyright (c) 2020-2022 Oracle and/or its affiliates. All rights reserved.
 Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
 -->
-# GPU infrastructure and shared controllers
+# GPU infrastructure and independent components
 
-Use `templates/infrastructure` with its own Terraform state. It creates **GPU node infrastructure only**, a shared DevOps project and independently invoked LWS and validation pipelines. Existing cluster CPU pools run shared controllers. No model, serving image, benchmark or discovery-JSON input is required. The older `deployment` root remains a combined implementation; do not apply both roots to create the same infrastructure. Separate model deployment and undeploy pipelines are deferred.
+Discovery publishes a configured infrastructure ZIP per confirmed GPU/AD/region choice. The ZIP sets editable Terraform declaration defaults and matching RMS schema defaults. Select an existing OKE cluster in that region; its worker/pod networks and image options are inspected. The stack uses existing CPU pools and creates no CPU node pool.
 
-Regional DevOps/storage/node resources use the selected deployment region. The bootstrap dynamic-group and IAM-policy writes use a separate provider in the tenancy home region, discovered from OCI tenancy/region data. No home-region input or region mapping file is required; `infrastructure_preview.iam_home_region` shows the result.
+Keep one stable platform owner per cluster. GPU allocation is independent of component delivery. `skip_gpu_allocation=true` is a temporary debugging control: DevOps resources and CPU component pipelines are still created. Never turn it on after allocating a pool. GPU pools and Compute Clusters retain destroy protection. Launch bindings are frozen after first Apply so a later image/version lookup cannot silently cycle retained GPUs. A maintenance procedure is needed to change those bindings.
 
-## Preview first
+RDMA follows the selected model execution/transfer topology and hardware/region support. A single-host H100 layout does not allocate a Compute Cluster simply because its shape supports RDMA. Explicit RDMA placement still needs enhanced OKE, capacity, compatible images/add-ons and fabric validation. IAM policies, including the Compute Cluster launch policy, use the tenancy home-region provider.
 
-Copy `templates/infrastructure/target.example.json` to an ignored local file. Fill in the tenancy/compartment, existing cluster, selected region, AD, GPU shape and host count from discovery. Keep `platform_name` stable across models and discovery runs. This first pass supports one platform owner per cluster.
+## Components and defaults
 
-```sh
-terraform -chdir=templates/infrastructure init
-terraform -chdir=templates/infrastructure plan -var-file="$PWD/work/infrastructure-target.json"
-```
+| Capability | Default | Delivery |
+| --- | --- | --- |
+| Prometheus/operator and monitoring CRDs | On | Native Helm; persistent 50-GiB data claim, 24-hour retention, editable parameters |
+| KEDA and external metrics API | Off, opt in | Independent native Helm; model-specific scalers come later |
+| LWS / DisaggregatedSet | Required by selected topology | Independent native Helm plus explicit owned raw-CRD preparation |
+| GPU/network operators | Reuse OKE capabilities | Inventory installed add-ons; validate advertised devices; no duplicate standalone operator |
+| Router, LMCache instances, serving replicas and ScaledObjects | Model layer | Not installed by infrastructure bootstrap |
+| Optional model-data staging | Direct Hub download by default | Separate retained bucket and CPU download Job pipeline when configured |
 
-Use Terraform Plan to preview all changes without creating resources. Apply always creates the DevOps platform resources. Normally `skip_gpu_allocation=false` also allocates GPU hosts; temporarily set it to true for CPU-platform debugging. Debug mode creates no GPU node pools, Compute Clusters or GPU capacity-report resources. Inspect `infrastructure_preview`. No CPU image is required or queried. Existing worker/pod subnets and NSGs are reused when unambiguous; overrides must remain in the cluster VCN. Empty RMS NSG lists preserve inherited policies rather than clearing them. The form can serialize its blank row as `[""]`; blank, whitespace and null entries are ignored, while actual IDs are trimmed and deduplicated. Routing, DNS, security rules and HTTPS egress still require environment validation.
+Prometheus and KEDA controllers can install concurrently: KEDA installation does not require a live Prometheus endpoint. A model's later scaling configuration must validate that endpoint and its query. KEDA queries Prometheus directly; this does not require a separate Prometheus Adapter. Node autoscaling is not enabled.
 
-For RMS, use a launch URL from discovery's `deployment_options` after Apply; see [publication](infrastructure-publication.md). Hardware/storage defaults are already populated. Select an existing cluster and review preview; the compartment defaults to the stack compartment and RMS supplies its actual region. Image, RDMA, disk and network settings are advanced controls. No large JSON variable is involved. `make package-infrastructure` still builds an unconfigured standalone developer ZIP that requires entering the discovery hardware choice manually.
+Images and bundled dependencies come from each Helm chart. Module-local chart versions freeze the platform recommendation; the recipe-selected vLLM image is a separate runtime decision. Chart mirroring and the native stage share the editable `CHART_VERSION` argument. Updating component charts is an explicit deployment operation, not an automatic consequence of looking up a newer model recipe.
 
-## Provisioning boundary
+## Run the pipelines
 
-After reviewing Plan, Apply with `skip_gpu_allocation=false` creates a retained GPU pool and, for supported RDMA shapes/regions, a Compute Cluster and scoped launch policy. Auto mode falls back to Ethernet when Compute Cluster support is not cataloged for the shape/region; preview states that explicitly. An explicit unsupported RDMA request fails. Regional support metadata can lag service expansion and needs review when adding regions. Allocation checks target-compartment entitlement, OKE shape/image support and quantity-specific host capacity. A fresh capacity report is requested on each provisioning plan/apply unless an explicit observation ID is supplied. Counts are whole hosts. Reports do not reserve capacity or prove RDMA transport.
+1. Review Terraform Plan, then Apply. This creates pipelines; it does not start installations automatically.
+2. As cluster administrator, review/apply the `bootstrap_rbac` output. Both native Helm and Shell stages need IAM, Kubernetes authorization and private API connectivity. The stack supplies a private OKE deployment environment as well as the private Shell runner channel.
+3. Run `platform.bootstrap_pipeline_id` to coordinate the selected component graph, or invoke any `component_pipeline_ids` independently. Independent components start concurrently; each pipeline checks its own release prerequisites. Run settings on the component pipeline are editable and used by both preflight and native Helm.
+4. Run `platform.validation_pipeline_id` for fresh, read-only checks. It verifies current releases, managed ownership/generation markers, controller rollouts, Prometheus StatefulSet/PVC readiness and KEDA API aggregation when selected. GPU debug mode records its reduced scope and does not wait for GPUs.
+5. Inspect immutable reports in `platform.result_repository_id`. Component report paths include component generation, deployment OCID and operation; platform validation reports have a unique execution version. There is no shared mutable `latest` readiness marker.
 
-No CPU pool is created. Later model-local CPU services that need GPU colocation belong to the model deployment design. The 200 GiB boot-disk default is a baseline: increase it **before allocating hosts** for larger checkpoints/caches. It does not certify arbitrary model disk fit.
+Scripts, command specs, values and specifications are immutable Generic Artifact Registry files supplied through native artifact inputs. Charts are mirrored into private OCIR repositories for native `OKE_HELM_CHART_DEPLOYMENT` stages. No models or new readiness reports are stored in a platform artifact bucket. Object Storage remains the discovery ZIP/PAR transport and optional model-data storage.
 
-New pools set `node_metadata = { areLegacyImdsEndpointsDisabled = "true" }`. This is OKE launch metadata, not a free-form or defined tag. OKE uses it to disable IMDSv1 for new worker instances, including in tenancies that reject launches enabling legacy IMDS. The value is a string because node metadata is a map of strings. The shared allocation module's optional CPU pool also uses this default; infrastructure still creates GPU pools only.
+The code uses readable Shell files and explicit environment exports. Native chart values use `${PARAMETER}` placeholders. `COMMAND_SPEC` artifacts use substitution mode `NONE`; Shell resolves its environment bindings. Neither scripts nor configuration are decoded from a base64 payload inside a command. The OCI INLINE API wrapper for the small coordinator command specification uses the service's required base64 encoding of YAML.
 
-### Existing CPU pool blocked by the tenancy IMDS rule
+## Ownership, upgrades and teardown
 
-An error mentioning `instanceOptions.areLegacyImdsEndpointsDisabled: false` and `imds/imds-disable-v1` means the pool's launch configuration must disable IMDSv1. [Oracle documents updating node metadata through the CLI](https://docs.oracle.com/en-us/iaas/Content/ContEng/Tasks/contengconfiguringimds.htm). Preserve existing entries such as cloud-init user data when changing the metadata map:
+Set component lifecycle modes to `managed`, `reuse` or `retire`. Reuse creates validation only, with no mutating native stage, ownership adoption or uninstall pipeline. Managed delivery refuses an existing foreign release or raw CRD. Resolve ownership explicitly instead of automatically adopting shared resources.
 
-```sh
-pool_ocid="<existing CPU node pool OCID>"
-imds_metadata_file=$(mktemp)
-oci ce node-pool get --profile DEFAULT --region eu-frankfurt-1 \
-  --node-pool-id "$pool_ocid" --query data |
-  jq '(."node-metadata" // {}) + {"areLegacyImdsEndpointsDisabled":"true"}' \
-  > "$imds_metadata_file"
+Managed operations acquire an atomic Kubernetes Lease for the cluster/namespace/release and keep it across the native Helm stage. Other components can run concurrently. Failed or interrupted native stages deliberately retain that lease. Explicit recovery requires the old deployment OCID, its terminal OCI status and lease expiry; expiry alone never grants takeover. See [component delivery](../modules/component-delivery/README.md) for the recovery contract.
 
-oci ce node-pool update --profile DEFAULT --region eu-frankfurt-1 \
-  --node-pool-id "$pool_ocid" \
-  --node-metadata "file://$imds_metadata_file"
-rm -f "$imds_metadata_file"
-```
+To remove a managed component, keep its declaration in `retire` mode, Apply, then run its separate `undeploy_pipeline_ids` entry with `CONFIRM_UNINSTALL=true`. Removal checks exact ownership and external dependents. Ordinary uninstall preserves namespaces, CRDs, PVCs, model data and GPU allocations. KEDA's templated CRDs have Helm keep annotations. Raw LWS/Prometheus CRDs are created/updated explicitly using server-side apply without forced field conflicts. Chart CRD upgrades are not assumed to happen automatically through Helm.
 
-This changes future node launches and can allow a pool's pending nodes to be created. It does not retrofit existing instances or require destroying/recreating the pool. If Terraform manages that existing pool, record the same `node_metadata` setting in its owning configuration. The Compute Console's **Instance metadata service → Edit → Version 2 only** control edits an individual instance; use the pool setting for future OKE workers. The repository change does not modify an existing external CPU pool until its owner applies an update.
+Disabling an enabled component or destroying Terraform pipeline definitions does **not** uninstall its release. Retire before removing its declaration. If the cleanup pipeline was removed prematurely, reapply the same stable identity in `retire` mode to restore it. Do not destroy the project/repositories before running needed uninstall pipelines. An old platform bucket from earlier test deployments should be retained outside the new pipeline-artifact lifecycle rather than destroyed to change transport.
 
-Do not rename an allocated platform, enable debug skipping after GPU allocation, or test teardown on scarce GPUs. Retained-pool safeguards remain enabled. `prevent_destroy` blocks Terraform pool destruction; it does not prevent every in-place update, upgrade or service-side cycling operation. No live GPU nodes were allocated, resized, cycled or deleted during this implementation.
+## Model placement and storage boundaries
 
-## Bootstrap shared components
+Discovery packs complete single-node replicas into already allocated hosts. TP=4 on an eight-GPU host recommends two fixed replicas. Multi-node PP uses complete host groups; spare-rank packing across groups is not inferred. These are estimates, with no GPU runtime, throughput or latency validation. Multiple replicas require a model-layer routing adapter; cache-aware routing is not conversation-history persistence.
 
-Terraform creates pipeline records but does not execute them. First, an existing cluster administrator applies the explicit bootstrap binding:
+Optional model staging requires a pinned file manifest, tested image digest, confirmed existing CPU placement and enhanced OKE workload identity. The bucket retains model data; the download pipeline runs the payload transfer inside a CPU Kubernetes Job with bounded scratch space. It never downloads checkpoint payloads to the DevOps runner. See [model storage](model-storage.md). The later model stack must still materialize and verify a checkpoint in local disk/PVC storage, then start vLLM. Object Storage is not implicitly a normal checkpoint directory.
 
-```sh
-terraform -chdir=templates/infrastructure output -json bootstrap_rbac > work/platform-bootstrap-rbac.json
-kubectl apply -f work/platform-bootstrap-rbac.json
-terraform -chdir=templates/infrastructure output -json platform
-```
+## Validation limits
 
-The `platform` output contains two pipelines in the shared project:
+Terraform tests mock OCI. Script integration tests mock external services. Opt-in chart tests render the actual upstream releases using the module's values. CPU-only live validation does not establish GPU driver/CUDA, RDMA/NCCL, model placement, KV transfer, autoscaling thresholds or serving performance. The older combined model template is not the new separate model lifecycle and is not published by infrastructure discovery.
 
-| Pipeline | Purpose |
-| --- | --- |
-| `<platform>-lws` (`component_pipeline_ids.lws`, also `bootstrap_pipeline_id`) | Install/reuse LWS; explicitly update its configured release with `LWS_OPERATION=upgrade`. |
-| `<platform>-validate` (`validation_pipeline_id`) | Check existing nodes, LWS rollout and admission; never install or upgrade a component. |
-
-Each uses the [oke-langfuse Shell stage pattern](https://github.com/streamnsight/oke-langfuse/tree/main/modules/devops/deployment_stages/shell_stage), resource-principal authentication and a private-endpoint kubeconfig. The subnet must reach OKE, OCI, Kubernetes binary downloads and Helm registries. The exported binding identifies both pipeline principals; apply it only if the target does not already authorize them. Later model identities require separate scopes. Serialize pipeline runs for the same platform. Future shared components should receive their own pipeline and component script, rather than extending the LWS lifecycle.
-
-In **Run pipeline**, expand the parameters to adjust settings for that run. OCI maps them into the [command specification's native environment variables](https://docs.oracle.com/en-us/iaas/Content/devops/using/command_spec.htm). [Run arguments override parameter defaults](https://docs.oracle.com/en-us/iaas/Content/devops/using/parameters.htm); editing pipeline defaults persists them until the next Terraform Apply restores the declared defaults.
-
-| Settings | Meaning |
-| --- | --- |
-| `LWS_VERSION`, `LWS_CHART`, `LWS_RELEASE`, `LWS_NAMESPACE` | Component version, chart location and explicit Helm owner. |
-| `LWS_OPERATION` | `ensure` (default) reuses matching healthy state; `upgrade` explicitly updates the configured release. Ignored by validation. |
-| `KUBERNETES_VERSION`, `HELM_VERSION` | Checksum-verified client releases. |
-| `GPU_ALLOCATION_ENABLED`, `GPU_NODE_COUNT`, `GPUS_PER_HOST` | Advertised-node checks; these variables never allocate or resize hosts. |
-| `REQUIRES_RDMA`, `RDMA_RESOURCE_NAME` | Advertised RDMA check; `auto` resolves a unique resource. |
-| `PLATFORM_NAME`, `REGION`, `CLUSTER_ID`, `ENABLE_LWS` | Target and readiness scope. Changing target does not grant new IAM/RBAC/network access. |
-
-Use literal strings: booleans are `true`/`false`, counts are positive integers and versions are explicit releases. These values contain no credentials. The command spec explicitly exports its named variables for child processes; scripts validate their types and build only the small local readiness input they need. Readable Bash/jq scripts live in a private OCI Generic Artifact Registry repository, versioned by SHA256. Native `inputArtifacts` supplies them as local files; the command verifies each checksum before execution. No code or configuration is embedded as a base64 payload inside its commands. The OCI INLINE-artifact API itself requires base64 transport of the YAML; the Console displays its decoded form.
-
-Command-spec artifacts must retain `argument_substitution_mode=NONE`. Shell resolves parameter references in `env.variables`; enabling whole-artifact substitution is rejected by OCI for this artifact type.
-
-The pipeline policy includes both `compute-container-instances` and `compute-containers`, as required by [Oracle's Shell-stage IAM policy](https://docs.oracle.com/en-us/iaas/Content/devops/using/devops_iampolicies.htm), plus network, artifact repository/artifact reads, logging and platform-bucket access. Creating the pipeline does not itself grant Kubernetes RBAC: apply the generated binding as a cluster administrator before bootstrap installs CRDs.
-
-The pipeline:
-
-1. Downloads checksum-verified kubectl and Helm clients.
-2. Checks existing Ready, schedulable CPU nodes for LWS. Normal mode also checks allocation nodes advertising the full GPU count per shape. Debug mode does not wait for or validate GPU/RDMA resources and records `validation_scope=cpu_components_only` plus `gpu_validation=skipped_debug`. RDMA requires an unambiguous advertised extended resource or an explicit existing resource name. These checks measure advertised capacity, not free GPUs or CUDA/NCCL operation.
-3. The LWS pipeline installs the configured chart (default 1.0.0) on CPU nodes. GPU labels and advertised GPU/MIG resources exclude accelerator nodes even when a label or device plugin is missing. Affinity excludes GPU labels and admits only the CPU instance types observed during validation; no full GPU-shape catalog is passed to a selected-pool stack. Newly allocated GPU pools receive `nvidia.com/gpu=true` along with their allocation label. The chart supplies images/defaults and bundled CRDs. Default runs reuse an identifiable, healthy release matching that version. Validation requires an existing matching release. Neither mode silently adopts an unknown owner or upgrades a different version.
-4. Waits for CRD establishment/controller rollout and submits a server-side dry run of a zero-replica LWS to check API/webhook admission. This persists no instance and schedules no model/probe pods.
-5. Writes generation-specific readiness and per-run evidence to private Object Storage. Failures replace the in-progress marker with failed readiness. Any changed setting gets a different generation and `<original-prefix>/overrides/<settings-sha256>/` evidence path; it cannot overwrite readiness for the original specification. Evidence records actual non-secret settings and pipeline mode.
-
-For an intentional LWS update, run only the LWS pipeline with the desired `LWS_VERSION` and `LWS_OPERATION=upgrade`. The existing healthy release must match `LWS_RELEASE`/`LWS_NAMESPACE`. Its CRDs are updated server-side without forcing field conflicts, then Helm upgrades with existing values preserved and CPU affinity enforced. CRD conflicts stop before the Helm upgrade. A subsequent Helm failure can leave already-updated CRDs; there is no automatic CRD rollback or deletion. Review upstream upgrade guidance and affected workloads first. Run the validation pipeline with the same version override to assess that configuration. Persist the new desired version in the module defaults before treating it as the platform's original specification.
-
-GPU/network support stays OKE-owned. [These add-ons are optional](https://docs.oracle.com/en-us/iaas/Content/ContEng/Tasks/contengintroducingclusteraddons.htm): an enhanced cluster alone does not prove they are enabled. This pass inventories installed add-ons and checks actual node resources. It does not enable/upgrade missing GPU/network add-ons, install standalone operators or create RDMA network policies/attachments. Enable/configure required managed capabilities through OKE before bootstrap can pass. Legacy image-provided device plugins can also satisfy resource checks. Prometheus/KEDA are deferred until model metrics/scaling requirements are defined.
-
-## Contract and validation
-
-Terraform owns private `platform-spec.json` with selected hardware, image/network evidence and allocation identity. The small `platform` output gives pool, cluster, project and specification/readiness URIs. The pipelines exclusively own `<platform>/<generation>/readiness.json`; Terraform never writes a runtime-success flag. Later model deployment must check its generation against the descriptor and reject an overridden generation as proof of the original specification. Neither object contains credentials or the full discovery report.
-
-Readiness is a point-in-time observation. Later model deployment must run validation for its target generation after component changes; an older ready record is insufficient to establish current controller state.
-
-The bucket is for mutable desired-specification/readiness records and per-run diagnostics (node inventories, Helm release inventory and admission results), not scripts or model weights. `script_repository_id` identifies the separate Artifact Registry repository. Its upload-by-path Terraform resource retains old artifact versions when updated; clearing those versions is an explicit repository-retirement task. Discovery's separate bundle bucket holds generated RMS ZIPs and launch PARs. Model storage/cache is part of the later model-deployment design.
-
-Local checks cover both allocation modes, environment overrides/types, isolated evidence, separate validation, explicit upgrade ownership/CRD conflicts, and complete Bash/jq execution with mocked external commands. CPU-only RMS/OKE bootstrap was validated live; see the reports under outputs/. Real upgrades, GPU allocation, CUDA and RDMA transport need their own validation.
+Primary references: [OCI native Helm stages](https://docs.oracle.com/en-us/iaas/Content/devops/using/deploy-helmchart.htm), [Helm artifacts and version parameters](https://docs.oracle.com/en-us/iaas/Content/devops/using/add-helmchart.htm), [Shell command specifications](https://docs.oracle.com/en-us/iaas/Content/devops/using/command_spec.htm), [Helm CRD lifecycle](https://helm.sh/docs/chart_best_practices/custom_resource_definitions/).

@@ -17,7 +17,7 @@ locals {
       memory = { assumptions = { for k, v in var.profile.memory.assumptions : k => v if contains(["context_length", "concurrency", "kv_dtype", "runtime_allowance_gib", "safety_margin_fraction"], k) } }
     }
     assessment = { suggestions = [merge(
-      { for k, v in c : k => v if contains(["id", "region", "availability_domain", "gpu_shape", "node_count", "tensor_parallel_size", "pipeline_parallel_size", "replicas", "requires_rdma", "capacity_observed_at", "estimated_rank_bytes", "configuration_status", "control_plane"], k) },
+      { for k, v in c : k => v if contains(["id", "region", "availability_domain", "gpu_shape", "node_count", "tensor_parallel_size", "pipeline_parallel_size", "replicas", "replicas_per_node", "platform_plan", "requires_rdma", "capacity_observed_at", "estimated_rank_bytes", "configuration_status", "control_plane"], k) },
       { serving_configuration = merge(try(c.serving_configuration, var.serving_configuration), {
         recipe = merge(try(c.serving_configuration.recipe, var.serving_configuration.recipe), {
           api = { for k, v in try(c.serving_configuration.recipe.api, var.serving_configuration.recipe.api, {}) : k => v if k != "original_argv" }

@@ -1,6 +1,7 @@
 # Copyright (c) 2020-2022 Oracle and/or its affiliates. All rights reserved.
 # Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
 mock_provider "oci" {}
+mock_provider "oci" { alias = "home" }
 variables {
   tenancy_ocid        = "root"
   compartment_id      = "target"
@@ -175,4 +176,25 @@ run "gpu_only_pool_does_not_require_a_cpu_image_or_subnet" {
     condition     = length(oci_containerengine_node_pool.cpu) == 0 && output.allocation.cpu_pool_id == null
     error_message = "A GPU-only allocation must not create a CPU node pool or require CPU image/network inputs."
   }
+}
+run "capture_retained_launch_bindings" {
+  command = apply
+  plan_options { target = [terraform_data.bindings] }
+}
+run "component_apply_cannot_follow_a_new_gpu_image" {
+  command = plan
+  variables { gpu_image_id = "new-discovered-image" }
+  expect_failures = [oci_containerengine_node_pool.gpu]
+}
+run "unchanged_bindings_still_allow_normal_component_apply" {
+  command = plan
+  assert {
+    condition     = terraform_data.bindings.output.image_id == var.gpu_image_id && oci_containerengine_node_pool.gpu.node_shape == var.gpu_shape
+    error_message = "Frozen launch bindings must allow an unchanged allocation."
+  }
+}
+run "component_apply_cannot_change_retained_boot_disk" {
+  command = plan
+  variables { boot_volume_gib = 300 }
+  expect_failures = [oci_containerengine_node_pool.gpu]
 }

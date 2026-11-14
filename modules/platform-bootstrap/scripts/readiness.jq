@@ -20,14 +20,14 @@ def gpu_node:
 (if $check_gpu and $c.requires_rdma then ($requested // (if ($candidates|length)==1 then $candidates[0] else null end)) else null end) as $resource |
 (if $resource==null then 0 else ([$gpus[] | select(((.status.allocatable[$resource] // "0")|tonumber)>=1)] | length) end) as $rdma_nodes |
 {
-  ready:((if $check_gpu then ($gpus|length)>=$c.node_count else true end) and (if $c.enable_lws then ($cpus|length)>=1 else true end) and (if $check_gpu and $c.requires_rdma then $resource!=null and $rdma_nodes>=$c.node_count else true end)),
+  ready:((if $check_gpu then ($gpus|length)>=$c.node_count else true end) and (if ($c.enable_lws or $c.cpu_components_required) then ($cpus|length)>=1 else true end) and (if $check_gpu and $c.requires_rdma then $resource!=null and $rdma_nodes>=$c.node_count else true end)),
   fatal:($check_gpu and $c.requires_rdma and $requested==null and ($candidates|length)>1),
   validation_scope:(if $check_gpu then "platform_and_gpu_capacity" else "cpu_components_only" end),
   gpu_validation:(if $check_gpu then "advertised_capacity_only" else "skipped_debug" end),
   gpu_ready_nodes:($gpus|length), cpu_ready_nodes:($cpus|length), cpu_shapes:([$cpus[].metadata.labels["node.kubernetes.io/instance-type"]]|unique), rdma_ready_nodes:$rdma_nodes, rdma_resource_name:$resource,
   reasons:[
     (if $check_gpu and ($gpus|length)<$c.node_count then "Insufficient Ready, schedulable GPU hosts advertising the full shape GPU count. Enable/configure the OKE GPU add-on and supported image." else empty end),
-    (if $c.enable_lws and ($cpus|length)<1 then "No Ready, schedulable existing CPU node without blocking taints. No CPU pool will be created." else empty end),
+    (if ($c.enable_lws or $c.cpu_components_required) and ($cpus|length)<1 then "No Ready, schedulable existing CPU node without blocking taints. No CPU pool will be created." else empty end),
     (if $check_gpu and $c.requires_rdma and ($resource==null or $rdma_nodes<$c.node_count) then "No unique RDMA resource on enough GPU hosts. Configure the OKE network add-on, or specify the existing RDMA resource." else empty end)
   ]
 }

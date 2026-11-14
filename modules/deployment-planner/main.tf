@@ -50,6 +50,8 @@ locals {
       image    = local.resolution_present ? try(engine.available_images["linux/${row.gpu.cpu_architecture}"], engine.platform == "linux/${row.gpu.cpu_architecture}" ? engine.image : null, null) : engine.image,
       platform = local.resolution_present ? try("linux/${row.gpu.cpu_architecture}", engine.platform) : try(engine.platform, null)
     }), tp     = tp, pp = pp
+    # Do not infer cross-node placement of several PP replica groups.
+    replicas_per_node = pp == 1 ? max(1, floor(row.shape.gpus / tp)) : 1
     # TP stays inside one host; PP spans hosts. Extra embedding allowance is conservative.
     rank_bytes = local.memory_supported ? ceil((
       local.profile.memory.weight_bytes / tp * min(local.a.layers, ceil(local.a.layers / pp) + (pp > 1 ? 1 : 0)) / local.a.layers +
@@ -67,26 +69,31 @@ locals {
       pp == 1 || try(engine.multi_node_backend == "mp", false) ? "" : "Engine catalog does not establish native multi-node multiprocessing support.",
     ])
   }]]]])
-  evaluated = [for layout in local.layouts : merge(layout, {
-    memory_fit  = try(layout.rank_bytes <= layout.row.gpu.memory_bytes_per_gpu * 0.9, false)
-    capacity_ok = try(layout.row.capacity.availability_status == "AVAILABLE" && layout.row.capacity.available_instances >= layout.pp * var.replicas, false)
-    # Quota names can have units such as GPUs/cores. Positive headroom alone is not a quantity proof.
-    entitlement = try(layout.row.limit_status == "positive" && layout.row.entitled_instances >= layout.pp * var.replicas, false) ? "confirmed_for_quantity" : "not_confirmed_for_quantity"
+  packed_layouts = [for layout in local.layouts : merge(layout, {
+    node_count = layout.pp * ceil(var.replicas / layout.replicas_per_node)
+    replicas   = ceil(var.replicas / layout.replicas_per_node) * layout.replicas_per_node
   })]
-  candidates = [for layout in local.evaluated : {
-    id                   = substr(sha256(jsonencode([local.profile.model, local.profile.memory.assumptions, layout.row.region, layout.row.ad, layout.row.shape.shape, layout.engine.image, layout.tp, layout.pp, var.replicas, var.serving_resolution])), 0, 16)
-    region               = layout.row.region, availability_domain = layout.row.ad, gpu_shape = layout.row.shape.shape
-    gpus_per_node        = layout.row.shape.gpus, node_count = layout.pp * var.replicas, replicas = var.replicas
-    tensor_parallel_size = layout.tp, pipeline_parallel_size = layout.pp
-    engine               = layout.engine
-    estimated_rank_bytes = layout.rank_bytes
-    gpu_memory_bytes     = layout.row.gpu.memory_bytes_per_gpu
-    available_instances  = layout.row.capacity.available_instances
-    capacity_observed_at = try(one([for region in var.regions : one([for ad in region.capacity.availability_domains : ad.assessment.observed_at if ad.name == layout.row.ad]) if region.capacity.region == layout.row.region]), null)
-    entitlement          = layout.entitlement
-    requires_rdma        = layout.pp > 1 && try(layout.row.gpu.compute_cluster_supported && contains(local.compute_cluster_regions, layout.row.region) && layout.row.shape.rdma_ports > 0, false)
-    status               = "estimated_feasible_requires_validation"
-    runtime_validation   = "not_run"
+  evaluated = [for layout in local.packed_layouts : merge(layout, {
+    memory_fit  = try(layout.rank_bytes <= layout.row.gpu.memory_bytes_per_gpu * 0.9, false)
+    capacity_ok = try(layout.row.capacity.availability_status == "AVAILABLE" && layout.row.capacity.available_instances >= layout.node_count, false)
+    # Quota names can have units such as GPUs/cores. Positive headroom alone is not a quantity proof.
+    entitlement = try(layout.row.limit_status == "positive" && layout.row.entitled_instances >= layout.node_count, false) ? "confirmed_for_quantity" : "not_confirmed_for_quantity"
+  })]
+  raw_candidates = [for layout in local.evaluated : {
+    id                         = substr(sha256(jsonencode([local.profile.model, local.profile.memory.assumptions, layout.row.region, layout.row.ad, layout.row.shape.shape, layout.engine.image, layout.tp, layout.pp, var.replicas, var.serving_resolution])), 0, 16)
+    region                     = layout.row.region, availability_domain = layout.row.ad, gpu_shape = layout.row.shape.shape
+    gpus_per_node              = layout.row.shape.gpus, node_count = layout.node_count, replicas = layout.replicas
+    requested_minimum_replicas = var.replicas, replicas_per_node = layout.replicas_per_node
+    tensor_parallel_size       = layout.tp, pipeline_parallel_size = layout.pp
+    engine                     = layout.engine
+    estimated_rank_bytes       = layout.rank_bytes
+    gpu_memory_bytes           = layout.row.gpu.memory_bytes_per_gpu
+    available_instances        = layout.row.capacity.available_instances
+    capacity_observed_at       = try(one([for region in var.regions : one([for ad in region.capacity.availability_domains : ad.assessment.observed_at if ad.name == layout.row.ad]) if region.capacity.region == layout.row.region]), null)
+    entitlement                = layout.entitlement
+    requires_rdma              = layout.pp > 1 && try(layout.row.gpu.compute_cluster_supported && contains(local.compute_cluster_regions, layout.row.region) && layout.row.shape.rdma_ports > 0, false)
+    status                     = "estimated_feasible_requires_validation"
+    runtime_validation         = "not_run"
     configuration_status = !local.resolution_present ? "analytical_estimate_requires_validation" : try(
       var.serving_resolution.status == "resolved_requires_validation" &&
       contains(local.tested_hardware, layout.row.gpu.recipe_hardware) &&
@@ -111,6 +118,7 @@ output "assessment" {
     recipe_options                 = { features = try(local.api.features, {}), kv_offload_support = try(local.api.kv_offload_support, {}), cache_options = local.cache_options, source = try(local.api.source, {}) }
     recipe_alternatives            = try(local.api.variants, {})
     recipe_api_diagnostics         = { for k, r in local.renderings : k => r.selection if !contains(keys(local.valid_renderings), k) }
+    platform_policy                = { monitoring_enabled = var.monitoring_enabled, autoscaling_enabled = var.autoscaling_enabled, fixed_replica_packing = "fill_complete_replicas_on_allocated_single_node_hosts" }
     sizing_options                 = local.sizing_options
     sizing_diagnostics             = local.sizing_diagnostics
     recipe_hardware_targets        = local.recipe_targets

@@ -1,6 +1,7 @@
 # Copyright (c) 2020-2022 Oracle and/or its affiliates. All rights reserved.
 # Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
 mock_provider "oci" {
+  mock_data "oci_core_subnet" { defaults = { ipv6cidr_block = "", ipv6cidr_blocks = [] } }
   mock_data "oci_objectstorage_namespace" { defaults = { namespace = "fixture-namespace" } }
   mock_data "oci_identity_tenancy" { defaults = { home_region_key = "ORD" } }
   mock_data "oci_identity_regions" { defaults = { regions = [{ key = "ORD", name = "us-chicago-1" }] } }
@@ -70,12 +71,12 @@ run "empty_rms_nsg_lists_preserve_discovered_policies" {
     error_message = "Empty RMS list controls must not silently remove inherited network security groups."
   }
 }
-run "h100_defaults_to_rdma" {
+run "single_host_h100_does_not_require_rdma" {
   command = plan
   variables { gpu_shape = "BM.GPU.H100.8" }
   assert {
-    condition     = output.infrastructure_preview.requires_rdma && output.infrastructure_preview.gpu_count_per_host == 8
-    error_message = "RDMA-capable shapes should default to their supported topology."
+    condition     = !output.infrastructure_preview.requires_rdma && output.infrastructure_preview.gpu_count_per_host == 8
+    error_message = "A single-host model must not allocate an RDMA fabric based only on hardware capability."
   }
 }
 run "blank_rms_rows_preserve_inherited_nsgs" {
@@ -109,7 +110,7 @@ run "auto_falls_back_to_ethernet_without_known_compute_cluster_support" {
     region    = "new-region-1"
   }
   assert {
-    condition     = !output.infrastructure_preview.requires_rdma && strcontains(output.infrastructure_preview.network_selection, "Ethernet fallback")
+    condition     = !output.infrastructure_preview.requires_rdma
     error_message = "Unknown Compute Cluster availability must be explicit and default to a regular pool."
   }
 }
@@ -122,11 +123,11 @@ run "explicit_rdma_in_an_unconfirmed_region_is_rejected" {
   }
   expect_failures = [terraform_data.specification]
 }
-run "specification_changes_keep_storage_namespace_known_during_plan" {
+run "component_updates_use_artifact_registry_without_a_platform_bucket" {
   command = plan
   variables { node_count = 2 }
   assert {
-    condition     = startswith(output.platform.specification_uri, "oci://us-ashburn-1/fixture-namespace/")
-    error_message = "A specification update must not defer the stable namespace lookup and plan to replace the platform bucket."
+    condition     = output.platform.specification.repository_id != null && output.platform.result_repository_id != null
+    error_message = "Specifications and run reports belong in Generic Artifact Registry."
   }
 }

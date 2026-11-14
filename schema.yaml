@@ -18,7 +18,7 @@ outputs:
 primaryOutputButton: ${recommended_launch_url}
 variableGroups:
   - title: Model and serving assumptions
-    variables: [model, revision, context_length, concurrency]
+    variables: [model, revision, context_length, concurrency, monitoring_enabled, autoscaling_enabled, model_storage_mode]
   - title: Capacity observation
     variables: [observation_id, compartment_id, regions, shape_names, query_resource_availability, only_shapes_with_limits]
   - title: Infrastructure launch bundles
@@ -27,6 +27,22 @@ variableGroups:
     visible: false
     variables: [tenancy_ocid, compartment_ocid, region]
 variables:
+  model_storage_mode:
+    type: enum
+    enum: [direct_huggingface, object_storage]
+    default: direct_huggingface
+    title: Model distribution
+    description: Direct download needs no staging bucket. Object Storage staging requires a tested staging image and CPU placement, reviewed in the generated infrastructure stack.
+  monitoring_enabled:
+    type: boolean
+    default: true
+    title: Monitor serving workloads
+    description: Recommend Prometheus monitoring. Compatible existing monitoring can be reused when configuring the infrastructure stack.
+  autoscaling_enabled:
+    type: boolean
+    default: false
+    title: Enable workload autoscaling
+    description: Opt in to KEDA and request metrics. GPU hosts stay allocated; this does not enable node autoscaling. Fixed replicas can use spare GPUs with this option off.
   skip_gpu_allocation:
     type: boolean
     default: false

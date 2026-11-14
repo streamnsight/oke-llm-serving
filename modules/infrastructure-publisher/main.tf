@@ -12,7 +12,7 @@ locals {
   published_at = local.enabled ? terraform_data.publication[0].output : ""
   # Explicit dependency closure for the GPU-only template; no publisher or
   # parent templates enter a child archive. Extracted-root validation checks it.
-  dependencies = toset(["gpu-allocation", "accelerator-inventory", "capacity-assessment", "deployment-target", "oke-node-image", "platform-bootstrap"])
+  dependencies = toset(["gpu-allocation", "accelerator-inventory", "capacity-assessment", "deployment-target", "oke-node-image", "platform-bootstrap", "component-delivery", "model-storage"])
   module_files = merge([for dependency in local.dependencies : {
     for relative in fileset("${var.modules_dir}/${dependency}", "**") : "modules/${dependency}/${relative}" => file("${var.modules_dir}/${dependency}/${relative}")
     if !startswith(relative, ".") && !startswith(relative, "tests/") && !startswith(relative, "work/") && !startswith(relative, "__pycache__/") && !strcontains(relative, "/__pycache__/") && !startswith(relative, "node_modules/") && !strcontains(relative, "/.") &&
@@ -25,9 +25,15 @@ locals {
   schema         = yamldecode(local.template_files["schema.yaml"])
   header         = "# Copyright (c) 2020-2022 Oracle and/or its affiliates. All rights reserved.\n# Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.\n"
   defaults = { for id, option in var.options : id => {
-    availability_domain = option.availability_domain, gpu_shape = option.gpu_shape, node_count = option.node_count,
-    boot_volume_gib     = max(200, ceil(try(coalesce(var.model.checkpoint_download_bytes, 0), 0) * 2 / pow(1024, 3)) + 100),
-    skip_gpu_allocation = var.skip_gpu_allocation
+    availability_domain      = option.availability_domain, gpu_shape = option.gpu_shape, node_count = option.node_count,
+    boot_volume_gib          = max(200, ceil(try(coalesce(var.model.checkpoint_download_bytes, 0), 0) * 2 / pow(1024, 3)) + 100),
+    skip_gpu_allocation      = var.skip_gpu_allocation,
+    enable_lws               = try(option.platform_plan.components.lws.required, option.pipeline_parallel_size > 1, false),
+    enable_disaggregated_set = try(option.platform_plan.components.lws.enable_disaggregated_set, false),
+    monitoring_enabled       = try(option.platform_plan.monitoring.enabled, true),
+    autoscaling_enabled      = try(option.platform_plan.autoscaling.enabled, false),
+    rdma_mode                = try(option.platform_plan.topology.rdma_required, option.requires_rdma, false) ? "rdma" : "ethernet"
+    model_storage_mode       = try(var.model.storage_mode, "direct_huggingface")
   } }
   specifications = { for id, option in var.options : id => {
     schema_version   = "1.0", kind = "infrastructure", selection_id = id, region = option.region, model = var.model,
@@ -134,6 +140,7 @@ output "deployment_options" {
   value = { for id, option in var.options : id => {
     kind                 = "infrastructure", region = option.region, artifact_region = var.region, availability_domain = option.availability_domain,
     gpu_shape            = option.gpu_shape, node_count = option.node_count, availability = option.availability,
+    replicas             = try(option.replicas, null), replicas_per_node = try(option.replicas_per_node, null), platform_plan = try(option.platform_plan, null),
     capacity_observed_at = try(option.capacity_observed_at, null), configuration_status = try(option.configuration_status, "requires_validation"),
     object_name          = local.object_names[id], launch_object_name = local.launch_object_names[id], published_at = local.published_at, expires_at = oci_objectstorage_preauthrequest.infrastructure[id].time_expires,
     zip_sha256           = archive_file.infrastructure[id].output_sha256, download_url = local.rms_par_urls[id],

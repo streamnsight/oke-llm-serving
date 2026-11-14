@@ -59,3 +59,21 @@ run "quota_must_cover_the_full_eight_GPU_host_even_for_TP2" {
   error_message="Headroom for four GPUs cannot allocate an eight-GPU node even when the model only needs TP2."
  }
 }
+
+run "recipe_suggestions_pack_replicas_using_confirmed_full_host_quantities" {
+  command = plan
+  variables { replicas = 5 }
+  assert {
+    condition = length(output.assessment.suggestions) == 1 && output.assessment.suggestions[0].tensor_parallel_size == 2 && output.assessment.suggestions[0].replicas_per_node == 4 && output.assessment.suggestions[0].node_count == 2 && output.assessment.suggestions[0].replicas == 8 && output.assessment.suggestions[0].requested_minimum_replicas == 5 && output.assessment.shape_observations[0].eligible_at_scan
+    error_message = "Five requested TP2 replicas need two eight-GPU hosts; fill eight fixed replica slots without requiring five hosts."
+  }
+}
+
+run "recipe_packing_does_not_exceed_reported_host_capacity" {
+  command = plan
+  variables { replicas = 9 }
+  assert {
+    condition = length(output.assessment.suggestions) == 0
+    error_message = "Nine TP2 replicas require three complete hosts, exceeding the two-host capacity observation."
+  }
+}
