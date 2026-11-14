@@ -17,11 +17,13 @@ RDMA follows the selected model execution/transfer topology and hardware/region 
 | Prometheus/operator and monitoring CRDs | On | Native Helm; persistent 50-GiB data claim, 24-hour retention, editable parameters |
 | KEDA and external metrics API | Off, opt in | Independent native Helm; model-specific scalers come later |
 | LWS / DisaggregatedSet | Required by selected topology | Independent native Helm plus explicit owned raw-CRD preparation |
-| GPU/network operators | Reuse OKE capabilities | Inventory installed add-ons; validate advertised devices; no duplicate standalone operator |
+| GPU/network operators | Reuse OKE capabilities | Missing/inactive native GPU support blocks enhanced-cluster allocation; the managed RDMA path also requires Network Operator. No duplicate standalone operator |
 | Router, LMCache instances, serving replicas and ScaledObjects | Model layer | Not installed by infrastructure bootstrap |
 | Optional model-data staging | Direct Hub download by default | Separate retained bucket and CPU download Job pipeline when configured |
 
 Prometheus and KEDA controllers can install concurrently: KEDA installation does not require a live Prometheus endpoint. A model's later scaling configuration must validate that endpoint and its query. KEDA queries Prometheus directly; this does not require a separate Prometheus Adapter. Node autoscaling is not enabled.
+
+OKE's GPU/network add-ons are optional. The allocation preflight checks existing service configuration and publishes `allocation.addon_prerequisites`; it does not enable or upgrade missing add-ons. Basic-cluster/manual integrations remain unverified. An ACTIVE Network Operator does not prove pod RDMA devices are configured, and GPU metric exporter/scrape configuration remains unfinished. Compute Cluster placement configures host RDMA agents separately. Runtime checks must still verify advertised devices, CUDA and fabric operation.
 
 Images and bundled dependencies come from each Helm chart. Module-local chart versions freeze the platform recommendation; the recipe-selected vLLM image is a separate runtime decision. Chart mirroring and the native stage share the editable `CHART_VERSION` argument. Updating component charts is an explicit deployment operation, not an automatic consequence of looking up a newer model recipe.
 
@@ -60,3 +62,11 @@ Terraform tests mock OCI. Script integration tests mock external services. Opt-i
 Primary references: [OCI native Helm stages](https://docs.oracle.com/en-us/iaas/Content/devops/using/deploy-helmchart.htm), [Helm artifacts and version parameters](https://docs.oracle.com/en-us/iaas/Content/devops/using/add-helmchart.htm), [Shell command specifications](https://docs.oracle.com/en-us/iaas/Content/devops/using/command_spec.htm), [Helm CRD lifecycle](https://helm.sh/docs/chart_best_practices/custom_resource_definitions/).
 
 OKE authorization reference: [IAM and Kubernetes RBAC](https://docs.oracle.com/en-us/iaas/Content/ContEng/Concepts/contengaboutaccesscontrol.htm), [canonical clusters permissions and variables](https://docs.oracle.com/en-us/iaas/Content/Identity/policyreference/contengpolicyreference.htm).
+
+## Private DevOps connectivity
+
+`PRIVATE_ENDPOINT_CHANNEL` configures a DevOps private endpoint whose VNIC resources are created in the selected subnet. This stack uses it on the native OKE deployment environment for Helm stages. `SERVICE_VNIC_CHANNEL` accesses private resources using a service-managed VNIC; this stack uses it on Shell execution containers. Both take a subnet and optional NSGs, and both rely on routing and security rules. Neither configures RDMA or the GPUs' data path.
+
+Oracle exposes both variants through the common `NetworkChannel` API. Provider schema acceptance alone therefore does not establish that a particular use works. The Frankfurt OKE environment became ACTIVE after using the private-endpoint configuration; Shell reuse validation separately reached the API through its service-VNIC path. This is the tested combination here.
+
+Sources: [PrivateEndpointChannel](https://docs.oracle.com/en-us/iaas/tools/python/latest/api/devops/models/oci.devops.models.PrivateEndpointChannel.html), [ServiceVnicChannel](https://docs.oracle.com/en-us/iaas/tools/python/latest/api/devops/models/oci.devops.models.ServiceVnicChannel.html), [reference OKE environment](https://github.com/streamnsight/oke-langfuse/blob/main/modules/devops/environment/environment.tf).

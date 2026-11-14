@@ -4,6 +4,10 @@ Licensed under the Universal Permissive License v 1.0 as shown at http://oss.ora
 -->
 # Project status
 
+Current feature branch: `feat/discovery-driven-platform-components`. The CPU component foundation is validated live: the corrected RMS Apply, parallel LWS reuse/Prometheus/KEDA graph, fresh aggregate readiness and guarded KEDA uninstall/reinstall all succeeded. All six KEDA CRDs were retained. GPU allocation remained disabled. Discovery replica packing, monitoring-on/autoscaling-opt-in policy, native per-component Helm delivery, Artifact Registry evidence and OCIR mirroring are implemented. Local tests and actual chart rendering pass, including 23 allocation prerequisite tests. Automatic OKE GPU/network add-on configuration, GPU exporter scraping, the model-staging image/live flow and the separate model deployment layer remain unfinished. See [the current implementation/validation report](native-component-validation-2026-11-13.md), [the active implementation record](configurable-platform-implementation-plan.md) and [current bootstrap instructions](../docs/infrastructure-bootstrap.md). The LWS-only live validation below is historical.
+
+## Previous LWS-only baseline
+
 The CPU platform and editable component pipelines are validated live on the existing Frankfurt OKE cluster. The latest LWS deployment and independent validation runs both succeeded, reusing LWS 1.0.0 at Helm revision 1. A per-run version override reached the validator, produced separate evidence and left the original readiness JSON byte-for-byte unchanged. Both runs checked two existing CPU nodes, controller rollout and server-side admission. See [the current validation report](component-pipelines-validation-2026-11-13.md).
 
 The infrastructure stack has nineteen OCI resource instances plus a local Terraform specification record. It owns DevOps, logging, scoped IAM, a private evidence bucket and an immutable Artifact Registry repository. No GPU allocation resources were created. Existing networking and RBAC bindings were not changed.
