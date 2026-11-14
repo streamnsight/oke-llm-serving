@@ -33,7 +33,7 @@ locals {
       chart            = { repository = "https://prometheus-community.github.io/helm-charts", name = "kube-prometheus-stack", version = local.chart_defaults.prometheus.version }
       namespace        = "monitoring", release_name = "llm-monitoring"
       crd_names        = ["prometheuses.monitoring.coreos.com", "servicemonitors.monitoring.coreos.com", "podmonitors.monitoring.coreos.com", "prometheusrules.monitoring.coreos.com"]
-      blocker_kinds    = ["scaledobjects.keda.sh", "scaledjobs.keda.sh", "prometheuses.monitoring.coreos.com", "prometheusagents.monitoring.coreos.com", "alertmanagers.monitoring.coreos.com", "thanosrulers.monitoring.coreos.com"]
+      blocker_kinds    = ["scaledobjects.keda.sh", "scaledjobs.keda.sh", "prometheuses.monitoring.coreos.com", "prometheusagents.monitoring.coreos.com", "alertmanagers.monitoring.coreos.com", "alertmanagerconfigs.monitoring.coreos.com", "thanosrulers.monitoring.coreos.com", "servicemonitors.monitoring.coreos.com", "podmonitors.monitoring.coreos.com", "probes.monitoring.coreos.com", "scrapeconfigs.monitoring.coreos.com", "prometheusrules.monitoring.coreos.com"]
       deployment_names = ["llm-monitoring-kube-prom-operator"]
       dependencies     = []
       parameters       = { PROMETHEUS_CPU = "1", PROMETHEUS_MEMORY = "2Gi", PROMETHEUS_RETENTION = "24h", PROMETHEUS_STORAGE = "50Gi", STORAGE_CLASS = "oci-bv" }

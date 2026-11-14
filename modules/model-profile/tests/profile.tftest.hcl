@@ -138,12 +138,14 @@ run "staging_manifest_uses_only_snapshot_data_and_lfs_sha256" {
     target = data.http.model
     values = {
       status_code = 200
-      response_body = jsonencode({ sha = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", safetensors = { parameters = { BF16 = 6 }, total = 6 }, siblings = [
-        { rfilename = "model.safetensors", size = 12, lfs = { size = 12, sha256 = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" } },
-        { rfilename = "config.json", size = 200, blobId = "cccccccccccccccccccccccccccccccccccccccc" },
-        { rfilename = "modeling_custom.py", size = 100 },
-        { rfilename = "other-variant/model.safetensors", size = 9999 }
-      ] })
+      response_body = <<-JSON
+      {"sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","safetensors":{"parameters":{"BF16":6},"total":6},"siblings":[
+        {"rfilename":"model.safetensors","size":12,"lfs":{"size":12,"sha256":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}},
+        {"rfilename":"config.json","size":200,"blobId":"cccccccccccccccccccccccccccccccccccccccc"},
+        {"rfilename":"modeling_custom.py","size":100},
+        {"rfilename":"other-variant/model.safetensors","size":9999}
+      ]}
+      JSON
     }
   }
   assert {

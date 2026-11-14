@@ -57,4 +57,8 @@ run "conditional_native_helm_delivery" {
     condition     = yamldecode(local.command_specs["lws/deploy"]).env.variables.REPLICAS == "$${REPLICAS}" && yamldecode(local.command_specs["external/deploy"]).env.variables.DELIVERY_OPERATION == "reuse" && yamldecode(local.command_specs["old/undeploy"]).env.variables.DELIVERY_OPERATION == "undeploy" && yamldecode(local.command_specs["lws/deploy"]).env.variables.DELIVERY_DEPLOYMENT_ID == "$${OCI_DEPLOYMENT_ID}"
     error_message = "Lifecycle behavior must come from the declaration, not an override that leaves a mutating stage behind."
   }
+  assert {
+    condition     = alltrue(flatten([for parameters in values(local.parameters) : [for name in keys(parameters) : !startswith(name, "OCI_")]])) && alltrue([for parameters in values(local.parameters) : parameters.ENFORCE_HELM_DEPLOYMENT == "true"])
+    error_message = "OCI service-reserved controls cannot be declared as pipeline parameters. Prepare creates namespaces; retain the documented non-reserved Helm rerun argument."
+  }
 }

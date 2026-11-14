@@ -31,7 +31,7 @@ locals {
   parameters = { for key, c in var.components : key => merge(c.parameters, {
     CHART_VERSION           = c.chart.version,
     CONFIRM_UNINSTALL       = "false", RECOVER_LOCK_HOLDER = "",
-    ENFORCE_HELM_DEPLOYMENT = "true", OCI_DEVOPS_DEPLOY_USE_CREATE_NAMESPACE_FLAG = "true"
+    ENFORCE_HELM_DEPLOYMENT = "true"
   }) }
 }
 

@@ -40,6 +40,8 @@ and never deliberately overwritten. Shell does not run Helm install or upgrade.
 Values, scripts, specifications and command specifications are immutable Generic
 Artifacts; chart content belongs in OCIR. `registry_host` supports an explicit
 realm-specific OCIR endpoint; the default is commercial `${region}.ocir.io`.
+Prepare creates the namespace. Service-only `OCI_` controls are not declared as
+pipeline parameters; `ENFORCE_HELM_DEPLOYMENT` remains the editable rerun argument.
 
 Raw CRDs in the chart's `crds/` directory are created with stable ownership and
 keep annotations before native installation. Updates require that ownership and
