@@ -9,7 +9,8 @@ variable "compartment_id" { type = string }
 variable "target" { type = any }
 resource "oci_ons_notification_topic" "model" {
   compartment_id = var.compartment_id
-  name           = "${var.name}-notifications"
+  # DNS-compatible model names can contain consecutive dashes; ONS forbids them.
+  name = "${replace(var.name, "/-+/", "-")}-notifications"
 }
 resource "oci_devops_project" "model" {
   compartment_id = var.compartment_id
