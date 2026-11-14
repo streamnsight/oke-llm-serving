@@ -115,7 +115,7 @@ resource "oci_devops_deploy_artifact" "bootstrap" {
   project_id                 = oci_devops_project.platform.id
   display_name               = "${var.name}-bootstrap-command"
   deploy_artifact_type       = "COMMAND_SPEC"
-  argument_substitution_mode = "SUBSTITUTE_PLACEHOLDERS"
+  argument_substitution_mode = "NONE"
   deploy_artifact_source {
     deploy_artifact_source_type = "INLINE"
     base64encoded_content       = base64encode(local.command_specs.deploy)
@@ -164,7 +164,7 @@ resource "oci_devops_deploy_artifact" "validate" {
   project_id                 = oci_devops_project.platform.id
   display_name               = "${var.name}-validate-command"
   deploy_artifact_type       = "COMMAND_SPEC"
-  argument_substitution_mode = "SUBSTITUTE_PLACEHOLDERS"
+  argument_substitution_mode = "NONE"
   deploy_artifact_source {
     deploy_artifact_source_type = "INLINE"
     base64encoded_content       = base64encode(local.command_specs.validate)

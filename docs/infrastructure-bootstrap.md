@@ -83,6 +83,8 @@ In **Run pipeline**, expand the parameters to adjust settings for that run. OCI 
 
 Use literal strings: booleans are `true`/`false`, counts are positive integers and versions are explicit releases. These values contain no credentials. Scripts read the variables as data, validate their types, and build only the small local readiness input they need. The small command spec downloads readable, checksum-addressed Bash/jq files from the private platform bucket and verifies every file before execution. No code or configuration is embedded as a base64 payload inside its commands. The OCI INLINE-artifact API itself requires base64 transport of the YAML; the Console displays its decoded form.
 
+Command-spec artifacts must retain `argument_substitution_mode=NONE`. Shell resolves parameter references in `env.variables`; enabling whole-artifact substitution is rejected by OCI for this artifact type.
+
 The pipeline policy includes both `compute-container-instances` and `compute-containers`, as required by [Oracle's Shell-stage IAM policy](https://docs.oracle.com/en-us/iaas/Content/devops/using/devops_iampolicies.htm), plus network, command-artifact, logging and platform-bucket access. Creating the pipeline does not itself grant Kubernetes RBAC: apply the generated binding as a cluster administrator before bootstrap installs CRDs.
 
 The pipeline:

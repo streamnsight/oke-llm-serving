@@ -16,7 +16,7 @@ variables {
 run "platform_has_explicit_shell_bootstrap_and_separate_readiness" {
   command = apply
   assert {
-    condition     = oci_devops_deploy_stage.bootstrap.deploy_stage_type == "SHELL" && oci_devops_deploy_stage.validate.deploy_stage_type == "SHELL" && oci_devops_deploy_artifact.bootstrap.argument_substitution_mode == "SUBSTITUTE_PLACEHOLDERS" && yamldecode(local.command_specs.deploy).env.variables.LWS_VERSION == "$${LWS_VERSION}" && !strcontains(local.command_specs.deploy, "base64")
+    condition     = oci_devops_deploy_stage.bootstrap.deploy_stage_type == "SHELL" && oci_devops_deploy_stage.validate.deploy_stage_type == "SHELL" && oci_devops_deploy_artifact.bootstrap.argument_substitution_mode == "NONE" && yamldecode(local.command_specs.deploy).env.variables.LWS_VERSION == "$${LWS_VERSION}" && !strcontains(local.command_specs.deploy, "base64")
     error_message = "Use native environment variables and separate component/validation pipelines without encoded payloads."
   }
   assert {
