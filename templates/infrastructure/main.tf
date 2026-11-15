@@ -30,14 +30,14 @@ locals {
   recommendation_changes = local.selected_specification == null ? [] : [for key, value in local.selected_specification.recommendation : key if try({
     availability_domain = var.availability_domain, gpu_shape = var.gpu_shape, node_count = var.node_count,
     boot_volume_gib     = var.boot_volume_gib, skip_gpu_allocation = var.skip_gpu_allocation,
-    enable_lws          = var.enable_lws, enable_disaggregated_set = var.enable_disaggregated_set, monitoring_enabled = var.monitoring_enabled, autoscaling_enabled = var.autoscaling_enabled, rdma_mode = var.rdma_mode
+    enable_lws          = var.enable_lws, enable_disaggregated_set = var.enable_disaggregated_set, monitoring_enabled = var.monitoring_enabled, keda_enabled = var.keda_enabled, rdma_mode = var.rdma_mode
   }[key] != value, false) && key != "skip_gpu_allocation"]
   specification = {
     schema_version              = "1.0", platform_name = var.platform_name, region = var.region, cluster_id = var.cluster_id,
     availability_domain         = var.availability_domain, gpu_shape = var.gpu_shape, gpu_count_per_host = try(local.gpu.gpus, 0), node_count = var.node_count,
     gpu_memory_bytes_per_device = try(local.gpu.memory_bytes_per_gpu, null),
     requires_rdma               = local.requires_rdma, rdma_resource_name = var.rdma_resource_name, enable_lws = var.enable_lws,
-    monitoring_enabled          = var.monitoring_enabled, autoscaling_enabled = var.autoscaling_enabled,
+    monitoring_enabled          = var.monitoring_enabled, keda_enabled = var.keda_enabled,
     cluster_authorization_mode  = var.cluster_authorization_mode,
     enable_disaggregated_set    = var.enable_disaggregated_set, component_modes = { lws = var.lws_mode, prometheus = var.prometheus_mode, keda = var.keda_mode },
     cpu_placement               = "existing_cluster_cpu_pools", gpu_allocation_enabled = !var.skip_gpu_allocation,

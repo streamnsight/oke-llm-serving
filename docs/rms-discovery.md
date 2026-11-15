@@ -6,7 +6,7 @@ Licensed under the Universal Permissive License v 1.0 as shown at http://oss.ora
 
 Run `make package` and upload `work/packages/oke-llm-discovery.zip` to RMS with working directory `.`. Enter a public Hugging Face URL/ID, revision, context tokens and concurrent sequences per replica. Empty region/shape filters assess all READY subscribed regions and visible GPU shapes. Discovery allocates no GPUs. Supported limit headroom is always queried, and physical capacity checks include shapes with zero configured limits so regions for limit-increase requests remain visible. Neither check is a user toggle.
 
-Optional deployment policy is chosen downstream. Infrastructure controls Prometheus/GPU telemetry and KEDA installation or reuse. The model stack controls model monitoring resources, request autoscaling and weight delivery (direct Hub, existing PVC or optional staging). Discovery uses baseline recommendations—monitoring on, scaling off—and still derives mandatory topology/recipe requirements; these are not discovery form inputs.
+Optional deployment policy is chosen downstream. Infrastructure controls Prometheus/GPU telemetry and KEDA installation or reuse; shared KEDA defaults on as a capability. The model stack controls model monitoring resources, request autoscaling and weight delivery (direct Hub, existing PVC or optional staging). Discovery uses baseline recommendations—monitoring on, scaling off—and still derives mandatory topology/recipe requirements; these are not discovery form inputs.
 
 ## One clickable report
 

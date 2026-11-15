@@ -59,7 +59,7 @@ test("selected upstream charts render with the platform adapter values", {
   writeFileSync(join(directory, "main.tf"), componentSource.slice(0, moduleStart));
   writeFileSync(join(directory, "variables.tf"), [
     'variable "name" { default = "chart-fixture" }',
-    'variable "config" { default = { cluster_id="fixture", enable_lws=true, enable_disaggregated_set=true, monitoring_enabled=true, autoscaling_enabled=true } }',
+    'variable "config" { default = { cluster_id="fixture", enable_lws=true, enable_disaggregated_set=true, monitoring_enabled=true, keda_enabled=true } }',
   ].join("\n"));
   // Evaluate the actual HCL adapters; do not duplicate Helm values in this test.
   const result = run("terraform", ["console"], { cwd: directory, input: "jsonencode(local.chart_specs)\n" }).trim();

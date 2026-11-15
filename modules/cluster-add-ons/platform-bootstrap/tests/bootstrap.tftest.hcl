@@ -19,11 +19,11 @@ variables {
   }
 }
 
-run "default_platform_only_requires_monitoring" {
+run "default_platform_installs_monitoring_and_shared_KEDA_without_model_scaling" {
   command = apply
   assert {
-    condition     = output.platform.schema_version == "2.0" && output.platform.required_components == ["prometheus"] && output.platform.monitoring_enabled && !output.platform.autoscaling_enabled && keys(output.platform.component_pipeline_ids) == ["prometheus"] && keys(output.platform.undeploy_pipeline_ids) == ["prometheus"] && keys(output.platform.chart_repositories) == ["prometheus"]
-    error_message = "Monitoring defaults on; LWS and KEDA must not acquire pipelines or chart repositories without a selected requirement."
+    condition     = output.platform.schema_version == "2.0" && output.platform.required_components == ["keda", "prometheus"] && output.platform.monitoring_enabled && output.platform.keda_enabled && keys(output.platform.component_pipeline_ids) == ["keda", "prometheus"] && keys(output.platform.undeploy_pipeline_ids) == ["keda", "prometheus"] && keys(output.platform.chart_repositories) == ["keda", "prometheus"]
+    error_message = "Monitoring and shared KEDA default on; installing KEDA supplies no per-model autoscaling policy, and single-node serving does not require LWS."
   }
   assert {
     condition     = output.platform.cpu_placement == "existing_cluster_cpu_pools" && !output.platform.cpu_budget.creates_cpu_pool && !contains(keys(output.platform.allocation), "cpu_pool_id") && !contains(keys(output.platform), "readiness_uri") && output.platform.runtime_readiness == "not_asserted_by_terraform; run deploy/validate and inspect immutable execution evidence"
@@ -46,7 +46,7 @@ run "default_platform_only_requires_monitoring" {
     error_message = "Native chart stages need the selected private OKE environment and matching runner networking."
   }
   assert {
-    condition     = length(output.bootstrap_rbac.subjects) == 5 && contains([for subject in output.bootstrap_rbac.subjects : subject.name], output.platform.bootstrap_pipeline_id) && contains([for subject in output.bootstrap_rbac.subjects : subject.name], output.platform.validation_pipeline_id) && contains([for subject in output.bootstrap_rbac.subjects : subject.name], output.platform.component_pipeline_ids.prometheus) && contains([for subject in output.bootstrap_rbac.subjects : subject.name], output.platform.undeploy_pipeline_ids.prometheus) && output.bootstrap_rbac.roleRef.name == "cluster-admin"
+    condition     = length(output.bootstrap_rbac.subjects) == 7 && contains([for subject in output.bootstrap_rbac.subjects : subject.name], output.platform.bootstrap_pipeline_id) && contains([for subject in output.bootstrap_rbac.subjects : subject.name], output.platform.validation_pipeline_id) && contains([for subject in output.bootstrap_rbac.subjects : subject.name], output.platform.component_pipeline_ids.prometheus) && contains([for subject in output.bootstrap_rbac.subjects : subject.name], output.platform.undeploy_pipeline_ids.prometheus) && output.bootstrap_rbac.roleRef.name == "cluster-admin"
     error_message = "Only the actual orchestration, validation, component deployment and teardown pipeline principals receive Kubernetes authorization."
   }
   assert {
@@ -59,7 +59,7 @@ run "lws_and_disaggregated_set_are_selected_explicitly" {
   command = apply
   variables { config = merge(var.config, { enable_lws = true, enable_disaggregated_set = true }) }
   assert {
-    condition     = output.platform.required_components == ["lws", "prometheus"] && keys(output.platform.component_pipeline_ids) == ["lws", "prometheus"] && keys(output.platform.undeploy_pipeline_ids) == ["lws", "prometheus"] && keys(output.platform.chart_repositories) == ["lws", "prometheus"] && yamldecode(local.component_specs.lws.values_yaml).enableDisaggregatedSet && contains(local.component_specs.lws.crd_names, "disaggregatedsets.disaggregatedset.x-k8s.io") && contains(local.component_specs.lws.crd_names, "disaggregatedsetrolescalers.disaggregatedset.x-k8s.io")
+    condition     = output.platform.required_components == ["keda", "lws", "prometheus"] && keys(output.platform.component_pipeline_ids) == ["keda", "lws", "prometheus"] && keys(output.platform.undeploy_pipeline_ids) == ["keda", "lws", "prometheus"] && keys(output.platform.chart_repositories) == ["keda", "lws", "prometheus"] && yamldecode(local.component_specs.lws.values_yaml).enableDisaggregatedSet && contains(local.component_specs.lws.crd_names, "disaggregatedsets.disaggregatedset.x-k8s.io") && contains(local.component_specs.lws.crd_names, "disaggregatedsetrolescalers.disaggregatedset.x-k8s.io")
     error_message = "A selected distributed topology gets its own LWS deployment/teardown and correct DisaggregatedSet API groups."
   }
   assert {
@@ -68,18 +68,18 @@ run "lws_and_disaggregated_set_are_selected_explicitly" {
   }
 }
 
-run "keda_is_opt_in_and_its_operators_can_install_independently" {
+run "KEDA_controller_installation_is_independent_of_monitoring_and_model_policy" {
   command = apply
-  variables { config = merge(var.config, { monitoring_enabled = false, autoscaling_enabled = true }) }
+  variables { config = merge(var.config, { monitoring_enabled = false, keda_enabled = true }) }
   assert {
-    condition     = !output.platform.monitoring_enabled && output.platform.autoscaling_enabled && output.platform.required_components == ["keda", "prometheus"] && keys(output.platform.component_pipeline_ids) == ["keda", "prometheus"] && length(local.component_specs.keda.dependencies) == 0 && local.component_specs.keda.parameters.OPERATOR_CPU == "100m" && yamldecode(local.component_specs.keda.values_yaml).resources.operator.requests.cpu == "$${OPERATOR_CPU}"
-    error_message = "Opt-in autoscaling needs Prometheus metrics even with monitoring off; operator installations remain independent and their settings editable."
+    condition     = !output.platform.monitoring_enabled && output.platform.keda_enabled && output.platform.required_components == ["keda"] && keys(output.platform.component_pipeline_ids) == ["keda"] && length(local.component_specs.keda.dependencies) == 0 && local.component_specs.keda.parameters.OPERATOR_CPU == "100m" && yamldecode(local.component_specs.keda.values_yaml).resources.operator.requests.cpu == "$${OPERATOR_CPU}"
+    error_message = "Installing the KEDA controller alone neither installs Prometheus nor enables model autoscaling; its settings remain editable."
   }
 }
 
 run "all_optional_components_can_be_disabled" {
   command = apply
-  variables { config = merge(var.config, { monitoring_enabled = false, autoscaling_enabled = false, enable_lws = false }) }
+  variables { config = merge(var.config, { monitoring_enabled = false, keda_enabled = false, enable_lws = false }) }
   assert {
     condition     = length(output.platform.required_components) == 0 && length(output.platform.component_pipeline_ids) == 0 && length(output.platform.undeploy_pipeline_ids) == 0 && length(output.platform.chart_repositories) == 0 && length(output.bootstrap_rbac.subjects) == 3 && output.platform.cpu_budget.cpu_requests_millicores == 0 && output.platform.cpu_budget.persistent_volume_gib == 0
     error_message = "An all-off platform keeps only its orchestration/validation entry points and creates no component pipelines, chart repositories or CPU/storage request budget."
@@ -88,7 +88,7 @@ run "all_optional_components_can_be_disabled" {
 
 run "external_monitoring_is_reused_without_teardown_or_chart_mirroring" {
   command = apply
-  variables { config = merge(var.config, { component_modes = { prometheus = "reuse" } }) }
+  variables { config = merge(var.config, { keda_enabled = false, component_modes = { prometheus = "reuse" } }) }
   assert {
     condition     = local.component_specs.prometheus.mode == "reuse" && keys(output.platform.component_pipeline_ids) == ["prometheus"] && length(output.platform.undeploy_pipeline_ids) == 0 && length(output.platform.chart_repositories) == 0 && length(output.bootstrap_rbac.subjects) == 4 && jsondecode(oci_generic_artifacts_content_artifact_by_path.specification.content).components.prometheus.mode == "reuse"
     error_message = "Reusing an existing controller gets a validation pipeline but neither native Helm ownership/mirroring nor an uninstall pipeline."
@@ -97,7 +97,7 @@ run "external_monitoring_is_reused_without_teardown_or_chart_mirroring" {
 
 run "retire_keeps_only_an_explicit_teardown_pipeline" {
   command = apply
-  variables { config = merge(var.config, { monitoring_enabled = false, component_modes = { prometheus = "retire" } }) }
+  variables { config = merge(var.config, { monitoring_enabled = false, keda_enabled = false, component_modes = { prometheus = "retire" } }) }
   assert {
     condition     = local.component_specs.prometheus.mode == "retire" && length(output.platform.component_pipeline_ids) == 0 && keys(output.platform.undeploy_pipeline_ids) == ["prometheus"] && length(output.platform.chart_repositories) == 0 && length(output.bootstrap_rbac.subjects) == 4 && jsondecode(oci_generic_artifacts_content_artifact_by_path.specification.content).components.prometheus.pipeline_id == null
     error_message = "Retiring a component preserves its explicit teardown path without leaving a deploy pipeline or new chart mirror."
@@ -140,5 +140,22 @@ run "trusted_model_onboarding_is_separate_and_binding_is_complete" {
   assert {
     condition     = oci_devops_deploy_stage.model_onboarding.deploy_stage_type == "SHELL" && oci_devops_deploy_artifact.model_onboarding.argument_substitution_mode == "NONE" && oci_devops_deploy_artifact.model_onboarding.deploy_artifact_source[0].deploy_artifact_source_type == "GENERIC_ARTIFACT" && oci_generic_artifacts_content_artifact_by_path.model_onboarding_command.version == sha256(local.model_onboarding_command) && length(yamldecode(local.model_onboarding_command).inputArtifacts) == 3 && yamldecode(local.model_onboarding_command).env.variables.MODEL_NAMESPACE == "$${MODEL_NAMESPACE}" && local.model_onboarding_parameters.MODEL_PIPELINE_IDS == "[]" && !strcontains(local.model_onboarding_command, "base64")
     error_message = "Onboarding uses editable non-secret arguments and verified Generic Artifact script files, never arbitrary manifests or inline encoded code."
+  }
+}
+
+run "DisaggregatedSet_selects_its_required_LWS_controller" {
+  command = apply
+  variables { config = merge(var.config, { monitoring_enabled=false, keda_enabled=false, enable_lws=false, enable_disaggregated_set=true }) }
+  assert {
+    condition = var.config.node_count == 1 && var.config.gpu_count_per_host == 4 && output.platform.required_components == ["lws"] && local.config.enable_lws && yamldecode(local.component_specs.lws.values_yaml).enableDisaggregatedSet
+    error_message = "DisaggregatedSet on one multi-GPU node still needs LWS, regardless of the plain LWS switch."
+  }
+}
+run "shared_KEDA_can_be_reused_without_creating_a_second_release" {
+  command = apply
+  variables { config = merge(var.config, {monitoring_enabled=false, keda_enabled=true, component_modes={keda="reuse"}}) }
+  assert {
+    condition = output.platform.keda_enabled && keys(output.platform.component_pipeline_ids)==["keda"] && length(output.platform.undeploy_pipeline_ids)==0 && length(output.platform.chart_repositories)==0 && local.component_specs.keda.mode=="reuse"
+    error_message = "Existing KEDA receives a validation pipeline, not a second install, chart mirror or uninstall owner."
   }
 }

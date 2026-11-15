@@ -16,7 +16,7 @@ variables {
     runner_subnet_id = "subnet", runner_nsg_ids = [], allocation = { gpu_pool_id = null },
     gpu_selector = "oke-llm/allocation=fixture", gpu_shape = "BM.GPU4.8", node_count = 1, gpu_count_per_host = 8,
     transport = { requires_rdma = false }, required_components = ["lws", "prometheus"],
-    monitoring_enabled = true, autoscaling_enabled = false, model_onboarding_pipeline_id = "trusted-onboarding"
+    monitoring_enabled = true, model_onboarding_pipeline_id = "trusted-onboarding"
   }
   model = {
     schema_version = "1.0", kind = "llm_model", selection_id = "option-1",
@@ -87,4 +87,29 @@ run "unknown_checkpoint_does_not_block_pipeline_creation" {
     condition = local.snapshot_bytes == null && !local.config.storage.workspace_explicit && local.workspace_gib == 64
     error_message = "Unknown sizing is an explicit execution-time validation requirement, not a fabricated weight count or an attribute crash."
   }
+}
+
+run "installed_KEDA_does_not_enable_model_autoscaling" {
+  command = plan
+  variables { platform = merge(var.platform, {required_components=["lws","prometheus","keda"]}) }
+  assert {
+    condition = !local.values.autoscaling.enabled && !local.config.autoscaling.enabled
+    error_message = "Installing the shared KEDA capability must not create a model scaling policy."
+  }
+}
+run "model_can_opt_into_autoscaling_with_existing_controllers" {
+  command = plan
+  variables {
+    platform = merge(var.platform, {monitoring_enabled=false,required_components=["lws","prometheus","keda"]})
+    autoscaling = {enabled=true,min_replicas=1,max_replicas=2,prometheus_url="http://prometheus.monitoring.svc:9090"}
+  }
+  assert {
+    condition = local.values.autoscaling.enabled && local.values.monitoring.enabled && local.config.autoscaling.max_replicas==2
+    error_message = "The model's opt-in owns scaling; no infrastructure autoscaling flag is required."
+  }
+}
+run "model_autoscaling_rejects_missing_shared_KEDA" {
+  command = plan
+  variables { autoscaling = {enabled=true,prometheus_url="http://prometheus.monitoring.svc:9090"} }
+  expect_failures = [terraform_data.contract]
 }

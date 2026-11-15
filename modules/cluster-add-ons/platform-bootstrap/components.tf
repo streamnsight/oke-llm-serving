@@ -3,9 +3,9 @@
 locals {
   # Chart versions freeze a platform recommendation. Images come from the chart;
   # they are not duplicated or inferred from the model's serving image.
-  chart_defaults      = jsondecode(file("${path.module}/data/components.json"))
-  monitoring_enabled  = try(var.config.monitoring_enabled, true)
-  autoscaling_enabled = try(var.config.autoscaling_enabled, false)
+  chart_defaults     = jsondecode(file("${path.module}/data/components.json"))
+  monitoring_enabled = try(var.config.monitoring_enabled, true)
+  keda_enabled       = try(var.config.keda_enabled, true)
   cpu_affinity = { nodeAffinity = { requiredDuringSchedulingIgnoredDuringExecution = { nodeSelectorTerms = [{ matchExpressions = [
     { key = "nvidia.com/gpu", operator = "DoesNotExist" },
     { key = "oci.oraclecloud.com/gpu-shape", operator = "DoesNotExist" },
@@ -13,7 +13,7 @@ locals {
     { key = "feature.node.kubernetes.io/pci-10de.present", operator = "NotIn", values = ["true"] }
   ] }] } } }
   modes    = merge({ lws = "managed", prometheus = "managed", keda = "managed" }, try(var.config.component_modes, {}))
-  required = { lws = try(var.config.enable_lws, false), prometheus = local.monitoring_enabled || local.autoscaling_enabled, keda = local.autoscaling_enabled }
+  required = { lws = try(var.config.enable_lws, false) || try(var.config.enable_disaggregated_set, false), prometheus = local.monitoring_enabled, keda = local.keda_enabled }
   chart_specs = {
     lws = {
       chart            = { repository = "oci://registry.k8s.io/lws/charts", name = "lws", version = local.chart_defaults.lws.version }

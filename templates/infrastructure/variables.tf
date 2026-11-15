@@ -50,7 +50,7 @@ variable "rdma_mode" {
   }
 }
 variable "enable_lws" {
-  description = "Install/reuse the shared LeaderWorkerSet controller for multi-node serving."
+  description = "Install/reuse LWS for leader/worker Pod groups or DisaggregatedSet roles on one or more nodes. A single vLLM Pod using multiple GPUs does not by itself need LWS."
   type        = bool
   default     = false
 }
@@ -58,14 +58,15 @@ variable "monitoring_enabled" {
   type    = bool
   default = true
 }
-variable "autoscaling_enabled" {
-  description = "Install or reuse KEDA for later model workload autoscaling. Never scales GPU hosts."
+variable "keda_enabled" {
+  description = "Install or reuse shared KEDA controllers and CRDs. Each model independently opts into workload autoscaling; this does not create a model scaling policy or resize GPU hosts."
   type        = bool
-  default     = false
+  default     = true
 }
 variable "enable_disaggregated_set" {
-  type    = bool
-  default = false
+  description = "Enable the LWS DisaggregatedSet controller for separate prefill/decode roles; also selects LWS. Model deployment must supply a compatible topology, router and KV-transfer connector. This alone does not optimize KV cache."
+  type        = bool
+  default     = false
 }
 variable "lws_mode" {
   type    = string

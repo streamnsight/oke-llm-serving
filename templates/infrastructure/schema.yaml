@@ -40,7 +40,7 @@ variableGroups:
         enable_lws,
         enable_disaggregated_set,
         monitoring_enabled,
-        autoscaling_enabled,
+        keda_enabled,
         lws_mode,
         prometheus_mode,
         keda_mode,
@@ -133,21 +133,22 @@ variables:
   enable_lws:
     type: boolean
     default: false
-    title: Shared LeaderWorkerSet controller
+    title: Install/reuse shared LeaderWorkerSet controller
+    description: Supports multi-node replicas and DisaggregatedSet roles, including roles on separate GPUs in one node. A single vLLM Pod using multiple GPUs does not by itself need LWS.
   enable_disaggregated_set:
     type: boolean
     default: false
-    title: Enable DisaggregatedSet in LWS
+    title: Enable DisaggregatedSet role orchestration
+    description: Also selects LWS. Prepares separate prefill/decode roles; KV-transfer, routing and workload configuration are model-deployment choices. This switch alone does not optimize KV cache.
   monitoring_enabled:
     type: boolean
     default: true
     title: Prometheus monitoring
-  autoscaling_enabled:
+  keda_enabled:
     type: boolean
-    default: false
-    title: KEDA workload autoscaling
-    description: Installs the controller for the later model stack. GPU hosts stay
-      allocated.
+    default: true
+    title: Install/reuse shared KEDA controller
+    description: Makes workload autoscaling available to models. Autoscaling remains off until explicitly enabled in a model deployment; this installs no model ScaledObject and does not scale GPU hosts.
   lws_mode:
     type: enum
     enum: [ managed, reuse, retire ]

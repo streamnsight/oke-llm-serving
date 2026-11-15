@@ -15,7 +15,7 @@ RDMA follows the selected model execution/transfer topology and hardware/region 
 | Capability | Default | Delivery |
 | --- | --- | --- |
 | Prometheus/operator and monitoring CRDs | On | Native Helm; persistent 50-GiB data claim, 24-hour retention, editable parameters |
-| KEDA and external metrics API | Off, opt in | Independent native Helm; model-specific scalers come later |
+| KEDA and external metrics API | On as a shared capability | Independent native Helm; each model opts into its own ScaledObject later |
 | LWS / DisaggregatedSet | Required by selected topology | Independent native Helm plus explicit owned raw-CRD preparation |
 | GPU/network operators | Reuse OKE capabilities | Missing/inactive native GPU support blocks enhanced-cluster allocation; the managed RDMA path also requires Network Operator. No duplicate standalone operator |
 | Router, LMCache instances, serving replicas and ScaledObjects | Model layer | Not installed by infrastructure bootstrap |
@@ -78,3 +78,11 @@ Destroy empties the platform-owned scripts and results repositories before delet
 The hooks are attached directly to existing repository resources, so an updated stack source can retry a previously failed Destroy without an Apply to register another resource. Run the explicit component undeploy pipelines separately when removing releases; repository cleanup does not uninstall cluster components or change retained GPU protection.
 
 For local mocked Terraform tests, use `bash scripts/test-terraform.sh modules/cluster-add-ons/platform-bootstrap` (and the same wrapper for `templates/infrastructure`). Terraform provider mocks still run destroy provisioners; the wrapper supplies a strict fake OCI CLI that accepts only fixture repositories and never contacts OCI. Cleanup behavior is separately tested with populated, failing and delayed fake repositories.
+
+## Controller installation and model choices
+
+The shared KEDA controller is installed/reused by default (`keda_enabled=true`), independently of model autoscaling. Model stacks keep `autoscaling_enabled=false` until the user opts in; only then is a model ScaledObject created and validated against existing KEDA/Prometheus. KEDA installation does not force Prometheus installation or allocate/scale GPU nodes. Use reuse for an existing compatible KEDA installation.
+
+LWS is selected for supported multi-node replicas and for DisaggregatedSet child groups. Disaggregated prefill/decode roles can use different GPUs within the same host; they do not require multiple hosts. A single combined vLLM Pod using tensor parallelism within one host does not by itself need LWS. DisaggregatedSet stays off unless the chosen topology needs separate prefill/decode roles. Enabling it selects LWS as well. Controller availability alone does not configure KV transfer, a coordinating router, cache sharing or a working disaggregated model adapter.
+
+For a hypothetical four-GPU node where each role fits on two GPUs, one combined TP4 replica, two combined TP2 replicas, and a TP2 prefill plus TP2 decode deployment are distinct layouts. The disaggregated layout uses a separate model copy per role, needs a compatible KV-transfer connector/router and sufficient memory for both roles, and must be benchmarked against the combined alternatives. DisaggregatedSet maps each role to a child LWS, which may contain just one Pod. The current model chart renders combined Deployment/LWS workloads; its DisaggregatedSet model adapter is still unimplemented. The infrastructure toggle prepares controllers only.

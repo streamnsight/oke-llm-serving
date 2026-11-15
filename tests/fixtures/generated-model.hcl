@@ -58,7 +58,7 @@ run "model_deployment_can_disable_monitoring_and_select_its_own_weight_delivery"
     model_pvc_name      = "retained-weights"
   }
   assert {
-    condition = local.model.selection.platform_plan.monitoring.enabled && !local.platform.monitoring_enabled && !contains(local.required_components, "prometheus") && !contains(local.required_components, "keda") && !local.component_requirements.prometheus.required && !local.component_requirements.keda.required && !contains(keys(local.platform.addon_requirements), "gpu_telemetry") && module.model[0].model_delivery.storage == "existing_pvc" && module.model_storage[0].storage.bucket_name == null
+    condition = !local.platform.monitoring_enabled && !contains(local.required_components, "prometheus") && !contains(local.required_components, "keda") && !local.component_requirements.prometheus.required && !local.component_requirements.keda.required && !contains(keys(local.platform.addon_requirements), "gpu_telemetry") && module.model[0].model_delivery.storage == "existing_pvc" && module.model_storage[0].storage.bucket_name == null
     error_message = "Discovery recommendations must not freeze monitoring requirements or weight delivery; model-stage choices own them and autoscaling remains off."
   }
 }

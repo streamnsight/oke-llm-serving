@@ -123,6 +123,7 @@ variable "benchmark_backend" {
   default = "unsupported"
 }
 variable "autoscaling_enabled" {
+  description = "Opt this model into request-based scaling using existing KEDA/Prometheus. Installing those controllers alone does not enable this policy."
   type    = bool
   default = false
 }

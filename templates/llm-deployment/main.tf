@@ -82,7 +82,6 @@ locals {
     required_components = local.required_components, component_requirements = local.component_requirements,
     addon_requirements  = { for name, config in local.component_requirements : name => config if contains(["gpu_telemetry", "network_operator"], name) && try(config.required, false) },
     components          = {}, monitoring_enabled = local.monitoring_required,
-    autoscaling_enabled = var.autoscaling_enabled,
     transport           = { requires_rdma = try(local.model.selection.requires_rdma, local.model.selection.platform_plan.topology.rdma_required, false), rdma_resource_name = var.rdma_resource_name },
     model_storage       = module.model_storage[0].storage,
     readiness           = "metadata_only; retained GPU pool and trusted shared components are resolved/validated when a pipeline runs"

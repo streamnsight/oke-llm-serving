@@ -147,7 +147,7 @@ run "component_and_transport_choices_reach_both_editable_defaults" {
     } }
   }
   assert {
-    condition     = local.defaults.configured.enable_lws && local.defaults.configured.enable_disaggregated_set && !local.defaults.configured.monitoring_enabled && local.defaults.configured.autoscaling_enabled && local.defaults.configured.rdma_mode == "rdma" && alltrue([for key, value in local.defaults.configured : jsondecode(local.files.configured["recommendations_override.tf.json"]).variable[key].default == value && yamldecode(local.files.configured["schema.yaml"]).variables[key].default == value]) && contains(keys(local.files.configured), "modules/shared/component-delivery/scripts/component.sh")
+    condition     = local.defaults.configured.enable_lws && local.defaults.configured.enable_disaggregated_set && !local.defaults.configured.monitoring_enabled && local.defaults.configured.keda_enabled && local.defaults.configured.rdma_mode == "rdma" && alltrue([for key, value in local.defaults.configured : jsondecode(local.files.configured["recommendations_override.tf.json"]).variable[key].default == value && yamldecode(local.files.configured["schema.yaml"]).variables[key].default == value]) && contains(keys(local.files.configured), "modules/shared/component-delivery/scripts/component.sh")
     error_message = "Generated ZIPs must carry selected component/network defaults in both HCL and RMS and contain every new module dependency."
   }
 }
@@ -166,5 +166,13 @@ run "packed_replicas_each_reserve_their_full_weight_workspace" {
   assert {
     condition     = local.defaults.packed.boot_volume_gib == 500 && local.specifications.packed.storage_budget.replicas_per_host == 2 && local.specifications.packed.storage_budget.selected_snapshot_bytes == 107374182400
     error_message = "Two engine Pods with independent caches need two full snapshot workspaces per host; TP/replica packing must not under-size retained host disks."
+  }
+}
+
+run "shared_KEDA_is_offered_even_when_the_model_uses_fixed_replicas" {
+  command = apply
+  assert {
+    condition = local.defaults.selected.keda_enabled && !contains(keys(local.defaults.selected),"autoscaling_enabled") && yamldecode(local.files.selected["schema.yaml"]).variables.keda_enabled.default && !contains(keys(yamldecode(local.files.selected["schema.yaml"]).variables),"autoscaling_enabled")
+    error_message = "Infrastructure installs the shared KEDA capability by default without an input that enables model autoscaling."
   }
 }

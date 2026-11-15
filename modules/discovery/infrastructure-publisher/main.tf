@@ -29,7 +29,7 @@ locals {
     enable_lws               = try(option.platform_plan.components.lws.required, option.pipeline_parallel_size > 1, false),
     enable_disaggregated_set = try(option.platform_plan.components.lws.enable_disaggregated_set, false),
     monitoring_enabled       = try(option.platform_plan.monitoring.enabled, true),
-    autoscaling_enabled      = try(option.platform_plan.autoscaling.enabled, false),
+    keda_enabled             = true,
     rdma_mode                = try(option.platform_plan.topology.rdma_required, option.requires_rdma, false) ? "rdma" : "ethernet"
   } }
   specifications = { for id, option in var.options : id => {

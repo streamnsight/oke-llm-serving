@@ -136,7 +136,8 @@ test("discovery excludes deployment-policy inputs and downstream forms own them"
   const model = parse(readFileSync(new URL("templates/llm-deployment/schema.yaml", root), "utf8"));
   assert.equal(infra.variables.skip_gpu_allocation.default, false);
   assert.equal(infra.variables.monitoring_enabled.default, true);
-  assert.equal(infra.variables.autoscaling_enabled.default, false);
+  assert.equal(infra.variables.keda_enabled.default, true);
+  assert.equal(infra.variables.autoscaling_enabled, undefined);
   assert.equal(model.variables.monitoring_enabled.default, true);
   assert.equal(model.variables.autoscaling_enabled.default, false);
   assert.ok(model.variables.storage_mode.enum.includes("staged_object_storage"));

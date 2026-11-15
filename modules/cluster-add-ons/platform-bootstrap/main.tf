@@ -232,7 +232,7 @@ output "platform" {
     component_generations        = module.components.generations, chart_repositories = module.components.chart_repositories,
     specification                = { repository_id = oci_artifacts_repository.scripts.id, path = oci_generic_artifacts_content_artifact_by_path.specification.artifact_path, version = oci_generic_artifacts_content_artifact_by_path.specification.version },
     evidence                     = { repository_id = oci_artifacts_repository.results.id, prefix = "${var.name}/platform/${local.generation}", version = "execution UUID; no mutable latest report" },
-    required_components          = keys(local.component_specs), monitoring_enabled = local.monitoring_enabled, autoscaling_enabled = local.autoscaling_enabled,
+    required_components          = keys(local.component_specs), monitoring_enabled = local.monitoring_enabled, keda_enabled = local.keda_enabled,
     components                   = { for key, c in local.component_specs : key => { mode = c.mode, namespace = c.namespace, release_name = c.release_name, chart_version = c.chart.version, crd_names = c.crd_names, owner_name = module.components.owner_names[key], generation = module.components.generations[key], deployment_names = c.deployment_names } },
     prometheus_url               = try(local.component_specs.prometheus.mode != "retire" ? "http://llm-monitoring-kube-prom-prometheus.${local.component_specs.prometheus.namespace}.svc.cluster.local:9090" : null, null),
     cluster_authorization        = try(var.config.cluster_authorization_mode, "iam"),

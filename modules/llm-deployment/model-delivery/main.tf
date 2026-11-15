@@ -56,7 +56,7 @@ locals {
     modelPath      = var.storage.mode == "direct_hf" ? "" : var.storage.model_path,
     rdmaResource   = try(var.platform.transport.requires_rdma, false) ? try(var.platform.transport.rdma_resource_name, "") : "",
     router         = { enabled = local.router_enabled },
-    monitoring     = { enabled = try(var.platform.monitoring_enabled, false) || try(var.platform.autoscaling_enabled, false), platform = var.platform.platform_name },
+    monitoring     = { enabled = try(var.platform.monitoring_enabled, false) || var.autoscaling.enabled, platform = var.platform.platform_name },
     autoscaling    = merge(var.autoscaling, { min_replicas = "$${MIN_REPLICAS}", max_replicas = "$${MAX_REPLICAS}", target_inflight = "$${TARGET_INFLIGHT}", prometheus_url = "$${PROMETHEUS_URL}" }),
     "vllm-stack" = {
       servingEngineSpec = { enableEngine = false, modelSpec = [] },
@@ -99,7 +99,7 @@ resource "terraform_data" "contract" {
       error_message = "Workspace must hold one full snapshot PER POD. Unknown size allows pipeline creation but requires an explicit expert budget before execution."
     }
     precondition {
-      condition     = !var.autoscaling.enabled || (try(var.platform.autoscaling_enabled, false) && contains(var.platform.required_components, "prometheus") && contains(var.platform.required_components, "keda") && var.autoscaling.prometheus_url != "")
+      condition     = !var.autoscaling.enabled || (contains(var.platform.required_components, "prometheus") && contains(var.platform.required_components, "keda") && var.autoscaling.prometheus_url != "")
       error_message = "Model autoscaling requires existing KEDA/Prometheus controllers and an explicit reachable Prometheus URL."
     }
   }
