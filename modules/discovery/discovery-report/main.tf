@@ -52,6 +52,14 @@ locals {
   ad_limits = { for key, ad in local.ad_observations : key => distinct(flatten([
     for row in local.inventory_rows : row.limits if jsonencode([row.region, row.shape]) == ad.shape_key && row.ad == ad.availability_domain
   ])) }
+  ad_limit_details = { for key, limits in local.ad_limits : key => [for limit in limits : {
+    name                = limit.name, scope = limit.scope_type,
+    availability_domain = limit.scope_type == "AD" ? local.ad_observations[key].availability_domain : null,
+    current_limit       = try(tonumber(limit.tenancy_limit) >= 0 ? tonumber(limit.tenancy_limit) : null, null),
+    unit                = try(startswith(limit.description, "GPUs for "), false) ? "GPUs" : "units (unverified)",
+    remaining_headroom  = try(limit.resource_availability.status == "observed" ? coalesce(try(tonumber(limit.resource_availability.fractional_availability), null), try(tonumber(limit.resource_availability.available), null)) : null, null),
+    effective_quota     = try(tonumber(limit.resource_availability.effective_quota_value), null)
+  }] }
   limit_requests = { for key, ad in local.ad_observations : key => [for limit in local.ad_limits[key] : {
     limit_name                   = limit.name, scope = limit.scope_type, availability_domain = limit.scope_type == "AD" ? ad.availability_domain : null,
     current_limit                = limit.tenancy_limit,
@@ -62,6 +70,7 @@ locals {
     (tonumber(limit.tenancy_limit) == 0 ? true : try(startswith(limit.description, "GPUs for ") && tonumber(limit.tenancy_limit) > 0 && tonumber(limit.tenancy_limit) < local.minimum_model_hosts[ad.shape_key] * one(local.shape_contexts[ad.shape_key].gpu_counts), false)), false)
   ] }
   ad_details = { for key, ad in local.ad_observations : key => merge(ad, {
+    limits              = local.ad_limit_details[key],
     entitled_hosts      = try(one([for row in var.assessment.shape_observations : row.entitled_instances if jsonencode([row.region, row.shape]) == ad.shape_key && row.availability_domain == ad.availability_domain]), null),
     entitlement_status  = try(one([for row in var.assessment.shape_observations : row.status if jsonencode([row.region, row.shape]) == ad.shape_key && row.availability_domain == ad.availability_domain]), "unknown"),
     minimum_model_hosts = local.minimum_model_hosts[ad.shape_key], limit_increase_requests = local.limit_requests[key]
@@ -74,6 +83,7 @@ locals {
     gpus_per_host           = length(shape.gpu_counts) == 1 ? shape.gpu_counts[0] : null,
     expected_ads            = length(shape.ads), known_ads = length([for ad in values(local.ad_observations) : ad if ad.shape_key == key && ad.known]),
     known_reported_hosts    = sum(concat([0], [for ad in values(local.ad_observations) : ad.available_hosts if ad.shape_key == key && ad.known])),
+    limits                  = distinct(flatten([for ad in values(local.ad_details) : ad.limits if ad.shape_key == key && try(ad.available_hosts > 0, false)])),
     availability_domains    = [for ad in shape.ads : { for field, value in local.ad_details[jsonencode([shape.region, shape.shape, ad])] : field => value if field != "shape_key" }]
   } }
   regional_capacity = { for key, row in local.regional_counts : key => merge(row, {
@@ -98,13 +108,11 @@ locals {
     gpu_type       = try(one([for row in local.inventory_rows : row.gpu_description if row.region == option.region && row.ad == option.availability_domain && row.shape == option.gpu_shape]), null),
     recommendation = try(option.recommendation, null),
     capacity = {
-      observed_at                  = try(option.capacity_observed_at, null),
-      ad_available_hosts           = try(option.available_instances, null),
-      ad_available_gpus            = try(option.available_instances * option.gpus_per_node, null),
-      regional_available_gpus      = local.regional_capacity[jsonencode([option.region, option.gpu_shape])].available_gpus,
-      regional_known_reported_gpus = local.regional_capacity[jsonencode([option.region, option.gpu_shape])].known_reported_gpus,
-      regional_coverage            = local.regional_capacity[jsonencode([option.region, option.gpu_shape])].coverage,
-      entitled_hosts               = try(option.entitled_instances, one([for row in try(var.assessment.shape_observations, []) : row.entitled_instances if row.region == option.region && row.availability_domain == option.availability_domain && row.shape == option.gpu_shape]), null)
+      observed_at        = try(option.capacity_observed_at, null),
+      ad_available_hosts = try(option.available_instances, null),
+      ad_available_gpus  = try(option.available_instances * option.gpus_per_node, null),
+      limits             = try(local.ad_limit_details[jsonencode([option.region, option.gpu_shape, option.availability_domain])], []),
+      entitled_hosts     = try(option.entitled_instances, one([for row in try(var.assessment.shape_observations, []) : row.entitled_instances if row.region == option.region && row.availability_domain == option.availability_domain && row.shape == option.gpu_shape]), null)
     }
     allocation = {
       required_hosts             = option.node_count, gpus_per_host = try(option.gpus_per_node, null),
@@ -185,7 +193,7 @@ locals {
       flatten([for row in try(var.assessment.shape_observations, []) : try(row.exclusion_reasons, [])]),
       length(try(var.assessment.blocking_reasons, [])) == 0 && length(try(var.assessment.shape_observations, [])) == 0 ? ["No confirmed model/hardware options were produced. Review model requirements and regional capacity and limit details."] : []
     )),
-    notices = ["Memory uses decimal GB (1 GB = 1,000,000,000 bytes). Null means unknown, not zero.", "Regional counts sum unique whole-AD observations of one exact shape only. Partial coverage has no complete regional total; known_reported counts are a lower bound.", "Different shapes may share supply. Entitlement ceilings are not additive across ADs or regions. Capacity is a snapshot, not a reservation.", "All serving configurations require runtime validation; infrastructure links do not establish CUDA/RDMA/API/performance compatibility."],
+    notices = ["Memory uses decimal GB (1 GB = 1,000,000,000 bytes). Null means unknown, not zero.", "Physical supply is shown per AD for each exact shape. A node-pool option can use only its selected AD; supply in other ADs cannot satisfy that allocation.", "Different shapes may share supply. Entitlement ceilings are not additive across ADs or regions. Capacity is a snapshot, not a reservation.", "All serving configurations require runtime validation; infrastructure links do not establish CUDA/RDMA/API/performance compatibility."],
   }
 }
 output "summary" { value = local.summary }

@@ -155,3 +155,47 @@ run "html_payload_cannot_close_the_data_script" {
     error_message = "Use Terraform jsonencode escaping and DOM textContent; model metadata must not become executable markup."
   }
 }
+
+run "configured_limits_preserve_scope_and_selected_AD_without_adding_shared_limits" {
+  command = plan
+  variables {
+    regions = [for region in var.regions : merge(region, {inventory=merge(region.inventory, {
+      availability_domains=[for ad in region.inventory.availability_domains : merge(ad, {shapes=[for shape in ad.shapes : merge(shape, {quota_names=["gpu-count","regional-gpu","global-gpu"]})]})],
+      limits=concat([for limit in region.inventory.limits : merge(limit, {
+        tenancy_limit=limit.availability_domain=="AD-1" ? 64 : 99,
+        resource_availability={status="observed",available=24,fractional_availability=null}
+      })], [
+        {name="regional-gpu",scope_type="REGION",availability_domain=null,description="GPUs for test instances",tenancy_limit=32,resource_availability={status="observed",available=24,fractional_availability=16.5,effective_quota_value=20}},
+        {name="global-gpu",scope_type="GLOBAL",availability_domain=null,description="GPUs for test instances",tenancy_limit=128,resource_availability={status="observed",available=96}}
+      ])
+    })})]
+  }
+  assert {
+    condition = length(output.summary.options.selected.capacity.limits)==3 && !contains([for limit in output.summary.options.selected.capacity.limits : limit.current_limit],99) && output.summary.options.selected.capacity.ad_available_gpus==136 && !contains(keys(output.summary.options.selected.capacity),"regional_available_gpus")
+    error_message = "Use the selected AD's supply and limits; never the regional supply or another AD's limit."
+  }
+  assert {
+    condition = length([for limit in output.summary.regional_capacity[0].limits : limit if limit.scope=="REGION"])==1 && one([for limit in output.summary.options.selected.capacity.limits : limit if limit.scope=="REGION"]).current_limit==32 && one([for limit in output.summary.options.selected.capacity.limits : limit if limit.scope=="REGION"]).remaining_headroom==16.5 && one([for limit in output.summary.options.selected.capacity.limits : limit if limit.scope=="REGION"]).effective_quota==20
+    error_message = "Shared regional limits appear once, not summed per AD; configured ceiling, fractional remaining headroom and effective quota remain separate."
+  }
+}
+run "missing_observations_and_unknown_units_do_not_become_GPU_limits" {
+  command = plan
+  variables {
+    regions = [for region in var.regions : merge(region, {inventory=merge(region.inventory, {limits=[for limit in region.inventory.limits : merge(limit, {tenancy_limit=-1,description="Unspecified service units",resource_availability={status="unknown",available=24}})]})})]
+  }
+  assert {
+    condition = output.summary.options.selected.capacity.limits[0].current_limit==null && output.summary.options.selected.capacity.limits[0].remaining_headroom==null && output.summary.options.selected.capacity.limits[0].unit=="units (unverified)"
+    error_message = "Sentinel or missing limits/headroom stay unknown, and unverified quota units must not be called GPUs."
+  }
+}
+run "zero_limit_and_fractional_zero_headroom_remain_visible" {
+  command = plan
+  variables {
+    regions = [for region in var.regions : merge(region, {inventory=merge(region.inventory, {limits=[for limit in region.inventory.limits : merge(limit, {tenancy_limit=0,resource_availability={status="observed",available=24,fractional_availability=0,effective_quota_value=0}})]})})]
+  }
+  assert {
+    condition = output.summary.options.selected.capacity.limits[0].current_limit==0 && output.summary.options.selected.capacity.limits[0].remaining_headroom==0 && output.summary.options.selected.capacity.limits[0].effective_quota==0 && output.summary.regional_capacity[0].limit_increase_possible
+    error_message = "Zero is observed evidence; fractional zero must take precedence over the integer available field and remain visible for limit-increase alternatives."
+  }
+}

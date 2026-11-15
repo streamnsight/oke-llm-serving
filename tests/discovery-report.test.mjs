@@ -17,10 +17,13 @@ class Element {
   replaceChildren(...children) { this.children = children; }
   addEventListener(event, callback) { this.events[event] = callback; }
 }
+function quota(scope = "REGION", current = 32, remaining = 16) {
+  return {name: "gpu-count", scope, availability_domain: scope === "AD" ? "AD-1" : null, current_limit: current, remaining_headroom: remaining, unit: "GPUs"};
+}
 function option(region) {
   return {
     region, availability_domain: "AD-1", gpu_shape: "GPU.8", gpu_type: "Test GPU",
-    capacity: {ad_available_hosts: 17, ad_available_gpus: 136, regional_available_gpus: 160, regional_known_reported_gpus: 160, regional_coverage: "complete", entitled_hosts: 2, observed_at: "scan-time"},
+    capacity: {ad_available_hosts: 17, ad_available_gpus: 136, regional_available_gpus: 160, regional_known_reported_gpus: 160, regional_coverage: "complete", entitled_hosts: 2, observed_at: "scan-time", limits: [quota()]},
     allocation: {required_gpus_per_replica: 4, tensor_parallel_size: 4, pipeline_parallel_size: 1, gpus_per_host: 8, required_hosts: 1, allocated_gpus: 8, replicas: 2, replicas_per_host: 2, unused_gpus: 0},
     memory_gb: {per_gpu: 40, estimated_per_gpu: 30}, memory_method: "analytical_requires_validation", configuration_status: "suggested_requires_validation", runtime_validation: "not_run", components: ["prometheus"], integration_requirements: [],
     serving: {framework: "vllm", image: "vllm/vllm-openai@sha256:fixture", source_hardware: "h100", selected_hardware: "a100", args: ["--tool-call-parser", "qwen3_coder", "--tensor-parallel-size", "1"], environment: {SETTING: "value with spaces"}, original_argv: ["vllm", "serve", "org/model", "--tensor-parallel-size", "1"], source_url: "https://recipes.vllm.ai/org/model"},
@@ -33,7 +36,7 @@ function execute(overrides = {}) {
     scan: {assessed_regions: ["eu-frankfurt-1", "us-chicago-1"]}, publication: {published_at: "published-time", expires_at: "expiry-time"},
     option_count: 2, recommended_option_id: "first", failure_summary: [], notices: ["Counts are a snapshot"],
     options: {first: option("eu-frankfurt-1"), second: option("us-chicago-1")},
-    regional_capacity: [{region: "eu-frankfurt-1", gpu_shape: "GPU.8", gpus_per_host: 8, available_gpus: 136, available_hosts: 17, coverage: "complete", expected_ads: 1, known_ads: 1, limit_increase_possible: true, minimum_model_hosts: null, availability_domains: [{availability_domain: "AD-1", available_hosts: 17, entitled_hosts: 0, entitlement_status: "limit_increase_required", limit_increase_requests: [{limit_name: "gpu-count", current_limit: 0, scope: "AD", minimum_gpus_for_whole_hosts: null}]}]}], ...overrides,
+    regional_capacity: [{region: "eu-frankfurt-1", gpu_shape: "GPU.8", gpus_per_host: 8, available_gpus: 136, available_hosts: 17, coverage: "complete", expected_ads: 1, known_ads: 1, limit_increase_possible: true, minimum_model_hosts: null, limits: [quota("AD", 0, 0)], availability_domains: [{availability_domain: "AD-1", available_hosts: 17, entitled_hosts: 0, entitlement_status: "limit_increase_required", limit_increase_requests: [{limit_name: "gpu-count", current_limit: 0, scope: "AD", minimum_gpus_for_whole_hosts: null}]}]}], ...overrides,
   };
   const nodes = Object.fromEntries([...template.matchAll(/\bid="([^"]+)"/g)].map(match => [match[1], new Element("div")]));
   nodes["report-data"].textContent = JSON.stringify(report); nodes.sort.value = "region";
@@ -44,7 +47,7 @@ function execute(overrides = {}) {
 test("option sections start collapsed and retain packing, both stack URLs and expiry", () => {
   const {nodes, created} = execute();
   assert.equal(nodes.options.children.length, 2);
-  assert.ok(nodes.options.children.every(node => node.tag === "details" && !node.open));
+  assert.ok(created.filter(node => node.className === "option").every(node => node.tag === "details" && !node.open));
   assert.match(nodes.options.textContent, /GPUs needed per replica/);
   assert.match(nodes.options.textContent, /replicas in 1 × 8-GPU hosts/);
   assert.match(nodes.options.textContent, /136 GPUs \/ 17 hosts/);
@@ -82,8 +85,8 @@ test("planned command overrides managed topology while preserving original recip
   assert.ok(blocks.some(command => command.includes("--tensor-parallel-size 1")), "retain original upstream command separately");
 });
 test("deployment actions precede technical serving configuration", () => {
-  const {nodes} = execute();
-  for (const option of nodes.options.children) {
+  const {created} = execute();
+  for (const option of created.filter(node => node.className === "option")) {
     assert.ok(option.textContent.indexOf("Model project and pipelines") < option.textContent.indexOf("Serving configuration"));
   }
 });
@@ -137,4 +140,41 @@ test("discovery excludes deployment-policy inputs and downstream forms own them"
   assert.equal(model.variables.monitoring_enabled.default, true);
   assert.equal(model.variables.autoscaling_enabled.default, false);
   assert.ok(model.variables.storage_mode.enum.includes("staged_object_storage"));
+});
+
+test("options group by region while each node pool shows only its selected AD supply and limits", () => {
+  const first = option("region-a"), second = option("region-a"), third = option("region-b");
+  first.capacity = {...first.capacity, ad_available_hosts: 34, ad_available_gpus: 34, regional_available_gpus: 999, limits: [quota("REGION", 4, 2)]};
+  second.availability_domain = "AD-2"; second.capacity = {...second.capacity, ad_available_hosts: 5, ad_available_gpus: 40};
+  const {nodes, created} = execute({options: {first, second, third}, option_count: 3});
+  assert.equal(nodes.options.children.length, 2, "one visible group per region");
+  const cards = created.filter(node => node.className === "option");
+  assert.equal(cards.length, 3, "keep each AD-specific stack choice and its links");
+  assert.match(cards[0].children[0].textContent, /34 GPUs physically available in selected AD/);
+  assert.match(cards[0].children[0].textContent, /Region: 4 GPUs Current configured limit/);
+  assert.match(cards[0].children[0].textContent, /Remaining headroom: Region: 2 GPUs/);
+  assert.doesNotMatch(cards[0].children[0].textContent, /999|reported in region/);
+  assert.match(cards[1].children[0].textContent, /AD-2/);
+  nodes.search.value = "AD-2"; nodes.search.events.input();
+  assert.equal(nodes.options.children.length, 1);
+  assert.match(nodes.options.textContent, /AD-2/); assert.doesNotMatch(nodes.options.textContent, /AD-1/);
+});
+test("capacity table shows per-AD supply and shared regional limit without a regional supply sum", () => {
+  const {nodes} = execute({regional_capacity: [{
+    region: "region-a", gpu_shape: "GPU.1", gpus_per_host: 1, available_hosts: 54, available_gpus: 54,
+    known_ads: 2, expected_ads: 2, limits: [quota("REGION", 4, 2)],
+    availability_domains: [{availability_domain: "AD-1", available_hosts: 34}, {availability_domain: "AD-2", available_hosts: 20}]
+  }]});
+  assert.ok(nodes.capacity.textContent.includes("AD-1 34 GPUs / 34 hosts physically available"));
+  assert.ok(nodes.capacity.textContent.includes("AD-2 20 GPUs / 20 hosts physically available"));
+  assert.match(nodes.capacity.textContent, /Region: 4 GPUs Remaining headroom: 2 GPUs/);
+  assert.doesNotMatch(nodes.capacity.textContent, /54 GPUs|hosts in region/);
+});
+test("unknown limits and quota units are explicit; zero headroom is not unknown", () => {
+  const row = option("region-a");
+  row.capacity.limits = [{...quota("GLOBAL", null, 0), unit: "units (unverified)"}];
+  const {created} = execute({options: {row}, option_count: 1});
+  const summary = created.find(node => node.className === "option").children[0].textContent;
+  assert.match(summary, /Global: Unknown units \(unverified\)/);
+  assert.match(summary, /Remaining headroom: Global: 0 units \(unverified\)/);
 });

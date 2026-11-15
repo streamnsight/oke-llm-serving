@@ -113,6 +113,16 @@ function deploymentStep(parent, title, description, launch, download, expires) {
   if (launch || download) add(section, "p", "Links expire: " + text(expires), "muted oci-caption");
   else add(section, "p", "Stack links were not published for this assessment. Enable deployment ZIP publication and apply discovery to generate them.", "muted");
 }
+function limitScope(limit) {
+  return limit.scope === "AD" ? "AD " + text(limit.availability_domain) : limit.scope === "REGION" ? "Region" : limit.scope === "GLOBAL" ? "Global" : "Unknown scope";
+}
+function limitQuantity(limit, field) {
+  const value = limit[field];
+  return (value == null || value < 0 ? "Unknown" : number(value)) + " " + text(limit.unit);
+}
+function limitSummary(limits, field) {
+  return limits.length ? limits.map(limit => limitScope(limit) + ": " + limitQuantity(limit, field)).join("; ") : "Unknown";
+}
 function renderOptions() {
   const filter = $("search").value.toLowerCase(), mode = $("sort").value;
   const rows = Object.entries(report.options).filter(([id, row]) => [id, row.region, row.availability_domain, row.gpu_shape].join(" ").toLowerCase().includes(filter));
@@ -123,21 +133,33 @@ function renderOptions() {
   });
   $("options").replaceChildren(); $("option-empty").hidden = rows.length > 0;
   $("option-count").textContent = number(rows.length) + " of " + number(report.option_count) + " options";
+  const groups = new Map();
   for (const [id, row] of rows) {
-    const a = row.allocation, c = row.capacity, serving = row.serving || {};
-    const option = add($("options"), "details", undefined, "option");
+    if (!groups.has(row.region)) {
+      const group = add($("options"), "div", undefined, "region-group");
+      add(group, "h3", row.region);
+      groups.set(row.region, add(group, "div", undefined, "options"));
+    }
+    const a = row.allocation, c = row.capacity, serving = row.serving || {}, limits = c.limits || [];
+    const option = add(groups.get(row.region), "details", undefined, "option");
     const summary = add(option, "summary"), title = add(summary, "div", undefined, "option-title");
-    add(title, "strong", row.region + " · " + row.gpu_shape); add(title, "span", row.availability_domain, "muted oci-caption");
+    add(title, "strong", row.gpu_shape); add(title, "span", row.availability_domain, "muted oci-caption");
     if (id === report.recommended_option_id) add(title, "span", "Recommended starting point", "oci-status-active");
     if (row.runtime_validation !== "passed") badge(title, "Runtime unvalidated", true);
-    const available = c.regional_available_gpus != null ? number(c.regional_available_gpus) : c.regional_known_reported_gpus > 0 ? "At least " + number(c.regional_known_reported_gpus) : "Unknown";
-    for (const [value, caption] of [[available, "GPUs reported in region · same shape"], [number(a.required_gpus_per_replica), "GPUs needed per replica"], [number(a.replicas), "replicas in " + number(a.required_hosts) + " × " + number(a.gpus_per_host) + "-GPU hosts"]]) {
+    const available = number(c.ad_available_gpus);
+    for (const [value, caption] of [[available, "GPUs physically available in selected AD"], [number(a.required_gpus_per_replica), "GPUs needed per replica"], [number(a.replicas), "replicas in " + number(a.required_hosts) + " × " + number(a.gpus_per_host) + "-GPU hosts"]]) {
       const metric = add(summary, "div", undefined, "option-stat"); add(metric, "strong", value); add(metric, "span", caption);
     }
+    const quota = add(summary, "div", undefined, "option-stat");
+    add(quota, "strong", limitSummary(limits, "current_limit")); add(quota, "span", "Current configured limit");
+    add(quota, "small", "Remaining headroom: " + limitSummary(limits, "remaining_headroom"));
     const body = add(option, "div", undefined, "option-body"), allocation = add(body, "section");
     add(allocation, "h3", "Allocation and replica packing");
     facts(add(allocation, "dl", undefined, "facts"), [["Shape / GPU type", row.gpu_shape + " / " + text(row.gpu_type)], ["Hosts / allocated GPUs", number(a.required_hosts) + " / " + number(a.allocated_gpus)], ["GPUs per replica · TP × PP", number(a.required_gpus_per_replica) + " · " + number(a.tensor_parallel_size) + " × " + number(a.pipeline_parallel_size)], ["Replicas / replicas per host", number(a.replicas) + " / " + number(a.replicas_per_host)], ["Unused GPUs", number(a.unused_gpus)], ["GPU memory per device", gb(row.memory_gb.per_gpu)], ["Estimated memory per rank", gb(row.memory_gb.estimated_per_gpu)], ["Transport", row.requires_rdma ? "RDMA required" : "Ethernet / within-host interconnect"]]);
     add(allocation, "p", "Selected AD: " + number(c.ad_available_gpus) + " GPUs / " + number(c.ad_available_hosts) + " hosts reported; entitlement covers " + number(c.entitled_hosts) + " hosts. Observed: " + text(c.observed_at) + ".", "muted");
+    for (const limit of limits) {
+      add(allocation, "p", text(limit.name) + " · " + limitScope(limit) + " · configured limit: " + limitQuantity(limit, "current_limit") + " · remaining compartment headroom: " + limitQuantity(limit, "remaining_headroom") + (limit.effective_quota == null ? "." : " · effective compartment quota: " + limitQuantity(limit, "effective_quota") + "."), "muted");
+    }
     if (row.recommendation) {
       const r = row.recommendation;
       add(allocation, "p", "Growth at scan time: capacity and entitlement cover " + number(r.ad_max_replicas) + " replicas with this layout in the selected AD (" + number(r.ad_additional_replicas) + " beyond this allocation). RDMA capability: " + (r.rdma_capable ? "supported by the shape; fabric placement still requires validation" : "not established") + ". Supply and limits are shared snapshots, not future reservations.", "muted");
@@ -174,9 +196,18 @@ function renderCapacity() {
     const tr = add($("capacity"), "tr"), cells = Array.from({length: 5}, () => add(tr, "td"));
     add(cells[0], "strong", row.region); add(cells[0], "div", row.gpu_shape); add(cells[0], "small", gb(row.memory_gb_per_gpu) + " per GPU");
     add(cells[1], "strong", number(row.gpus_per_host));
-    add(cells[2], "strong", row.available_gpus != null ? number(row.available_gpus) : row.known_reported_gpus > 0 ? "At least " + number(row.known_reported_gpus) : "Unknown");
-    add(cells[2], "small", number(row.available_hosts) + " hosts in region");
-    add(cells[3], "div", label(row.coverage)); add(cells[3], "small", number(row.known_ads) + " / " + number(row.expected_ads) + " ADs assessed");
+    for (const ad of (row.availability_domains || []).filter(ad => ad.available_hosts > 0)) {
+      add(cells[2], "strong", ad.availability_domain);
+      add(cells[2], "div", number(row.gpus_per_host == null ? null : ad.available_hosts * row.gpus_per_host) + " GPUs / " + number(ad.available_hosts) + " hosts physically available");
+    }
+    add(cells[2], "small", number(row.known_ads) + " / " + number(row.expected_ads) + " ADs assessed");
+    const limits = row.limits || [];
+    if (!limits.length) add(cells[3], "div", "Configured limit and headroom unknown");
+    for (const limit of limits) {
+      add(cells[3], "strong", limitScope(limit) + ": " + limitQuantity(limit, "current_limit"));
+      add(cells[3], "div", "Remaining headroom: " + limitQuantity(limit, "remaining_headroom"));
+      add(cells[3], "small", limit.name);
+    }
     if (row.limit_increase_possible) badge(cells[4], "Review limit increase", true);
     else add(cells[4], "div", "See AD entitlement");
     add(cells[4], "small", row.minimum_model_hosts == null ? "Model sizing unknown; validate before requesting limits." : "Aggregate-memory lower bound: " + number(row.minimum_model_hosts) + " hosts within one AD. Layout/runtime fit unvalidated.");
