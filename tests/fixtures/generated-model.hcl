@@ -38,13 +38,27 @@ run "rendered_cluster_only_stack_owns_independent_model_metadata" {
 run "cluster_only_autoscaling_derives_standard_metrics_endpoint" {
   command = plan
   variables {
+    monitoring_enabled  = false
     autoscaling_enabled = true
     min_replicas        = 1
     max_replicas        = 2
     prometheus_url      = ""
   }
   assert {
-    condition = var.prometheus_url == "" && local.platform.allocation.gpu_pool_id == null && contains(local.required_components, "prometheus") && contains(local.required_components, "keda") && module.model[0].model_delivery.defaults.PROMETHEUS_URL == "http://llm-monitoring-kube-prom-prometheus.monitoring.svc.cluster.local:9090"
+    condition = var.prometheus_url == "" && local.platform.allocation.gpu_pool_id == null && contains(local.required_components, "prometheus") && contains(local.required_components, "keda") && local.component_requirements.prometheus.required && local.component_requirements.keda.required && !local.component_requirements.gpu_telemetry.required && module.model[0].model_delivery.defaults.PROMETHEUS_URL == "http://llm-monitoring-kube-prom-prometheus.monitoring.svc.cluster.local:9090"
     error_message = "An autoscaling recommendation must not require a manually supplied Prometheus URL or completed infrastructure Apply to create model pipelines."
+  }
+}
+run "model_deployment_can_disable_monitoring_and_select_its_own_weight_delivery" {
+  command = plan
+  variables {
+    monitoring_enabled  = false
+    autoscaling_enabled = false
+    storage_mode        = "existing_pvc"
+    model_pvc_name      = "retained-weights"
+  }
+  assert {
+    condition = local.model.selection.platform_plan.monitoring.enabled && !local.platform.monitoring_enabled && !contains(local.required_components, "prometheus") && !contains(local.required_components, "keda") && !local.component_requirements.prometheus.required && !local.component_requirements.keda.required && !contains(keys(local.platform.addon_requirements), "gpu_telemetry") && module.model[0].model_delivery.storage == "existing_pvc" && module.model_storage[0].storage.bucket_name == null
+    error_message = "Discovery recommendations must not freeze monitoring requirements or weight delivery; model-stage choices own them and autoscaling remains off."
   }
 }

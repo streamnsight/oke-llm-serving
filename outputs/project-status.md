@@ -4,6 +4,8 @@ Licensed under the Universal Permissive License v 1.0 as shown at http://oss.ora
 -->
 # Project status
 
+Discovery inputs cover the model/workload, capacity scope and report/bundle publication. Optional monitoring, autoscaling and weight delivery are configured downstream; recommendations do not freeze the model stack’s monitoring/controller requirements.
+
 Discovery now exposes exactly one RMS output: a link to a self-contained Redwood-styled HTML report in Object Storage. It contains model/checkpoint metadata, context/concurrency memory estimates and their limitations, every confirmed capacity option in a collapsed section, recipe commands/configuration, both child-stack link groups, and regional capacity/limit evidence. Zero-option assessments still produce a page. Opening/filtering the page performs no additional discovery calls.
 
 Recommendations now prefer hardware fit and confirmed growth rather than minimum allocated GPUs: VRAM per GPU, GPU/host sharding, RDMA capability, additional whole replicas covered by AD capacity and entitlement, then regional physical supply/allocation tie-breakers. The report places deployment actions before serving configuration and hides zero/unknown-only supply rows while retaining positive-capacity limit-review options. Known unquantized weights and Qwen full-attention KV payload stay visible independently of the unprofiled complete hybrid/vision allocation; the planning-budget formula is explicit. See [the recommendation and memory work](discovery-recommendations-plan.md).

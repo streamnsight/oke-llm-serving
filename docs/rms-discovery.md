@@ -6,6 +6,8 @@ Licensed under the Universal Permissive License v 1.0 as shown at http://oss.ora
 
 Run `make package` and upload `work/packages/oke-llm-discovery.zip` to RMS with working directory `.`. Enter a public Hugging Face URL/ID, revision, context tokens and concurrent sequences per replica. Empty region/shape filters assess all READY subscribed regions and visible GPU shapes. Discovery allocates no GPUs.
 
+Optional deployment policy is chosen downstream. Infrastructure controls Prometheus/GPU telemetry and KEDA installation or reuse. The model stack controls model monitoring resources, request autoscaling and weight delivery (direct Hub, existing PVC or optional staging). Discovery uses baseline recommendations—monitoring on, scaling off—and still derives mandatory topology/recipe requirements; these are not discovery form inputs.
+
 ## One clickable report
 
 The only Terraform output is `comparison_report_url`. `schema.yaml` declares it as `type: link` and the primary output button. It opens a self-contained HTML report from the private discovery Object Storage bucket through an expiring ObjectRead PAR. RMS opens this page separately; it does not render the HTML inside the output console. The report is still published when no option is viable or ZIP publication is disabled.

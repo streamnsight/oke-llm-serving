@@ -51,8 +51,6 @@ module "planner" {
   regions                   = local.regional_results
   engines                   = try(module.serving_resolution.resolution.engine.image != null && length(module.serving_resolution.resolution.engine_issues) == 0, false) ? [module.serving_resolution.resolution.engine] : []
   serving_resolution        = module.serving_resolution.resolution
-  monitoring_enabled        = var.monitoring_enabled
-  autoscaling_enabled       = var.autoscaling_enabled
   recipe_metadata           = local.recipe_metadata_snapshot
 }
 module "discovery_report" {

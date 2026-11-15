@@ -120,3 +120,20 @@ test("RMS exposes exactly one typed report-link output", () => {
   assert.equal(schema.outputs.comparison_report_url.type, "link");
   assert.equal(schema.primaryOutputButton, "${comparison_report_url}");
 });
+test("discovery excludes deployment-policy inputs and downstream forms own them", () => {
+  const root = new URL("../", import.meta.url);
+  const discovery = parse(readFileSync(new URL("schema.yaml", root), "utf8"));
+  const variables = readFileSync(new URL("variables.tf", root), "utf8");
+  for (const name of ["monitoring_enabled", "autoscaling_enabled", "model_storage_mode"]) {
+    assert.equal(discovery.variables[name], undefined);
+    assert.ok(!discovery.variableGroups.some(group => group.variables.includes(name)));
+    assert.ok(!variables.includes(`variable "${name}"`));
+  }
+  const infra = parse(readFileSync(new URL("templates/infrastructure/schema.yaml", root), "utf8"));
+  const model = parse(readFileSync(new URL("templates/llm-deployment/schema.yaml", root), "utf8"));
+  assert.equal(infra.variables.monitoring_enabled.default, true);
+  assert.equal(infra.variables.autoscaling_enabled.default, false);
+  assert.equal(model.variables.monitoring_enabled.default, true);
+  assert.equal(model.variables.autoscaling_enabled.default, false);
+  assert.ok(model.variables.storage_mode.enum.includes("staged_object_storage"));
+});

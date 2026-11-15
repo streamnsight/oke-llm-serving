@@ -12,7 +12,7 @@ A model-first workflow for an existing OKE cluster: discover the model and avail
 make package
 ```
 
-Upload `work/packages/oke-llm-discovery.zip` to OCI Resource Manager, using the ZIP root as its working directory. Enter a public Hugging Face model URL/ID, context length and concurrent sequences per replica. Empty region/shape filters scan READY subscribed regions and visible GPU shapes. Discovery allocates no GPUs.
+Upload `work/packages/oke-llm-discovery.zip` to OCI Resource Manager, using the ZIP root as its working directory. Enter a public Hugging Face model URL/ID, context length and concurrent sequences per replica. Empty region/shape filters scan READY subscribed regions and visible GPU shapes. Discovery allocates no GPUs. Optional monitoring, autoscaling and model distribution are deployment-stage choices: shared components in infrastructure, model monitoring/scaling and weight delivery in the model stack.
 
 The only RMS output is **Open discovery report**, a link to a self-contained HTML page in the private discovery bucket:
 

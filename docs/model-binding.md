@@ -14,6 +14,8 @@ Select an existing cluster in the option's region. Native OCI lookups infer its 
 
 With no GPU pool yet, project/pipeline creation still succeeds. Runtime later resolves the expected platform pool. Multiple matching pools or incompatible network policies fail with an explicit ambiguity rather than selecting arbitrarily. Optional pool/platform/network overrides live under advanced settings. These are read-only lookups: the model stack never creates, resizes, cycles or deletes nodes.
 
+Shared component installation is configured in infrastructure. In the model stack, optional model monitoring resources, autoscaling policy and weight delivery are editable deployment settings. Disabling model monitoring removes the inherited Prometheus/GPU-telemetry requirements; enabling autoscaling still requires retained Prometheus and KEDA. Discovery recommendations supply defaults and do not freeze these optional choices.
+
 Shared CPU controllers can serve multiple model projects. Model replicas, routes, caches and task-specific companions have model lifecycle. Recipe companion flags alone do not install the required services; unsupported adapters fail explicitly.
 
 ## Runtime readiness and namespace onboarding

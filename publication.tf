@@ -23,7 +23,6 @@ module "infrastructure_publication" {
     revision                  = try(module.model_profile.profile.model.resolved_revision, null),
     checkpoint_download_bytes = try(module.model_profile.profile.weights.checkpoint_download_bytes, null),
     staging_files             = try(module.model_profile.profile.weights.staging_files, []),
-    storage_mode              = var.model_storage_mode,
     context_length            = var.context_length, concurrency = var.concurrency
   }
 }

@@ -5,16 +5,21 @@ terraform {
   required_providers { oci = { source = "oracle/oci", version = "~> 9.12" } }
 }
 locals {
-  model                  = try(jsondecode(file("${path.module}/inputs/model-spec.json")), null)
-  configured             = local.model != null
-  compartment_id         = coalesce(var.compartment_id, var.compartment_ocid, var.tenancy_ocid)
-  expected_region        = try(local.model.selection.region, null)
-  model_name             = coalesce(var.model_name, "model-${substr(sha256(try(local.model.model.repository, "unconfigured/model")), 0, 10)}")
-  model_namespace        = coalesce(var.namespace, "${try(module.target[0].target.platform_name, coalesce(var.platform_name, "llm-platform"))}-model-${substr(sha256(local.model_name), 0, 12)}")
-  project_name           = "${local.model_name}-${substr(sha256("${var.cluster_id}/${local.model_namespace}"), 0, 8)}"
-  component_requirements = try(local.model.selection.platform_plan.components, {})
-  hosts_per_replica      = coalesce(var.hosts_per_replica, var.pipeline_parallel_size, try(local.model.selection.hosts_per_replica, null), try(local.model.selection.pipeline_parallel_size, null), 1)
-  monitoring_required    = try(local.model.selection.platform_plan.monitoring.enabled, false) || var.autoscaling_enabled
+  model               = try(jsondecode(file("${path.module}/inputs/model-spec.json")), null)
+  configured          = local.model != null
+  compartment_id      = coalesce(var.compartment_id, var.compartment_ocid, var.tenancy_ocid)
+  expected_region     = try(local.model.selection.region, null)
+  model_name          = coalesce(var.model_name, "model-${substr(sha256(try(local.model.model.repository, "unconfigured/model")), 0, 10)}")
+  model_namespace     = coalesce(var.namespace, "${try(module.target[0].target.platform_name, coalesce(var.platform_name, "llm-platform"))}-model-${substr(sha256(local.model_name), 0, 12)}")
+  project_name        = "${local.model_name}-${substr(sha256("${var.cluster_id}/${local.model_namespace}"), 0, 8)}"
+  assessed_components = try(local.model.selection.platform_plan.components, {})
+  hosts_per_replica   = coalesce(var.hosts_per_replica, var.pipeline_parallel_size, try(local.model.selection.hosts_per_replica, null), try(local.model.selection.pipeline_parallel_size, null), 1)
+  monitoring_required = var.monitoring_enabled || var.autoscaling_enabled
+  component_requirements = merge(local.assessed_components, {
+    prometheus    = merge(try(local.assessed_components.prometheus, {}), { required = local.monitoring_required }),
+    keda          = merge(try(local.assessed_components.keda, {}), { required = var.autoscaling_enabled }),
+    gpu_telemetry = merge(try(local.assessed_components.gpu_telemetry, {}), { required = var.monitoring_enabled })
+  })
   required_components = sort(distinct(concat(
     [for name, config in local.component_requirements : name if try(config.required, false) && !contains(["lws", "prometheus", "keda", "gpu_telemetry", "network_operator"], name)],
     local.hosts_per_replica > 1 ? ["lws"] : [], local.monitoring_required ? ["prometheus"] : [], var.autoscaling_enabled ? ["keda"] : []

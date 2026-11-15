@@ -86,25 +86,6 @@ variable "skip_gpu_allocation" {
   default     = false
   description = "Temporary debug default for generated infrastructure stacks: skip GPU allocation while creating DevOps and CPU platform components."
 }
-variable "monitoring_enabled" {
-  description = "Recommend Prometheus monitoring; existing compatible monitoring can be reused in the infrastructure stack."
-  type        = bool
-  default     = true
-}
-variable "autoscaling_enabled" {
-  description = "Opt into request-aware workload scaling inside the retained GPU allocation. Does not enable node autoscaling."
-  type        = bool
-  default     = false
-}
-variable "model_storage_mode" {
-  description = "Direct pinned Hub download, or recommend an optional retained Object Storage staging bucket and CPU download pipeline."
-  type        = string
-  default     = "direct_huggingface"
-  validation {
-    condition     = contains(["direct_huggingface", "object_storage"], var.model_storage_mode)
-    error_message = "Choose direct_huggingface or object_storage."
-  }
-}
 variable "include_diagnostics" {
   description = "Include expandable model, engine and regional diagnostic evidence in the HTML report. This does not run unselected engine/cache alternative lookups."
   type        = bool

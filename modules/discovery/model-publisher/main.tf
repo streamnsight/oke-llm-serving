@@ -34,7 +34,7 @@ locals {
     gpus_per_pod         = try(local.selected.gpus_per_pod, local.selected.tensor_parallel_size, 1), replicas = try(local.selected.replicas, 1),
     context_length       = try(coalesce(try(var.model_spec.model.context_length, null), try(var.model_spec.profile.memory.assumptions.context_length, null)), 4096),
     concurrency          = try(coalesce(try(var.model_spec.model.concurrency, null), try(var.model_spec.profile.memory.assumptions.concurrency, null)), 1)
-    storage_mode         = try(var.model_spec.model.storage_mode == "object_storage", false) ? "staged_object_storage" : "direct_hf"
+    monitoring_enabled   = try(local.selected.platform_plan.monitoring.enabled, true)
     workspace_gib        = local.snapshot_bytes == null ? 64 : max(20, ceil(local.snapshot_bytes * 2 / pow(1024, 3))),
     router_enabled       = try(local.selected.replicas > 1, false) || try(local.selected.platform_plan.autoscaling.enabled, false),
     autoscaling_enabled  = try(local.selected.platform_plan.autoscaling.enabled, false),

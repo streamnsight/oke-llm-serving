@@ -126,6 +126,11 @@ variable "autoscaling_enabled" {
   type    = bool
   default = false
 }
+variable "monitoring_enabled" {
+  description = "Publish model metrics/ServiceMonitor resources against retained platform monitoring; does not install Prometheus."
+  type        = bool
+  default     = true
+}
 variable "min_replicas" {
   type    = number
   default = 1

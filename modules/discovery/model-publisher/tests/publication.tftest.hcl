@@ -17,6 +17,9 @@ variables {
     selection = {
       region                = "eu-frankfurt-1", availability_domain = "AD-1", gpu_shape = "BM.GPU.H100.8", gpus_per_node = 8, availability = "available_at_scan",
       tensor_parallel_size  = 4, pipeline_parallel_size = 1, replicas = 2, node_count = 1,
+      platform_plan = { monitoring = { enabled = true }, autoscaling = { enabled = false }, components = {
+        prometheus = { required = true }, keda = { required = false }, gpu_telemetry = { required = true }
+      } },
       serving_configuration = { engine = { image = "vllm/vllm-openai@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" }, recipe = { args = ["--reasoning-parser", "qwen3", "--tool-call-parser", "qwen3_coder"], env = { VLLM_USE_RUST_FRONTEND = "1" }, original_evidence = join("", [for i in range(900) : "0123456789"]) } }
     }
   }
@@ -57,6 +60,10 @@ run "apply_creates_real_root_archive_and_reuses_original_bucket_region" {
   assert {
     condition     = alltrue([for key, value in local.defaults : jsondecode(local.files["recommendations_override.tf.json"]).variable[key].default == value && yamldecode(local.files["schema.yaml"]).variables[key].default == value]) && local.defaults.tensor_parallel_size == 4 && local.defaults.replicas == 2 && local.defaults.context_length == 8192 && !contains(keys(local.files), "terraform.tfvars.json")
     error_message = "Recommend editable geometry/context defaults consistently in both HCL and RMS schema; tfvars must not override user edits."
+  }
+  assert {
+    condition     = local.defaults.monitoring_enabled && !local.defaults.autoscaling_enabled && !contains(keys(local.defaults), "storage_mode") && yamldecode(local.files["schema.yaml"]).variables.storage_mode.default == "direct_hf"
+    error_message = "Monitoring/scaling remain editable recommendations; weight delivery defaults belong to the model template, not discovery policy."
   }
   assert {
     condition     = alltrue([for filename in keys(local.files) : !startswith(filename, "templates/") && !startswith(filename, "modules/infrastructure/") && !startswith(filename, "modules/discovery/") && !strcontains(filename, "/tests/")]) && alltrue([for dependency in ["model-target", "model-project", "model-delivery", "model-storage"] : contains(keys(local.files), "modules/llm-deployment/${dependency}/main.tf")])

@@ -12,8 +12,8 @@ outputs:
     description: Model details, workload memory, all confirmed deployment choices and regional capacity/limit evidence. Opens a separate Object Storage HTML page, including when no deployment is available.
 primaryOutputButton: ${comparison_report_url}
 variableGroups:
-  - title: Model and serving assumptions
-    variables: [model, revision, context_length, concurrency, monitoring_enabled, autoscaling_enabled, model_storage_mode]
+  - title: Model and workload
+    variables: [model, revision, context_length, concurrency]
   - title: Capacity observation
     variables: [observation_id, compartment_id, regions, shape_names, query_resource_availability, only_shapes_with_limits, include_diagnostics]
   - title: Infrastructure launch bundles
@@ -27,22 +27,6 @@ variables:
     default: false
     title: Include detailed diagnostic evidence
     description: Adds an expandable section with full model, engine and regional evidence to the HTML report. Does not run unused alternative-engine/cache lookups.
-  model_storage_mode:
-    type: enum
-    enum: [direct_huggingface, object_storage]
-    default: direct_huggingface
-    title: Model distribution
-    description: Direct download needs no staging bucket. Object Storage staging requires a tested staging image and CPU placement, reviewed in the generated infrastructure stack.
-  monitoring_enabled:
-    type: boolean
-    default: true
-    title: Monitor serving workloads
-    description: Recommend Prometheus monitoring. Compatible existing monitoring can be reused when configuring the infrastructure stack.
-  autoscaling_enabled:
-    type: boolean
-    default: false
-    title: Enable workload autoscaling
-    description: Opt in to KEDA and request metrics. GPU hosts stay allocated; this does not enable node autoscaling. Fixed replicas can use spare GPUs with this option off.
   skip_gpu_allocation:
     type: boolean
     default: false
