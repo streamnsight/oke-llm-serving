@@ -70,7 +70,7 @@ jobs:
         run: terraform init -backend=false -input=false -no-color
       # Cloud providers are mocked by the test suites; no OCI credentials are supplied.
       - name: Run Terraform tests
-        run: terraform test -no-color
+        run: bash "$GITHUB_WORKSPACE/scripts/test-terraform.sh" "$PWD"
       - name: Verify the actually rendered infrastructure ZIP
         if: matrix.directory == 'modules/discovery/infrastructure-publisher'
         run: bash "$GITHUB_WORKSPACE/scripts/check-generated-infrastructure.sh" "$PWD/.generated/infrastructure-selected.zip"

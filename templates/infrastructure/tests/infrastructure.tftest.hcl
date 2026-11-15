@@ -1,6 +1,7 @@
 # Copyright (c) 2020-2022 Oracle and/or its affiliates. All rights reserved.
 # Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
 mock_provider "oci" {
+  mock_resource "oci_artifacts_repository" { defaults = { id = "ocid1.artifactrepository.oc1.test.fixture" } }
   mock_data "oci_core_subnet" { defaults = { ipv6cidr_block = "", ipv6cidr_blocks = [] } }
   mock_data "oci_objectstorage_namespace" { defaults = { namespace = "fixture-namespace" } }
   mock_data "oci_identity_tenancy" { defaults = { home_region_key = "ORD" } }

@@ -46,6 +46,14 @@ resource "oci_artifacts_repository" "scripts" {
   description     = "Immutable pipeline software, values and specifications; no model weights."
   repository_type = "GENERIC"
   is_immutable    = true
+  provisioner "local-exec" {
+    when    = destroy
+    command = "bash '${path.module}/scripts/cleanup-repository.sh'"
+    environment = {
+      REPOSITORY_ID  = self.id
+      COMPARTMENT_ID = self.compartment_id
+    }
+  }
 }
 resource "oci_artifacts_repository" "results" {
   compartment_id  = var.compartment_id
@@ -53,6 +61,14 @@ resource "oci_artifacts_repository" "results" {
   description     = "Immutable execution reports, identified by component, generation and execution."
   repository_type = "GENERIC"
   is_immutable    = true
+  provisioner "local-exec" {
+    when    = destroy
+    command = "bash '${path.module}/scripts/cleanup-repository.sh'"
+    environment = {
+      REPOSITORY_ID  = self.id
+      COMPARTMENT_ID = self.compartment_id
+    }
+  }
 }
 resource "oci_devops_deploy_environment" "cluster" {
   project_id              = oci_devops_project.platform.id

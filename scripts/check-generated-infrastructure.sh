@@ -21,7 +21,7 @@ mkdir "$staging/tests"
 cp "$repo/tests/fixtures/generated-infrastructure.hcl" "$staging/tests/generated.tftest.hcl"
 terraform -chdir="$staging" init -backend=false -input=false -no-color
 terraform -chdir="$staging" validate -no-color
-terraform -chdir="$staging" test -no-color
+bash "$repo/scripts/test-terraform.sh" "$staging"
 
 # Verify the real archive resource survives a saved Plan transferred to a fresh
 # working directory. This fixture has no OCI provider or cloud resources.

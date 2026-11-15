@@ -17,7 +17,7 @@ for group in "$staging/modules/"*/; do
     *) echo "Ungrouped module directory: $group" >&2; exit 1;;
   esac
 done
-for required in modules/shared/component-delivery/main.tf modules/shared/component-delivery/scripts/component.sh modules/llm-deployment/model-delivery/main.tf; do
+for required in modules/cluster-add-ons/platform-bootstrap/scripts/cleanup-repository.sh modules/shared/component-delivery/main.tf modules/shared/component-delivery/scripts/component.sh modules/llm-deployment/model-delivery/main.tf; do
   [[ -e "$staging/$required" ]] || { echo "Missing delivery asset: $required" >&2; exit 1; }
 done
 if [[ $(jq -r .stack "$staging/package-manifest.json") == discovery ]]; then

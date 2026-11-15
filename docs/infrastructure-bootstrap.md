@@ -70,3 +70,11 @@ OKE authorization reference: [IAM and Kubernetes RBAC](https://docs.oracle.com/e
 Oracle exposes both variants through the common `NetworkChannel` API. Provider schema acceptance alone therefore does not establish that a particular use works. The Frankfurt OKE environment became ACTIVE after using the private-endpoint configuration; Shell reuse validation separately reached the API through its service-VNIC path. This is the tested combination here.
 
 Sources: [PrivateEndpointChannel](https://docs.oracle.com/en-us/iaas/tools/python/latest/api/devops/models/oci.devops.models.PrivateEndpointChannel.html), [ServiceVnicChannel](https://docs.oracle.com/en-us/iaas/tools/python/latest/api/devops/models/oci.devops.models.ServiceVnicChannel.html), [reference OKE environment](https://github.com/streamnsight/oke-langfuse/blob/main/modules/devops/environment/environment.tf).
+
+## Artifact repository destruction
+
+Destroy empties the platform-owned scripts and results repositories before deleting them, including historical source versions and pipeline-generated execution reports. Cleanup runs on the Terraform/RMS host with that host's existing OCI principal/profile and requires permission to list and delete generic artifacts. A cleanup error stops repository deletion. The helper is packaged with the platform module; no Kubernetes API access is needed.
+
+The hooks are attached directly to existing repository resources, so an updated stack source can retry a previously failed Destroy without an Apply to register another resource. Run the explicit component undeploy pipelines separately when removing releases; repository cleanup does not uninstall cluster components or change retained GPU protection.
+
+For local mocked Terraform tests, use `bash scripts/test-terraform.sh modules/cluster-add-ons/platform-bootstrap` (and the same wrapper for `templates/infrastructure`). Terraform provider mocks still run destroy provisioners; the wrapper supplies a strict fake OCI CLI that accepts only fixture repositories and never contacts OCI. Cleanup behavior is separately tested with populated, failing and delayed fake repositories.

@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+# Copyright (c) 2020-2022 Oracle and/or its affiliates. All rights reserved.
+# Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
+# Terraform provider mocks do not suppress local-exec provisioners. Never call OCI.
+set -euo pipefail
+repository=""; command_words=()
+while (( $# )); do
+  case "$1" in
+    --repository-id) repository=$2; shift 2;;
+    --region|--output|--connection-timeout|--read-timeout|--compartment-id) shift 2;;
+    --all) shift;;
+    *) command_words+=("$1"); shift;;
+  esac
+done
+if [[ "$repository" == ocid1.artifactrepository.oc1.test.* && "${command_words[*]}" == 'artifacts generic artifact list' ]]; then
+  printf '{"data":{"items":[]}}\n'
+else
+  echo 'Unmocked OCI CLI call refused by Terraform test fixture.' >&2
+  exit 97
+fi
