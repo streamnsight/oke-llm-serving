@@ -21,7 +21,6 @@ run "object_storage_uses_retained_private_data_and_cpu_job_adapter" {
     compartment_id         = "model-compartment"
     project_id             = "project"
     artifact_repository_id = "source-repository"
-    result_repository_id   = "result-repository"
     cluster_id             = "cluster"
     cluster_compartment_id = "cluster-compartment"
     cluster_type           = "ENHANCED_CLUSTER"
@@ -46,6 +45,10 @@ run "object_storage_uses_retained_private_data_and_cpu_job_adapter" {
   assert {
     condition     = oci_devops_deploy_stage.stage[0].deploy_stage_type == "SHELL" && oci_devops_deploy_artifact.stage[0].argument_substitution_mode == "NONE" && oci_devops_deploy_artifact.stage[0].deploy_artifact_source[0].deploy_artifact_source_type == "INLINE" && strcontains(module.inline_command[0].preparation_command, "cat > 'stage.sh'") && keys(local.parameters) == ["JOB_DEADLINE_SECONDS", "STAGING_IMAGE"]
     error_message = "Use readable native variables and inline Shell sources; the runner only controls a CPU Job."
+  }
+  assert {
+    condition     = !contains(keys(yamldecode(output.command_spec).env.variables), "RESULT_REPOSITORY_ID")
+    error_message = "Routine staging reports belong in deployment logs and must not require a result repository."
   }
   assert {
     condition     = alltrue([for rule in oci_identity_policy.workload[0].statements : strcontains(rule, "request.principal.type = 'workload'") && strcontains(rule, "request.principal.namespace = 'fixture-staging'") && strcontains(rule, "request.principal.cluster_id = 'cluster'")]) && !strcontains(join("\n", oci_identity_policy.workload[0].statements), "OBJECT_DELETE")

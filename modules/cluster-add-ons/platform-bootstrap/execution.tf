@@ -13,7 +13,8 @@ locals {
     binding = {
       region             = var.config.region, cluster_id = var.config.cluster_id, platform = var.name,
       kubernetes_version = var.config.target.kubernetes_version,
-      subnet_id          = var.subnet_id, nsg_ids = sort(var.nsg_ids), allocation = var.config.allocation,
+      subnet_id          = var.subnet_id, nsg_ids = sort(var.nsg_ids),
+      allocation         = { for key in ["gpu_pool_id", "compute_cluster_id", "allocation_identity"] : key => try(var.config.allocation[key], null) },
       authorization      = try(var.config.cluster_authorization_mode, "iam"),
       gpu_checks         = { for key in ["gpu_allocation_enabled", "gpu_shape", "node_count", "gpu_count_per_host", "requires_rdma", "rdma_resource_name"] : key => try(var.config[key], null) }
     }

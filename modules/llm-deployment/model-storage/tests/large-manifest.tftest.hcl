@@ -12,7 +12,6 @@ variables {
   compartment_id         = "model-compartment"
   project_id             = "project"
   artifact_repository_id = "source-repository"
-  result_repository_id   = "result-repository"
   cluster_id             = "cluster"
   cluster_compartment_id = "cluster-compartment"
   cluster_type           = "ENHANCED_CLUSTER"

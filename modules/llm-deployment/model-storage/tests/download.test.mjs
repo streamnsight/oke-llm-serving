@@ -188,7 +188,8 @@ if(args[0]==='get' && args[1]==='nodes') { console.log(JSON.stringify({items:[{m
 if(args[0]==='create' && args[1]==='configmap') process.exit(0);
 if(args[0]==='create' && args[1]==='-f') { if(process.env.MOCK_JOB_CONFLICT) process.exit(96); fs.writeFileSync(path.join(root,'job-created'),'yes'); process.exit(0); }
 if(args[0]==='get' && args[1]==='job') { console.log(JSON.stringify({status:{succeeded:1}})); process.exit(0); }
-if(args[0]==='logs' || args[0]==='delete') process.exit(0);
+if(args[0]==='logs') process.exit(0);
+if(args[0]==='delete') process.exit(process.env.MOCK_CLEANUP_FAILURE?88:0);
 process.exit(99);
 `;
 function runController(t, extraEnv = {}) {
@@ -206,21 +207,20 @@ fs.writeFileSync(out,args.some(x=>x.endsWith('/kubectl.sha256'))?crypto.createHa
   writeFileSync(kubectlSource, kubectlMock);
   writeFileSync(join(f.root, 'bin', 'oci'), String.raw`#!/usr/bin/env node
 const fs=require('node:fs'),path=require('node:path'),args=process.argv.slice(2);
+fs.appendFileSync(path.join(process.env.MOCK_OS_DIR,'oci-calls'), JSON.stringify(args)+'\n');
 if(process.env.OCI_CLI_AUTH!=='resource_principal') process.exit(91);
 if(args.slice(0,3).join(' ')==='ce cluster create-kubeconfig') process.exit(0);
-if(args.slice(0,4).join(' ')==='artifacts generic artifact upload-by-path') {
-  const body=args[args.indexOf('--content-body')+1];
-  if(body.startsWith('file://')) process.exit(92);
-  fs.copyFileSync(body,path.join(process.env.MOCK_OS_DIR,'report.json')); console.log('{}'); process.exit(0);
-} process.exit(99);
+process.exit(99);
 `, { mode: 0o755 });
   const result = spawnSync('bash', [join(f.root, 'input', 'stage.sh')], { encoding: 'utf8', env: {
     ...process.env, PATH: `${join(f.root, 'bin')}:${process.env.PATH}`, MOCK_OS_DIR: join(f.root, 'objects'), MOCK_KUBECTL: kubectlSource,
     MODEL_CONFIG_SHA256: hash(JSON.stringify(f.config)), MODEL_STAGE_NAME: 'fixture', STAGING_IMAGE: `image@sha256:${'d'.repeat(64)}`,
-    JOB_DEADLINE_SECONDS: '300', CLUSTER_ID: 'cluster', KUBERNETES_VERSION: 'v1.34.1', RESULT_REPOSITORY_ID: 'results', OCI_CLI_REGION: 'eu-frankfurt-1', ...extraEnv
+    JOB_DEADLINE_SECONDS: '300', CLUSTER_ID: 'cluster', KUBERNETES_VERSION: 'v1.34.1', OCI_CLI_REGION: 'eu-frankfurt-1', ...extraEnv
   }});
   const calls = readFileSync(join(f.root, 'objects', 'kubectl-calls'), 'utf8').trim().split('\n').map(JSON.parse);
-  const report = JSON.parse(readFileSync(join(f.root, 'objects', 'report.json'), 'utf8'));
+  const report = JSON.parse(result.stdout.split('Model staging report:\n')[1]);
+  const ociCalls = readFileSync(join(f.root, 'objects', 'oci-calls'), 'utf8').trim().split('\n').map(JSON.parse);
+  assert.equal(ociCalls.some(args => args.includes('artifacts')), false, 'routine reports must only use the DevOps log');
   return { result, calls, report };
 }
 
@@ -240,6 +240,17 @@ test('concurrent Job conflict never deletes the other execution Job', t => {
   assert.equal(report.status, 'failed');
   assert.equal(calls.some(args => !args.includes('auth') && args.includes('delete') && args.includes('job')), false);
   assert.equal(calls.some(args => !args.includes('auth') && args.includes('delete') && args.includes('configmap')), true);
+});
+
+test('staging preserves its primary failure while still failing successful runs on cleanup errors', t => {
+  const failed = runController(t, { MOCK_JOB_CONFLICT: 'true', MOCK_CLEANUP_FAILURE: 'true' });
+  assert.equal(failed.result.status, 96);
+  assert.equal(failed.report.exit_code, 96);
+  assert.equal(failed.report.status, 'failed');
+  const cleanupOnly = runController(t, { MOCK_CLEANUP_FAILURE: 'true' });
+  assert.equal(cleanupOnly.result.status, 1);
+  assert.equal(cleanupOnly.report.exit_code, 1);
+  assert.equal(cleanupOnly.report.status, 'failed');
 });
 
 test('foreign PVC ownership and GPU nodes fail preflight before any Job creation', t => {

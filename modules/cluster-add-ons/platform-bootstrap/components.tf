@@ -95,7 +95,6 @@ module "components" {
   subnet_id                     = var.subnet_id
   nsg_ids                       = var.nsg_ids
   source_repository_id          = oci_artifacts_repository.scripts.id
-  result_repository_id          = oci_artifacts_repository.results.id
   helm_version                  = local.chart_defaults.helm_version
   components                    = local.component_specs
 }

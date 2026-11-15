@@ -18,18 +18,18 @@ locals {
   operation_specs = { for operation in ["validate", "benchmark"] : operation => yamlencode({
     version = "0.1", component = "command", shell = "bash", timeoutInSeconds = 3600, failImmediatelyOnError = true,
     env = { variables = merge({ for key in keys(local.operation_parameters) : key => "$${${key}}" }, {
-      DELIVERY_OPERATION         = operation, DELIVERY_GENERATION = module.delivery.generations.workload,
-      DELIVERY_RESULT_REPOSITORY = var.platform.result_repository_id, DELIVERY_REGION = var.platform.region,
-      DELIVERY_DEPLOYMENT_ID     = "$${OCI_DEPLOYMENT_ID}", DELIVERY_PIPELINE_ID = "$${OCI_PIPELINE_ID}",
-      OCI_CLI_AUTH               = "resource_principal", OCI_CLI_REGION = var.platform.region
-    }) },
+      DELIVERY_OPERATION     = operation, DELIVERY_GENERATION = module.delivery.generations.workload,
+      DELIVERY_REGION        = var.platform.region,
+      DELIVERY_DEPLOYMENT_ID = "$${OCI_DEPLOYMENT_ID}", DELIVERY_PIPELINE_ID = "$${OCI_PIPELINE_ID}",
+      OCI_CLI_AUTH           = "resource_principal", OCI_CLI_REGION = var.platform.region
+    }, operation == "benchmark" ? { DELIVERY_RESULT_REPOSITORY = var.platform.result_repository_id } : {}) },
     inputArtifacts = [{
       name       = "model-config", type = "GENERIC_ARTIFACT", location = "./runtime/config.json",
       registryId = var.platform.script_repository_id, path = module.delivery.runtime_artifacts["config.json"].artifact_path, version = module.delivery.runtime_artifacts["config.json"].version
     }],
     steps = [{ type = "Command", name = "${operation}-current-model", timeoutInSeconds = 3600, command = join("\n", concat([
       "set -euo pipefail",
-      "export ${join(" ", sort(concat(keys(local.operation_parameters), ["DELIVERY_OPERATION", "DELIVERY_GENERATION", "DELIVERY_RESULT_REPOSITORY", "DELIVERY_REGION", "DELIVERY_DEPLOYMENT_ID", "DELIVERY_PIPELINE_ID", "OCI_DEPLOYMENT_ID", "OCI_PIPELINE_ID", "OCI_CLI_AUTH", "OCI_CLI_REGION"])))}"
+      "export ${join(" ", sort(concat(keys(local.operation_parameters), ["DELIVERY_OPERATION", "DELIVERY_GENERATION", "DELIVERY_REGION", "DELIVERY_DEPLOYMENT_ID", "DELIVERY_PIPELINE_ID", "OCI_DEPLOYMENT_ID", "OCI_PIPELINE_ID", "OCI_CLI_AUTH", "OCI_CLI_REGION"], operation == "benchmark" ? ["DELIVERY_RESULT_REPOSITORY"] : [])))}"
       ], [for path, content in merge(local.operation_files[operation], { "config.json" = local.runtime_files["config.json"] }) : "printf '%s  runtime/${path}\\n' '${sha256(content)}' | sha256sum -c -"], [
       "cp runtime/specification.json specification.json", "bash runtime/operation.sh"
     ])) }]

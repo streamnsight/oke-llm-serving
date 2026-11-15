@@ -6,7 +6,7 @@
 This module declares independent OCI DevOps pipelines for shared Kubernetes
 components. It does not create GPU nodes, IAM policies, Kubernetes RBAC, a DevOps
 project, or the OKE deployment environment. The caller owns those resources and
-passes existing immutable source and result Generic Artifact Registry repositories.
+passes an existing immutable source Generic Artifact Registry repository for required file inputs.
 No provider aliases are required.
 
 Each component declares `mode`, `namespace`, `release_name`, `ownership_token`,
@@ -46,8 +46,9 @@ repository, then lets the native `OKE_HELM_CHART_DEPLOYMENT` stage install it.
 `CHART_VERSION` is editable: both mirroring and native artifact resolution use
 that same parameter. Existing mirrored versions are compared against upstream
 and never deliberately overwritten. Shell does not run Helm install or upgrade.
-Values, scripts, specifications and command specifications are immutable Generic
-Artifacts; chart content belongs in OCIR. `registry_host` supports an explicit
+Small scripts, specifications and command specifications use readable inline
+command specs; values use inline Generic File artifacts. Required runtime/chart
+source files use Generic Artifact inputs; chart packages belong in OCIR. `registry_host` supports an explicit
 realm-specific OCIR endpoint; the default is commercial `${region}.ocir.io`.
 Prepare creates the namespace by default. `namespace_mode="existing"` instead
 checks it without mutation; trusted adapter preflight is responsible for its
@@ -114,16 +115,13 @@ runner also requires the lease duration to have elapsed and OCI to report that
 deployment as `SUCCEEDED`, `FAILED` or `CANCELED`. It refuses pending, active or
 unreadable deployments. Undeploy separately requires `CONFIRM_UNINSTALL=true`.
 
-Every Shell operation uploads immutable JSON evidence to the results repository
-at `<name>/components/<component>/<generation>/<OCI_DEPLOYMENT_ID>/<operation>.json`,
-with a timestamp/random artifact version. It records effective non-secret
-parameters, their SHA-256, generation, deployment/pipeline IDs and status. A
-prepared result is not readiness. Native failure may have no finish artifact;
-consumers must check the OCI deployment result as well as fresh controller state
-and evidence. Terraform outputs desired configuration and pipeline identifiers,
-not a claim of runtime readiness. Source/result artifact retention and repository
-retirement are caller-owned; the OCI generic upload resource does not delete
-stored versions automatically.
+Every Shell operation prints its structured JSON summary to stdout for DevOps
+Logging, including effective non-secret parameters, their SHA-256, generation,
+deployment/pipeline IDs and status. Routine reporting needs no Artifact Registry
+upload permission and preserves the primary failure exit code. A prepared result
+is not readiness: check the OCI deployment result and fresh controller state.
+The caller owns execution, source-file retention and repository retirement; the
+OCI generic upload resource does not delete stored versions automatically.
 
 Official contracts: [native Helm stages](https://docs.oracle.com/en-us/iaas/Content/devops/using/deploy-helmchart.htm),
 [OCIR chart artifacts](https://docs.oracle.com/en-us/iaas/Content/devops/using/add-helmchart.htm),

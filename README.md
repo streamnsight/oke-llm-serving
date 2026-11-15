@@ -48,7 +48,7 @@ Recipe metadata is shared across profiling, serving resolution and planning. Har
 
 The model release uses a repository-owned workload chart for Deployment or LWS instances and an optional pinned upstream Production Stack router dependency. Shared operators/CRDs are not installed by the model release. Multiple packed replicas default to prefix-aware routing; this is distinct from event-driven KV routing and durable conversation history.
 
-Scripts, specifications, values and execution reports use Generic Artifact Registry. Helm charts use OCIR. Object Storage holds discovery/model stack bundles and optional retained model data. No software-artifact evidence bucket is created by the model stack.
+Small scripts, specifications and values use readable inline DevOps artifacts. Required file inputs and downloadable benchmark results use Generic Artifact Registry; routine deployment, readiness and failure reports go to DevOps logs. Helm charts use OCIR. Object Storage holds discovery/model stack bundles and optional retained model data.
 
 Undeploy removes only the owned model release and its model-specific resources. It preserves namespaces, retained data, shared controllers and GPU hosts. Revoke access before destroying the model's metadata/project. Terraform destruction of pipeline definitions alone does not uninstall an imperative Helm release; use the explicit guarded undeploy flow first.
 

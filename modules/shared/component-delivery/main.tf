@@ -119,10 +119,10 @@ locals {
     env = { variables = merge(
       { for parameter in keys(local.parameters[stage.component]) : parameter => "$${${parameter}}" },
       {
-        DELIVERY_OPERATION         = stage.operation, DELIVERY_GENERATION = local.generations[stage.component],
-        DELIVERY_RESULT_REPOSITORY = var.result_repository_id, DELIVERY_REGION = var.region,
-        DELIVERY_DEPLOYMENT_ID     = "$${OCI_DEPLOYMENT_ID}", DELIVERY_PIPELINE_ID = "$${OCI_PIPELINE_ID}",
-        DELIVERY_REGISTRY_HOST     = local.registry_host, OCI_CLI_AUTH = "resource_principal", OCI_CLI_REGION = var.region
+        DELIVERY_OPERATION     = stage.operation, DELIVERY_GENERATION = local.generations[stage.component],
+        DELIVERY_REGION        = var.region,
+        DELIVERY_DEPLOYMENT_ID = "$${OCI_DEPLOYMENT_ID}", DELIVERY_PIPELINE_ID = "$${OCI_PIPELINE_ID}",
+        DELIVERY_REGISTRY_HOST = local.registry_host, OCI_CLI_AUTH = "resource_principal", OCI_CLI_REGION = var.region
       }
     ) },
     inputArtifacts = concat(
@@ -132,7 +132,7 @@ locals {
     steps = [{ type = "Command", name = "${stage.operation}-${stage.component}", timeoutInSeconds = var.components[stage.component].timeout_seconds,
       command = join("\n", concat([
         "set -euo pipefail",
-        "export ${join(" ", sort(concat(keys(local.parameters[stage.component]), ["DELIVERY_OPERATION", "DELIVERY_GENERATION", "DELIVERY_RESULT_REPOSITORY", "DELIVERY_REGION", "DELIVERY_DEPLOYMENT_ID", "DELIVERY_PIPELINE_ID", "DELIVERY_REGISTRY_HOST", "OCI_CLI_AUTH", "OCI_CLI_REGION", "OCI_DEPLOYMENT_ID", "OCI_PIPELINE_ID"])))}",
+        "export ${join(" ", sort(concat(keys(local.parameters[stage.component]), ["DELIVERY_OPERATION", "DELIVERY_GENERATION", "DELIVERY_REGION", "DELIVERY_DEPLOYMENT_ID", "DELIVERY_PIPELINE_ID", "DELIVERY_REGISTRY_HOST", "OCI_CLI_AUTH", "OCI_CLI_REGION", "OCI_DEPLOYMENT_ID", "OCI_PIPELINE_ID"])))}",
         "printf '%s  specification.json\\n' '${local.generations[stage.component]}' | sha256sum -c -"
         ], [for script in sort(tolist(local.scripts)) : "printf '%s  ${script}\\n' '${filesha256("${path.module}/scripts/${script}")}' | sha256sum -c -"],
         [for path, content in var.runtime_files : "printf '%s  runtime/${path}\\n' '${sha256(content)}' | sha256sum -c -"],

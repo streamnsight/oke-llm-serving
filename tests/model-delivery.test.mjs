@@ -96,6 +96,52 @@ test('model RMS form selects existing cluster/pool and matches Terraform variabl
 });
 test('all model Shell sources parse',()=>{for(const file of ['common.sh','preflight.sh','validate.sh','benchmark.sh','bench-client.sh','operation.sh'])execFileSync('bash',['-n',`${modulePath}/scripts/${file}`]);});
 
+test('model operation preserves primary failures when lock release or log reporting also fails',()=>{
+ for(const [code,releaseFails,reportFails] of [[0,false,false],[23,false,false],[23,true,false],[0,true,false],[23,false,true],[0,false,true]]){
+  const f=fixture({env:{OCI_DEPLOYMENT_ID:'deployment',DELIVERY_OPERATION:'validate'}});
+  try{
+   copyFileSync(`${modulePath}/scripts/operation.sh`,`${f.dir}/runtime/operation.sh`);
+   writeFileSync(`${f.dir}/runtime/common.sh`,'namespace=model; release=model; cluster=cluster; owner=owner; timeout=10\nmodel_inputs(){ :; }\nmodel_geometry(){ :; }\nmodel_platform_ready(){ :; }\nmodel_ready_owner(){ :; }\n');
+   writeFileSync(`${f.dir}/runtime/tools.sh`,'delivery_tools(){ :; }\n');
+   writeFileSync(`${f.dir}/runtime/lock.sh`,`lock_acquire(){ lock_held=true; }\nlock_release(){ touch lock-release-called; return ${releaseFails?37:0}; }\n`);
+   writeFileSync(`${f.dir}/runtime/validate.sh`,`exit ${code}\n`);
+   if(reportFails)writeFileSync(`${f.dir}/bin/jq`,'#!/bin/sh\nexit 29\n',{mode:0o755});
+   const r=f.run('bash runtime/operation.sh');
+   const expected=code||((releaseFails||reportFails)?1:0);
+   assert.equal(r.status,expected,r.stderr);
+   assert.equal(readFileSync(`${f.dir}/lock-release-called`).length,0,'always attempt lock release, including failed reporting');
+   if(!reportFails){
+    assert.match(r.stdout,/Model operation result:/);
+    const report=JSON.parse(readFileSync(`${f.dir}/operation-result.json`));
+    assert.equal(report.exit_code,expected);assert.equal(report.status,expected===0?'ready':'failed');
+   }
+   assert.equal(r.state.calls.length,0,'routine status must not call OCI');
+  }finally{f.close();}
+ }
+});
+
+test('independent validation prints its evidence without uploading a routine artifact',()=>{
+ const f=fixture({config:{platform:{...config.platform,required_components:[],components:{}}}});
+ try{const r=f.run('bash runtime/validate.sh');assert.equal(r.status,0,r.stderr);assert.match(r.stdout,/Model validation result:/);assert.match(r.stdout,/shared_controller_checks/);assert(!r.state.calls.some(c=>c.tool==='oci'));}finally{f.close();}
+});
+
+test('failed benchmark Job prints its logs without requiring a failure artifact upload',()=>{
+ const f=fixture({config:{serving:{recipe:{args:[]}},benchmark_image:image},env:{OCI_DEPLOYMENT_ID:'deployment',BENCHMARK_BACKEND:'openai',BENCHMARK_REQUESTS:'32',BENCHMARK_INPUT_TOKENS:'256',BENCHMARK_OUTPUT_TOKENS:'64'}});
+ try{
+  writeFileSync(`${f.dir}/bin/kubectl`,`#!${process.execPath}\nconst a=process.argv.slice(2);if(a.includes('wait'))process.exit(1);if(a.includes('logs'))console.log('fixture benchmark Job failure');if(a.includes('apply'))process.stdin.resume();else if(a.includes('create'))console.log('{}');\n`,{mode:0o755});
+  const r=f.run('bash runtime/benchmark.sh');assert.equal(r.status,2,r.stderr);assert.match(r.stderr,/fixture benchmark Job failure/);assert.match(r.stderr,/deployment log/);assert(!r.state.calls.some(c=>c.tool==='oci'));
+ }finally{f.close();}
+});
+
+test('successful benchmark keeps downloadable native JSON results and prints them in the deployment log',()=>{
+ const f=fixture({config:{serving:{recipe:{args:[]}},benchmark_image:image},env:{OCI_DEPLOYMENT_ID:'deployment',DELIVERY_RESULT_REPOSITORY:'benchmark-results',BENCHMARK_BACKEND:'openai',BENCHMARK_REQUESTS:'32',BENCHMARK_INPUT_TOKENS:'256',BENCHMARK_OUTPUT_TOKENS:'64'}});
+ try{
+  writeFileSync(`${f.dir}/bin/kubectl`,`#!${process.execPath}\nconst a=process.argv.slice(2);if(a.includes('logs'))console.log('BENCHMARK_RESULT_BEGIN\\n{"completed":32}\\nBENCHMARK_RESULT_END');if(a.includes('apply'))process.stdin.resume();else if(a.includes('create'))console.log('{}');\n`,{mode:0o755});
+  writeFileSync(`${f.dir}/bin/oci`,`#!${process.execPath}\nconst fs=require('node:fs'),a=process.argv.slice(2);if(a.slice(0,4).join(' ')!=='artifacts generic artifact upload-by-path')process.exit(99);fs.writeFileSync('benchmark-export.json',JSON.stringify({repository:a[a.indexOf('--repository-id')+1],path:a[a.indexOf('--artifact-path')+1],result:JSON.parse(fs.readFileSync(a[a.indexOf('--content-body')+1]))}));\n`,{mode:0o755});
+  const r=f.run('bash runtime/benchmark.sh');assert.equal(r.status,0,r.stderr);assert.match(r.stdout,/vLLM benchmark result:/);const exported=JSON.parse(readFileSync(`${f.dir}/benchmark-export.json`));assert.equal(exported.repository,'benchmark-results');assert.match(exported.path,/vllm-benchmark.json$/);assert.equal(exported.result.completed,32);
+ }finally{f.close();}
+});
+
 test('a permanent health failure cannot be hidden by a successful model identity response',()=>{
  const f=fixture({state:{healthFailure:true}});try{const r=f.run('model_validate');assert.notEqual(r.status,0);assert.match(r.stderr,/never passed \/health/);assert(!r.state.calls.some(c=>c.tool==='curl'&&c.args.at(-1).endsWith('/v1/models')));}finally{f.close();}
 });

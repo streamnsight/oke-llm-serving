@@ -12,7 +12,6 @@ variables {
   subnet_id                     = "subnet"
   name                          = "fixture"
   source_repository_id          = "source"
-  result_repository_id          = "results"
   components = {
     lws = {
       mode        = "managed", namespace = "lws-system", release_name = "lws", ownership_token = "stable-platform-owner"

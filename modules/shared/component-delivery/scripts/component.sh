@@ -11,14 +11,13 @@ export OCI_PIPELINE_ID="${OCI_PIPELINE_ID:-${DELIVERY_PIPELINE_ID:-}}"
 [[ -n $OCI_DEPLOYMENT_ID && $OCI_DEPLOYMENT_ID != *'${'* ]] || {
   echo 'OCI Shell did not supply its predefined OCI_DEPLOYMENT_ID; refusing an uncorrelated component operation.' >&2; exit 2;
 }
-: "${DELIVERY_OPERATION:?}" "${DELIVERY_GENERATION:?}" "${DELIVERY_RESULT_REPOSITORY:?}"
+: "${DELIVERY_OPERATION:?}" "${DELIVERY_GENERATION:?}"
 source ./lock.sh
 source ./tools.sh
 cluster=$(jq -er .cluster_id specification.json)
 namespace=$(jq -er .namespace specification.json)
 release=$(jq -er .release_name specification.json)
 component=$(jq -er .component specification.json)
-platform=$(jq -er .platform specification.json)
 owner=$(jq -er .ownership_token specification.json)
 lock_name=$(jq -er .lock_name specification.json)
 lock_namespace=$(jq -r '.lock_namespace // "kube-system"' specification.json)
@@ -31,35 +30,29 @@ lock_held=false
 keep_lock=false
 status=failed
 helm_revision=""
-result_uploaded=false
 registry_config=""
 registry_token_file=""
 message="Operation did not complete"
 
-evidence() {
-  local code=$1 version
+log_result() {
+  local code=$1
   jq -n --arg status "$status" --arg message "$message" --arg operation "$DELIVERY_OPERATION" --arg generation "$DELIVERY_GENERATION" \
     --arg component "$component" --arg cluster "$cluster" --arg namespace "$namespace" --arg release "$release" \
     --arg deployment "$OCI_DEPLOYMENT_ID" --arg pipeline "${OCI_PIPELINE_ID:-}" --arg settings_sha256 "$settings_sha256" --arg helm_revision "$helm_revision" --arg checked_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
     --argjson exit_code "$code" --slurpfile specification specification.json \
-    '{schema_version:"1.0",status:$status,message:$message,operation:$operation,generation:$generation,component:$component,cluster_id:$cluster,namespace:$namespace,release_name:$release,deployment_id:$deployment,pipeline_id:$pipeline,checked_at:$checked_at,exit_code:$exit_code,settings_sha256:$settings_sha256,helm_revision:($helm_revision|if .=="" then null else tonumber end),effective_parameters:((($specification[0].parameters|keys)+["CHART_VERSION"])|map(. as $key|{key:$key,value:env[$key]})|from_entries)}' > result.json
-  version="$(date -u +%Y%m%dT%H%M%SZ)-${RANDOM}-${RANDOM}"
-  oci artifacts generic artifact upload-by-path --repository-id "$DELIVERY_RESULT_REPOSITORY" \
-    --artifact-path "$platform/components/$component/$DELIVERY_GENERATION/$OCI_DEPLOYMENT_ID/$DELIVERY_OPERATION.json" \
-    --artifact-version "$version" --content-body result.json >/dev/null || return $?
-  result_uploaded=true
+    '{schema_version:"1.0",status:$status,message:$message,operation:$operation,generation:$generation,component:$component,cluster_id:$cluster,namespace:$namespace,release_name:$release,deployment_id:$deployment,pipeline_id:$pipeline,checked_at:$checked_at,exit_code:$exit_code,settings_sha256:$settings_sha256,helm_revision:($helm_revision|if .=="" then null else tonumber end),effective_parameters:((($specification[0].parameters|keys)+["CHART_VERSION"])|map(. as $key|{key:$key,value:env[$key]})|from_entries)}'
 }
 finish() {
   local code=$?
   trap - EXIT
   # Registry bearer tokens never belong in artifacts, evidence or command args.
-  if [[ -n $registry_token_file ]]; then rm -f "$registry_token_file" || code=1; fi
-  if [[ -n $registry_config ]]; then rm -f "$registry_config" || code=1; fi
-  if (( code != 0 )); then status=failed; result_uploaded=false; fi
-  if [[ $result_uploaded != true ]]; then evidence "$code" || code=1; fi
+  if [[ -n $registry_token_file ]]; then rm -f "$registry_token_file" || { (( code != 0 )) || code=1; }; fi
+  if [[ -n $registry_config ]]; then rm -f "$registry_config" || { (( code != 0 )) || code=1; }; fi
   # A failed native stage never reaches finish; its lock remains deliberately.
   # Shell failures before Helm or after it can safely release their own lock.
-  if [[ $lock_held == true && $keep_lock != true ]]; then lock_release || code=1; fi
+  if [[ $lock_held == true && $keep_lock != true ]]; then lock_release || { (( code != 0 )) || code=1; }; fi
+  if (( code != 0 )); then status=failed; fi
+  log_result "$code" || { (( code != 0 )) || code=1; }
   exit "$code"
 }
 trap finish EXIT
@@ -232,7 +225,6 @@ case "$DELIVERY_OPERATION" in
     owner_write applying
     if [[ $(jq -r 'if has("manage_crds") then .manage_crds else true end' specification.json) == true ]]; then crds_update; fi
     status=prepared; message="Owned native Helm upgrade may proceed"
-    evidence 0
     keep_lock=true
     ;;
   finish)
@@ -256,7 +248,6 @@ case "$DELIVERY_OPERATION" in
     cmp -s expected-values.json installed-values.json || { message="Installed Helm values differ from the prepared arguments"; exit 2; }
     if [[ -f runtime/validate.sh ]]; then bash runtime/validate.sh; fi
     status=ready; message="Helm release and declared controllers validated"
-    evidence 0
     owner_write ready
     ;;
   reuse)

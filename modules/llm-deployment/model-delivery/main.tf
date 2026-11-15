@@ -115,7 +115,6 @@ module "delivery" {
   nsg_ids                       = var.platform.runner_nsg_ids
   name                          = local.identity
   source_repository_id          = var.platform.script_repository_id
-  result_repository_id          = var.platform.result_repository_id
   helm_version                  = "v3.19.2"
   runtime_files                 = local.runtime_files
   components = {

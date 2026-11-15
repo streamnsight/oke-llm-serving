@@ -75,7 +75,7 @@ locals {
     env = { variables = {
       STAGING_IMAGE       = "$${STAGING_IMAGE}", JOB_DEADLINE_SECONDS = "$${JOB_DEADLINE_SECONDS}",
       MODEL_STAGE_NAME    = var.name, CLUSTER_ID = var.cluster_id, KUBERNETES_VERSION = var.kubernetes_version,
-      MODEL_CONFIG_SHA256 = sha256(local.config), RESULT_REPOSITORY_ID = coalesce(var.result_repository_id, var.artifact_repository_id),
+      MODEL_CONFIG_SHA256 = sha256(local.config),
       OCI_CLI_AUTH        = "resource_principal", OCI_CLI_REGION = var.region
     } },
     inputArtifacts = [for name, artifact in oci_generic_artifacts_content_artifact_by_path.input : {
@@ -84,7 +84,7 @@ locals {
     }],
     steps = [{ type = "Command", name = "stage-model-on-cpu", timeoutInSeconds = 28800, command = join("\n", concat([
       "set -euo pipefail",
-      "export STAGING_IMAGE JOB_DEADLINE_SECONDS MODEL_STAGE_NAME CLUSTER_ID KUBERNETES_VERSION MODEL_CONFIG_SHA256 RESULT_REPOSITORY_ID OCI_CLI_AUTH OCI_CLI_REGION"
+      "export STAGING_IMAGE JOB_DEADLINE_SECONDS MODEL_STAGE_NAME CLUSTER_ID KUBERNETES_VERSION MODEL_CONFIG_SHA256 OCI_CLI_AUTH OCI_CLI_REGION"
     ], [for name, content in local.artifact_contents : "printf '%s  %s\\n' '${sha256(content)}' '${name}' | sha256sum -c -"], ["bash ./stage.sh"])) }]
   }) : null
 }
@@ -178,7 +178,7 @@ resource "oci_identity_policy" "runner" {
     "Allow dynamic-group id ${oci_identity_dynamic_group.runner[0].id} to manage compute-containers in compartment id ${var.compartment_id}",
     "Allow dynamic-group id ${oci_identity_dynamic_group.runner[0].id} to use virtual-network-family in compartment id ${data.oci_core_subnet.runner[0].compartment_id}",
     "Allow dynamic-group id ${oci_identity_dynamic_group.runner[0].id} to read artifact-repositories in compartment id ${var.compartment_id}",
-    "Allow dynamic-group id ${oci_identity_dynamic_group.runner[0].id} to manage generic-artifacts in compartment id ${var.compartment_id}",
+    "Allow dynamic-group id ${oci_identity_dynamic_group.runner[0].id} to read generic-artifacts in compartment id ${var.compartment_id}",
     "Allow dynamic-group id ${oci_identity_dynamic_group.runner[0].id} to use log-content in compartment id ${var.compartment_id}"
   ]
 }

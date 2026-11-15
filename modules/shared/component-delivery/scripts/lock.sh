@@ -20,9 +20,16 @@ lock_acquire() {
   # Any permissions/transport failure here fails closed, never overwrites blindly.
   lock_read
   jq -e --arg owner "$owner" '.metadata.annotations["oke-llm/owner-token"] == $owner' lease.json >/dev/null
-  old_holder=$(jq -er '.spec.holderIdentity // "" | if . == "" then "empty" else . end' lease.json)
-  if [[ $old_holder != empty ]]; then
-    [[ ${RECOVER_LOCK_HOLDER:-} == "$old_holder" ]] || { echo "Component locked by $old_holder; explicit stale recovery required" >&2; return 2; }
+  # Preserve trailing newlines in the observed holder; command substitution
+  # would otherwise strip them and can turn an occupied Lease into a blank ID.
+  old_holder=$(jq -er '(.spec.holderIdentity // "") + "."' lease.json)
+  old_holder=${old_holder%.}
+  if [[ -n $old_holder ]]; then
+    [[ ${RECOVER_LOCK_HOLDER:-} == "$old_holder" ]] || {
+      printf 'Component Lease %s/%s is held (holderIdentity=%s); explicit stale recovery required.\n' \
+        "${lock_namespace:-kube-system}" "$lock_name" "$(jq -c '.spec.holderIdentity' lease.json)" >&2
+      return 2
+    }
     expires=$(jq -er '(.metadata.annotations["oke-llm/acquired-epoch"]|tonumber)+.spec.leaseDurationSeconds' lease.json)
     (( now > expires )) || { echo "Lock has not expired; refusing recovery" >&2; return 2; }
     old_state=$(oci devops deployment get --deployment-id "$old_holder" --query 'data."lifecycle-state"' --raw-output)

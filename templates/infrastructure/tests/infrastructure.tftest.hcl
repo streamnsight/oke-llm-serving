@@ -129,11 +129,11 @@ run "explicit_rdma_in_an_unconfirmed_region_is_rejected" {
   }
   expect_failures = [terraform_data.specification]
 }
-run "component_updates_use_artifact_registry_without_a_platform_bucket" {
+run "component_updates_use_inline_sources_and_devops_logs" {
   command = plan
   variables { node_count = 2 }
   assert {
-    condition     = output.platform.specification.delivery == "inline_command_spec" && output.platform.result_repository_id != null
-    error_message = "Specifications and run reports belong in Generic Artifact Registry."
+    condition     = output.platform.specification.delivery == "inline_command_spec" && output.platform.evidence.source == "devops_logs"
+    error_message = "Small specifications stay inline; routine reports belong in DevOps logs."
   }
 }

@@ -31,14 +31,12 @@ finish() {
   trap - EXIT
   if [[ "$locked" == true ]]; then
     if kubectl get lease oke-llm-model-onboarding -n "$MODEL_NAMESPACE" -o json > "$work_dir/lease.json" && jq -e --arg holder "$execution" '.spec.holderIdentity==$holder' "$work_dir/lease.json" >/dev/null; then
-      kubectl delete lease oke-llm-model-onboarding -n "$MODEL_NAMESPACE" --wait=true >/dev/null || code=1
-    else code=1; fi
+      kubectl delete lease oke-llm-model-onboarding -n "$MODEL_NAMESPACE" --wait=true >/dev/null || { (( code != 0 )) || code=1; }
+    else (( code != 0 )) || code=1; fi
   fi
   jq -n --arg execution "$execution" --arg namespace "$MODEL_NAMESPACE" --arg project "$MODEL_PROJECT_ID" --arg action "$MODEL_ACCESS_OPERATION" --arg owner "$owner" --argjson ids "$MODEL_PIPELINE_IDS" --argjson exit_code "$code" \
-    '{operation:"model_access",action:$action,namespace:$namespace,project_id:$project,platform_owner:$owner,pipeline_ids:$ids,execution_id:$execution,status:(if $exit_code==0 then "passed" else "failed" end),exit_code:$exit_code,model_runtime_validation:"not_run"}' > "$work_dir/report.json"
-  oci artifacts generic artifact upload-by-path --repository-id "$RESULT_REPOSITORY_ID" --artifact-path "$PLATFORM_NAME/model-onboarding/$MODEL_NAMESPACE/$execution" --artifact-version "$owner" --content-body "$work_dir/report.json" >/dev/null || code=1
-  echo "Onboarding report: repository $RESULT_REPOSITORY_ID path $PLATFORM_NAME/model-onboarding/$MODEL_NAMESPACE/$execution version $owner"
-  rm -rf "$work_dir"
+    '{operation:"model_access",action:$action,namespace:$namespace,project_id:$project,platform_owner:$owner,pipeline_ids:$ids,execution_id:$execution,status:(if $exit_code==0 then "passed" else "failed" end),exit_code:$exit_code,model_runtime_validation:"not_run"}' || { (( code != 0 )) || code=1; }
+  rm -rf "$work_dir" || { (( code != 0 )) || code=1; }
   exit "$code"
 }
 trap finish EXIT

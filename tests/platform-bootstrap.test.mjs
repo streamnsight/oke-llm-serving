@@ -12,7 +12,7 @@ const modulePath=`${root}/modules/cluster-add-ons/platform-bootstrap`;
 const components=JSON.parse(readFileSync(`${modulePath}/data/components.json`));
 const gpu={metadata:{name:'gpu',labels:{'node.kubernetes.io/instance-type':'BM.GPU.A10.4'}},spec:{},status:{conditions:[{type:'Ready',status:'True'}],allocatable:{'nvidia.com/gpu':'4'}}};
 const cpu={metadata:{name:'existing-cpu',labels:{'node.kubernetes.io/instance-type':'VM.Standard.E4.Flex'}},spec:{},status:{conditions:[{type:'Ready',status:'True'}],allocatable:{cpu:'8',memory:'22Gi'}}};
-const config={platform_name:'fixture',region:'us-ashburn-1',cluster_id:'cluster',node_count:1,gpu_count_per_host:4,requires_rdma:false,enable_lws:true,target:{kubernetes_version:'v1.34.1'},generation:'a'.repeat(64),evidence_bucket:'private-platform',storage_namespace:'fixture',evidence_prefix:'fixture/generation',components};
+const config={platform_name:'fixture',region:'us-ashburn-1',cluster_id:'cluster',node_count:1,gpu_count_per_host:4,requires_rdma:false,enable_lws:true,target:{kubernetes_version:'v1.34.1'},generation:'a'.repeat(64),components};
 function readiness(changes={}) {
   return JSON.parse(execFileSync('jq',['-f',`${modulePath}/scripts/readiness.jq`],{input:JSON.stringify({config,gpu_nodes:{items:[gpu]},cpu_nodes:{items:[gpu,cpu]},...changes}),encoding:'utf8'}));
 }
@@ -56,10 +56,7 @@ if(tool==='curl') {
  if(a[0]==='ce')fs.writeFileSync(arg('--file'),'mock kubeconfig');
  else if(a.slice(0,3).join(' ')==='devops deployment create-pipeline-deployment')out('ocid1.devopsdeployment.'+arg('--pipeline-id').split('.').at(-1));
  else if(a.slice(0,3).join(' ')==='devops deployment get')out(arg('--deployment-id').endsWith(state.failedChild||'---')?'FAILED':'SUCCEEDED');
- else if(a.slice(0,5).join(' ')==='artifacts generic artifact upload-by-path --repository-id') {
-   if(state.failUpload)process.exit(1);
-   fs.appendFileSync(dir+'/uploads.jsonl',JSON.stringify({path:arg('--artifact-path'),version:arg('--artifact-version'),body:JSON.parse(fs.readFileSync(arg('--content-body')))} )+'\n');
- } else throw Error('Unexpected OCI command '+a.join(' '));
+ else throw Error('Unexpected OCI command '+a.join(' '));
 } else if(tool==='kubectl') {
  if(a[0]==='get'&&a[1]==='configmap')out({data:{generation:'b'.repeat(64),status:state.staleOwner?'preparing':'ready',ownership_token:'fixture-owner',helm_revision:state.drift?'2':'3',chart_version:'1.0.0',deployment_id:'ocid1.devopsdeployment.previous'}});
  else if(a[0]==='get'&&a[1]==='nodes')out({items:a.includes('-l')?[]:[state.cpu]});
@@ -73,6 +70,7 @@ if(tool==='curl') {
 } else if(tool!=='sleep')throw Error('Unexpected tool');
 `;
 const platformComponent=(name,deps=[])=>({namespace:name,release_name:name,mode:'managed',owner_name:'owner-'+name,ownership_token:'fixture-owner',generation:'b'.repeat(64),pipeline_id:'ocid1.devopsdeploypipeline.'+name,dependency_keys:deps,crd_names:[],deployment_names:[name]});
+const loggedReport=stdout=>{const match=stdout.match(/(?:^|\n)({\n[\s\S]*\n})\s*$/);return match?JSON.parse(match[1]):undefined;};
 function runPlatform(changes={},mode='validate',override={}) {
  const dir=mkdtempSync(`${tmpdir()}/oke-platform-graph-`);
  try {
@@ -84,19 +82,19 @@ function runPlatform(changes={},mode='validate',override={}) {
   const c={...config,gpu_allocation_enabled:false,enable_lws:false,cpu_components_required:true,helm_version:components.helm_version,components:{a:platformComponent('a'),b:platformComponent('b',['a'])},...changes.config};
   writeFileSync(dir+'/platform.json',JSON.stringify(c));
   writeFileSync(dir+'/fixture.json',JSON.stringify({cpu,...changes}));
-  const result=spawnSync('bash',[dir+'/platform.sh'],{env:{...process.env,MOCK_DIR:dir,PATH:dir+'/bin:'+process.env.PATH,PLATFORM_MODE:mode,REGION:c.region,CLUSTER_ID:c.cluster_id,PLATFORM_NAME:c.platform_name,RESULT_REPOSITORY_ID:'results',...override},encoding:'utf8',timeout:20000});
+  const result=spawnSync('bash',[dir+'/platform.sh'],{env:{...process.env,MOCK_DIR:dir,PATH:dir+'/bin:'+process.env.PATH,PLATFORM_MODE:mode,REGION:c.region,CLUSTER_ID:c.cluster_id,PLATFORM_NAME:c.platform_name,...override},encoding:'utf8',timeout:20000});
   const readLines=file=>{try{return readFileSync(dir+'/'+file,'utf8').trim().split('\n').filter(Boolean).map(JSON.parse);}catch{return [];}};
-  return {...result,calls:readLines('calls.jsonl'),uploads:readLines('uploads.jsonl')};
+  return {...result,calls:readLines('calls.jsonl'),report:loggedReport(result.stdout)};
  }finally{rmSync(dir,{recursive:true,force:true});}
 }
-test('fresh validation writes immutable Artifact Registry evidence and never deploys',()=>{
- const r=runPlatform();assert.equal(r.status,0,r.stderr);assert.equal(r.uploads.length,1);
- assert.equal(r.uploads[0].body.status,'ready');assert.match(r.uploads[0].version,/^[a-f0-9]{32}$/);
- assert.equal(r.uploads[0].body.node_checks.gpu_validation,'skipped_debug');
- assert.equal(r.uploads[0].body.components.a.chart_name,'a');assert.equal(r.uploads[0].body.components.a.chart_version,'1.0.0');
+test('fresh validation logs readable JSON status and never deploys or uploads reports',()=>{
+ const r=runPlatform();assert.equal(r.status,0,r.stderr);assert.ok(r.report);
+ assert.equal(r.report.status,'ready');assert.match(r.report.execution,/^[a-f0-9]{32}$/);
+ assert.equal(r.report.node_checks.gpu_validation,'skipped_debug');
+ assert.equal(r.report.components.a.chart_name,'a');assert.equal(r.report.components.a.chart_version,'1.0.0');
  assert(r.calls.some(c=>c.tool==='helm'&&c.args.slice(0,2).join(' ')==='get metadata'));
  assert.equal(r.calls.some(c=>c.args.includes('create-pipeline-deployment')),false);
- assert.equal(r.calls.some(c=>c.args.includes('os')),false);
+ assert.equal(r.calls.some(c=>c.args.includes('os')),false);assert.equal(r.calls.some(c=>c.tool==='oci'&&c.args[0]==='artifacts'),false);
 });
 test('DAG coordinator waits for prerequisites before starting dependent pipelines',()=>{
  const r=runPlatform({},'deploy');assert.equal(r.status,0,r.stderr);
@@ -113,19 +111,19 @@ test('independent components need no artificial Prometheus install dependency',(
 test('failed child stops dependent deployment and records failure',()=>{
  const r=runPlatform({failedChild:'.a'},'deploy');assert.notEqual(r.status,0);
  assert.equal(r.calls.filter(c=>c.args.includes('create-pipeline-deployment')).length,1);
- assert.equal(r.uploads[0].body.status,'failed');
+ assert.equal(r.report.status,'failed');
 });
 test('cyclic dependency graph fails without launching children',()=>{
  const r=runPlatform({config:{components:{a:platformComponent('a',['b']),b:platformComponent('b',['a'])}}},'deploy');assert.notEqual(r.status,0);
- assert.equal(r.calls.length,1);assert.equal(r.uploads[0].body.status,'failed');
+ assert.equal(r.calls.length,0);assert.equal(r.report.status,'failed');
 });
-test('failed actual rollout and failed evidence upload cannot report success',()=>{
- for(const changes of [{failRollout:true},{failUpload:true},{badRelease:true},{staleOwner:true},{drift:true},{chartDrift:true},{metadataChanged:true}]){
-  const r=runPlatform(changes);assert.notEqual(r.status,0);
+test('failed runtime checks retain their failure in logged JSON',()=>{
+ for(const changes of [{failRollout:true},{badRelease:true},{staleOwner:true},{drift:true},{chartDrift:true},{metadataChanged:true}]){
+  const r=runPlatform(changes);assert.notEqual(r.status,0);assert.equal(r.report.status,'failed');assert.equal(r.report.exit_code,r.status);
  }
 });
 test('fresh validation normalizes v-prefixed chart versions returned by Helm metadata',()=>{
- const r=runPlatform({prefixedVersion:true});assert.equal(r.status,0,r.stderr);assert.equal(r.uploads[0].body.components.a.chart_version,'v1.0.0');
+ const r=runPlatform({prefixedVersion:true});assert.equal(r.status,0,r.stderr);assert.equal(r.report.components.a.chart_version,'v1.0.0');
 });
 test('Prometheus validation requires Bound data PVC and KEDA API aggregation',()=>{
  const prometheus=platformComponent('prometheus'),keda=platformComponent('keda');

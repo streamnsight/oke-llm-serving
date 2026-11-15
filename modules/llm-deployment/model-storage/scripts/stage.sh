@@ -24,22 +24,25 @@ created_job=false
 created_configmap=false
 export OCI_CLI_AUTH=resource_principal OCI_CLI_REGION
 finish() {
-  local status=$?
+  local status=$? cleanup_status=0
   trap - EXIT
   if [[ "$created_job" == true ]]; then
     kubectl -n "$namespace" logs "job/$job" --all-containers=true || true
     kubectl -n "$namespace" get job "$job" -o json > "$run_dir/job-result.json" || true
-    kubectl -n "$namespace" delete job "$job" --wait=true --timeout=120s || status=1
+    kubectl -n "$namespace" delete job "$job" --wait=true --timeout=120s || cleanup_status=1
   fi
-  if [[ "$created_configmap" == true ]]; then kubectl -n "$namespace" delete configmap "$configmap" --ignore-not-found=true || status=1; fi
-  jq -n --arg run_id "$run_id" --arg checked_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --arg image "$STAGING_IMAGE" --argjson deadline "$JOB_DEADLINE_SECONDS" \
+  if [[ "$created_configmap" == true ]]; then kubectl -n "$namespace" delete configmap "$configmap" --ignore-not-found=true || cleanup_status=1; fi
+  (( status != 0 )) || status=$cleanup_status
+  if jq -n --arg run_id "$run_id" --arg checked_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --arg image "$STAGING_IMAGE" --argjson deadline "$JOB_DEADLINE_SECONDS" \
     --argjson exit_code "$status" --arg config_sha256 "$MODEL_CONFIG_SHA256" --slurpfile config "$input_dir/model.json" \
-    '{schema_version:"1.0",operation:"stage_model_weights",run_id:$run_id,checked_at:$checked_at,status:(if $exit_code==0 then "staged" else "failed" end),exit_code:$exit_code,config_sha256:$config_sha256,snapshot_sha256:$config[0].snapshot_sha256,staging_image:$image,deadline_seconds:$deadline,bucket:$config[0].bucket,manifest_key:($config[0].prefix+"/manifest.json"),model_serving_validation:"not_run"}' > "$run_dir/report.json"
-  oci artifacts generic artifact upload-by-path --repository-id "$RESULT_REPOSITORY_ID" \
-    --artifact-path "model-storage/$MODEL_STAGE_NAME/runs/$run_id" --artifact-version "$MODEL_CONFIG_SHA256" \
-    --content-body "$run_dir/report.json" > "$run_dir/artifact-result.json" || status=1
-  echo "Model staging report: model-storage/$MODEL_STAGE_NAME/runs/$run_id version $MODEL_CONFIG_SHA256"
-  rm -rf "$run_dir"
+    '{schema_version:"1.0",operation:"stage_model_weights",run_id:$run_id,checked_at:$checked_at,status:(if $exit_code==0 then "staged" else "failed" end),exit_code:$exit_code,config_sha256:$config_sha256,snapshot_sha256:$config[0].snapshot_sha256,staging_image:$image,deadline_seconds:$deadline,bucket:$config[0].bucket,manifest_key:($config[0].prefix+"/manifest.json"),model_serving_validation:"not_run"}' > "$run_dir/report.json"; then
+    echo 'Model staging report:' || cleanup_status=1
+    cat "$run_dir/report.json" || cleanup_status=1
+  else
+    cleanup_status=1
+  fi
+  rm -rf "$run_dir" || cleanup_status=1
+  (( status != 0 )) || status=$cleanup_status
   exit "$status"
 }
 trap finish EXIT

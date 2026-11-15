@@ -28,11 +28,11 @@ run "default_platform_installs_monitoring_and_shared_KEDA_without_model_scaling"
   }
   assert {
     condition     = output.platform.cpu_placement == "existing_cluster_cpu_pools" && !output.platform.cpu_budget.creates_cpu_pool && !contains(keys(output.platform.allocation), "cpu_pool_id") && !contains(keys(output.platform), "readiness_uri") && strcontains(output.platform.runtime_readiness, "required for Apply success") && output.platform.automatic_deployment.automatically_started && output.platform.automatic_deployment.state == "SUCCEEDED"
-    error_message = "The v2 descriptor uses existing CPU pools and immutable Artifact Registry evidence, without claiming live readiness or creating CPU nodes."
+    error_message = "The v2 descriptor uses existing CPU pools and waits for automatic validation, without creating CPU nodes."
   }
   assert {
-    condition     = oci_artifacts_repository.scripts.is_immutable && oci_artifacts_repository.results.is_immutable && output.platform.specification.delivery == "inline_command_spec" && output.platform.specification.sha256 == sha256(jsonencode(local.config)) && output.platform.evidence.repository_id == oci_artifacts_repository.results.id
-    error_message = "Desired platform configuration and immutable run reports belong in separate Artifact Registry repositories, with content-addressed specification versions."
+    condition     = oci_artifacts_repository.scripts.is_immutable && !contains(keys(output.platform), "result_repository_id") && output.platform.specification.delivery == "inline_command_spec" && output.platform.specification.sha256 == sha256(jsonencode(local.config)) && output.platform.evidence.source == "devops_logs" && output.platform.evidence.log_id == oci_logging_log.platform.id
+    error_message = "Desired configuration is delivered inline and routine execution reports belong in DevOps logs, without a results repository."
   }
   assert {
     condition     = alltrue([for mode, spec in module.inline_platform : spec.byte_size <= 51200 && strcontains(spec.preparation_command, "platform.sh") && strcontains(spec.preparation_command, "platform.json") && base64decode(oci_devops_deploy_artifact.platform[mode].deploy_artifact_source[0].base64encoded_content) == spec.content]) && alltrue([for spec in values(local.command_specs) : length(yamldecode(spec).inputArtifacts) == 0 && strcontains(yamldecode(spec).steps[0].command, "sha256sum -c -") && !strcontains(spec, "base64")])
@@ -51,7 +51,7 @@ run "default_platform_installs_monitoring_and_shared_KEDA_without_model_scaling"
     error_message = "Only the actual orchestration, validation, component deployment and teardown pipeline principals receive Kubernetes authorization."
   }
   assert {
-    condition     = anytrue([for rule in oci_identity_policy.bootstrap.statements : strcontains(rule, "to manage compute-containers in compartment id platform-compartment")]) && anytrue([for rule in oci_identity_policy.bootstrap.statements : strcontains(rule, "to manage compute-container-instances in compartment id platform-compartment")]) && anytrue([for rule in oci_identity_policy.bootstrap.statements : strcontains(rule, "to use virtual-network-family in compartment id network-compartment")]) && alltrue([for rule in oci_identity_policy.bootstrap.statements : !strcontains(rule, "object-family")])
+    condition     = anytrue([for rule in oci_identity_policy.bootstrap.statements : strcontains(rule, "to manage compute-containers in compartment id platform-compartment")]) && anytrue([for rule in oci_identity_policy.bootstrap.statements : strcontains(rule, "to manage compute-container-instances in compartment id platform-compartment")]) && anytrue([for rule in oci_identity_policy.bootstrap.statements : strcontains(rule, "to use virtual-network-family in compartment id network-compartment")]) && alltrue([for rule in oci_identity_policy.bootstrap.statements : !strcontains(rule, "object-family") && !strcontains(rule, "manage generic-artifacts")])
     error_message = "Shell execution needs both Container Instance permissions, scoped private-network access and no pipeline artifact-bucket policy."
   }
 }
@@ -164,15 +164,23 @@ run "shared_KEDA_can_be_reused_without_creating_a_second_release" {
 run "unchanged_component_revision_does_not_rerun_for_inventory_observations" {
   command = plan
   variables {
-    config = merge(var.config, { target = merge(var.config.target, { oke_addons = [{ name = "NodeFeatureDiscovery", state = "ACTIVE" }], gpu_image = { id = "newly-observed-image" } }) })
+    config = merge(var.config, { target = merge(var.config.target, { oke_addons = [{ name = "NodeFeatureDiscovery", state = "ACTIVE" }], gpu_image = { id = "newly-observed-image" } }), allocation = merge(var.config.allocation, { capacity = { observed_at = "later", available_hosts = 17 }, oke_addons = [{ name = "NodeFeatureDiscovery", state = "ACTIVE" }], retained_nodes = 1, additional_nodes = 0 }) })
   }
   assert {
     condition     = local.bootstrap_revision == run.default_platform_installs_monitoring_and_shared_KEDA_without_model_scaling.platform.automatic_deployment.revision
-    error_message = "Read-only add-on/image observations must not rerun unchanged controllers."
+    error_message = "Read-only capacity/add-on/image observations and retained-node counts must not rerun unchanged controllers."
   }
   assert {
     condition     = !oci_devops_deployment.bootstrap.trigger_new_devops_deployment && oci_devops_deployment.bootstrap.deployment_type == "PIPELINE_DEPLOYMENT"
     error_message = "Apply starts a native pipeline execution with success waiting, without an every-Apply trigger."
+  }
+}
+run "gpu_pool_change_requires_a_new_automatic_revision" {
+  command = plan
+  variables { config = merge(var.config, { allocation = merge(var.config.allocation, { gpu_pool_id = "replacement-gpu-pool" }) }) }
+  assert {
+    condition     = local.bootstrap_revision != run.default_platform_installs_monitoring_and_shared_KEDA_without_model_scaling.platform.automatic_deployment.revision
+    error_message = "A changed GPU allocation binding must rerun readiness against the selected pool."
   }
 }
 run "component_change_requires_a_new_automatic_revision" {

@@ -9,6 +9,5 @@ model_platform_ready
 model_validate
 jq --slurpfile allocation model-allocation-check.json --slurpfile platform platform-readiness.json '.+{allocation_check:$allocation[0],shared_controller_checks:$platform[0]}' model-validation.json > model-validation-evidence.json
 mv model-validation-evidence.json model-validation.json
-oci artifacts generic artifact upload-by-path --repository-id "$DELIVERY_RESULT_REPOSITORY" \
-  --artifact-path "$identity/model/$DELIVERY_GENERATION/$OCI_DEPLOYMENT_ID/validation.json" \
-  --artifact-version "$(date -u +%Y%m%dT%H%M%SZ)-${RANDOM}" --content-body model-validation.json >/dev/null
+echo 'Model validation result:'
+cat model-validation.json

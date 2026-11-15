@@ -27,7 +27,7 @@ IFS=. read -r terraform_major terraform_minor _ <<< "$(terraform version -json |
 if (( terraform_major > 1 || (terraform_major == 1 && terraform_minor >= 7) )); then
   mkdir "$staging/tests"
   cp "$repo/tests/fixtures/generated-model.hcl" "$staging/tests/generated.tftest.hcl"
-  terraform -chdir="$staging" test -no-color
+  bash "$repo/scripts/test-terraform.sh" "$staging"
 else
   echo 'Mock-provider root tests require Terraform 1.7+; this version validates RMS compatibility only.'
 fi

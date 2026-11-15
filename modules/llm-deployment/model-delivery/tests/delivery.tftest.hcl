@@ -55,7 +55,7 @@ run "cpu_debug_creates_model_only_delivery" {
     error_message = "Model runtime identities may not administer clusters, node pools, GPU instances or buckets."
   }
   assert {
-    condition     = alltrue([for operation, spec in local.operation_specs : length(yamldecode(spec).inputArtifacts) == 1 && yamldecode(spec).env.variables.MODEL_NAMESPACE == "${MODEL_NAMESPACE}" && yamldecode(spec).inputArtifacts[0].path == module.delivery.runtime_artifacts["config.json"].artifact_path && yamldecode(spec).inputArtifacts[0].version == module.delivery.runtime_artifacts["config.json"].version && module.inline_operation[operation].byte_size <= 51200 && strcontains(module.inline_operation[operation].preparation_command, "cat > 'runtime/operation.sh'")]) && alltrue([for artifact in oci_devops_deploy_artifact.operation : artifact.deploy_artifact_source[0].deploy_artifact_source_type == "INLINE"]) && !contains(keys(local.operation_files.validate), "benchmark.sh") && !contains(keys(local.operation_files.benchmark), "validate.sh") && output.onboarding_arguments.MODEL_NAMESPACE == output.namespace
+    condition     = alltrue([for operation, spec in local.operation_specs : length(yamldecode(spec).inputArtifacts) == 1 && yamldecode(spec).env.variables.MODEL_NAMESPACE == "$${MODEL_NAMESPACE}" && yamldecode(spec).inputArtifacts[0].path == module.delivery.runtime_artifacts["config.json"].artifact_path && yamldecode(spec).inputArtifacts[0].version == module.delivery.runtime_artifacts["config.json"].version && module.inline_operation[operation].byte_size <= 51200 && strcontains(module.inline_operation[operation].preparation_command, "cat > 'runtime/operation.sh'")]) && alltrue([for artifact in oci_devops_deploy_artifact.operation : artifact.deploy_artifact_source[0].deploy_artifact_source_type == "INLINE"]) && !contains(keys(local.operation_files.validate), "benchmark.sh") && !contains(keys(local.operation_files.benchmark), "validate.sh") && output.onboarding_arguments.MODEL_NAMESPACE == output.namespace
     error_message = "Each operation inlines only its required readable sources, reuses the existing model config input, respects the payload limit and preserves immutable namespace onboarding."
   }
 }
@@ -112,4 +112,12 @@ run "model_autoscaling_rejects_missing_shared_KEDA" {
   command = plan
   variables { autoscaling = {enabled=true,prometheus_url="http://prometheus.monitoring.svc:9090"} }
   expect_failures = [terraform_data.contract]
+}
+
+run "routine_validation_has_no_artifact_report_binding" {
+  command = plan
+  assert {
+    condition     = !contains(keys(yamldecode(local.operation_specs.validate).env.variables), "DELIVERY_RESULT_REPOSITORY") && yamldecode(local.operation_specs.benchmark).env.variables.DELIVERY_RESULT_REPOSITORY == "results"
+    error_message = "Routine validation uses DevOps logs; only downloadable benchmark exports require a result repository."
+  }
 }

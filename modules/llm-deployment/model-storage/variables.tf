@@ -32,11 +32,6 @@ variable "artifact_repository_id" {
   type    = string
   default = null
 }
-variable "result_repository_id" {
-  description = "Optional separate Generic Artifact repository for small run reports. Never contains weights."
-  type        = string
-  default     = null
-}
 variable "cluster_id" {
   type    = string
   default = null

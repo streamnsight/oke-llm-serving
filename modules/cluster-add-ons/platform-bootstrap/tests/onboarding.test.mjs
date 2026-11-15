@@ -59,7 +59,6 @@ if(args.slice(0,3).join(' ')==='devops deploy-pipeline get') {
  const id=args[args.indexOf('--pipeline-id')+1]; console.log(JSON.stringify({data:{id,'project-id':process.env.MOCK_FOREIGN_PROJECT?'foreign-project':process.env.MODEL_PROJECT_ID,'lifecycle-state':process.env.MOCK_INACTIVE_PIPELINE?'DELETED':'ACTIVE','deploy-pipeline-parameters':{items:[{name:'MODEL_NAMESPACE','default-value':process.env.MOCK_WRONG_NAMESPACE?'foreign':process.env.MODEL_NAMESPACE},{name:'MODEL_PROJECT_ID','default-value':process.env.MODEL_PROJECT_ID},{name:'MODEL_CLUSTER_ID','default-value':process.env.MOCK_WRONG_CLUSTER?'foreign':process.env.CLUSTER_ID},{name:'MODEL_PLATFORM_NAME','default-value':process.env.MOCK_WRONG_PLATFORM?'foreign':process.env.PLATFORM_NAME},{name:'MODEL_GPU_POOL_ID','default-value':process.env.MOCK_WRONG_POOL?'foreign':process.env.MODEL_GPU_POOL_ID}]}}})); process.exit(0);
 }
 if(args.slice(0,3).join(' ')==='ce cluster create-kubeconfig') process.exit(0);
-if(args.slice(0,4).join(' ')==='artifacts generic artifact upload-by-path') { fs.copyFileSync(args[args.indexOf('--content-body')+1],path.join(process.env.MOCK_DIR,'report.json')); process.exit(0); }
 process.exit(99);
 `
   };
@@ -70,7 +69,7 @@ process.exit(99);
     return spawnSync('bash', [join(root, 'input', 'onboard-model.sh')], { encoding: 'utf8', env: {
       ...process.env, PATH: `${join(root, 'bin')}:${process.env.PATH}`, MOCK_DIR: root, MOCK_KUBECTL: join(root, 'kubectl'),
       PLATFORM_NAME: 'platform', CLUSTER_ID: 'cluster', PROJECT_ID: 'platform-project', MODEL_PROJECT_ID: 'ocid1.devopsproject.oc1.model', MODEL_GPU_POOL_ID: 'runtime', MODEL_NAMESPACE: namespace, MODEL_PIPELINE_IDS: JSON.stringify(pipelines), MODEL_ACCESS_OPERATION: 'grant',
-      RESULT_REPOSITORY_ID: 'results', KUBERNETES_VERSION: 'v1.34.1', OCI_CLI_REGION: 'eu-frankfurt-1', ...env
+      KUBERNETES_VERSION: 'v1.34.1', OCI_CLI_REGION: 'eu-frankfurt-1', ...env
     }});
   }
   return { root, run, objects, calls };
@@ -80,6 +79,8 @@ test('trusted onboarding grants only exact namespace access and read-only cluste
   const f = setup(t);
   let result = f.run();
   assert.equal(result.status, 0, result.stderr);
+  const report = JSON.parse(result.stdout.slice(result.stdout.lastIndexOf('\n{') + 1));
+  assert.equal(report.status, 'passed'); assert.equal(report.exit_code, 0);
   const docs = f.objects(), ns = docs.find(o => o.kind === 'Namespace');
   assert.equal(ns.metadata.labels['oke-llm/platform-owner'], hash('platform/cluster').slice(0, 32));
   assert.equal(docs.filter(o => o.kind === 'RoleBinding' && o.metadata.namespace === namespace && o.subjects[0].kind === 'User').length, 2);

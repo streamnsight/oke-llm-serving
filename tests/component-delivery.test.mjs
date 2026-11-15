@@ -10,7 +10,7 @@ import {resolve} from 'node:path';
 const modulePath=resolve(import.meta.dirname,'../modules/shared/component-delivery');
 const spec={component:'lws',platform:'fixture',cluster_id:'cluster',region:'eu-frankfurt-1',mode:'managed',namespace:'lws-system',release_name:'lws',ownership_token:'stable-platform-owner',chart:{repository:'oci://registry.k8s.io/lws/charts',name:'lws',version:'1.0.0'},mirror_url:'oci://eu-frankfurt-1.ocir.io/fixture/lws',lock_name:'fixture-lock',lock_duration_seconds:3600,timeout_seconds:600,parameters:{REPLICAS:'2'},values_yaml:'{"replicas":"${REPLICAS}"}',dependencies:[],crd_names:['leaderworkersets.example.org'],deployment_names:['controller'],blocker_kinds:['leaderworkersets.example.org']};
 // Only external services/tool installation are simulated. The production Bash,
-// ownership/retention guards, CAS lease logic and evidence construction run.
+// ownership/retention guards, CAS lease logic and logged reports run.
 const mock=String.raw`
 const fs=require('node:fs'),path=require('node:path');
 const file=process.env.MOCK_STATE, state=JSON.parse(fs.readFileSync(file)), tool=path.basename(process.argv[1]), a=process.argv.slice(2);
@@ -57,7 +57,6 @@ if(tool==='kubectl') {
    out({status:state.tokenStatus??'200 OK',headers:{'content-type':'application/json'},data});
  }
  else if(a[0]==='devops')out(state.previousState||'FAILED');
- else if(a.slice(0,4).join(' ')==='artifacts generic artifact upload-by-path'){if(!a.includes('--content-body'))fail('Missing OCI --content-body');if(state.failUpload)fail('Upload failed');state.results.push(JSON.parse(fs.readFileSync(arg('--content-body'),'utf8')));}
  else fail('unexpected OCI command');
 } else if(tool==='yq') {
  if(a.includes('.name'))out(JSON.parse(fs.readFileSync(0,'utf8')).name);
@@ -68,6 +67,7 @@ if(tool==='kubectl') {
 } else fail('unexpected tool');
 save();
 `;
+const loggedReport=stdout=>{const match=stdout.match(/(?:^|\n)({\n[\s\S]*\n})\s*$/);return match?JSON.parse(match[1]):undefined;};
 function fixture(initial={}) {
   const dir=mkdtempSync(`${tmpdir()}/component-delivery-`);
   mkdirSync(`${dir}/bin`);
@@ -75,20 +75,20 @@ function fixture(initial={}) {
   for(const script of ['archive.sh','component.sh','lock.sh'])copyFileSync(`${modulePath}/scripts/${script}`,`${dir}/${script}`);
   writeFileSync(`${dir}/tools.sh`,'delivery_tools() { :; }\n');
   writeFileSync(`${dir}/specification.json`,JSON.stringify(spec));
-  writeFileSync(`${dir}/state.json`,JSON.stringify({calls:[],results:[],...initial}));
-  const env={...process.env,PATH:`${dir}/bin:${process.env.PATH}`,MOCK_STATE:`${dir}/state.json`,OCI_DEPLOYMENT_ID:'deployment-current',OCI_PIPELINE_ID:'pipeline-current',DELIVERY_GENERATION:'generation',DELIVERY_RESULT_REPOSITORY:'results',DELIVERY_REGION:spec.region,DELIVERY_REGISTRY_HOST:'eu-frankfurt-1.ocir.io',CHART_VERSION:'1.0.0',REPLICAS:'2',CONFIRM_UNINSTALL:'false'};
-  return {dir,env,run(operation,overrides={}){const result=spawnSync('bash',['./component.sh'],{cwd:dir,env:{...env,DELIVERY_OPERATION:operation,...overrides},encoding:'utf8',timeout:20000});return {...result,state:JSON.parse(readFileSync(`${dir}/state.json`))};},read(){return JSON.parse(readFileSync(`${dir}/state.json`));},set(next){writeFileSync(`${dir}/state.json`,JSON.stringify(next));},close(){rmSync(dir,{recursive:true,force:true});}};
+  writeFileSync(`${dir}/state.json`,JSON.stringify({calls:[],...initial}));
+  const env={...process.env,PATH:`${dir}/bin:${process.env.PATH}`,MOCK_STATE:`${dir}/state.json`,OCI_DEPLOYMENT_ID:'deployment-current',OCI_PIPELINE_ID:'pipeline-current',DELIVERY_GENERATION:'generation',DELIVERY_REGION:spec.region,DELIVERY_REGISTRY_HOST:'eu-frankfurt-1.ocir.io',CHART_VERSION:'1.0.0',REPLICAS:'2',CONFIRM_UNINSTALL:'false'};
+  return {dir,env,run(operation,overrides={}){const result=spawnSync('bash',['./component.sh'],{cwd:dir,env:{...env,DELIVERY_OPERATION:operation,...overrides},encoding:'utf8',timeout:20000});return {...result,report:loggedReport(result.stdout),state:JSON.parse(readFileSync(`${dir}/state.json`))};},read(){return JSON.parse(readFileSync(`${dir}/state.json`));},set(next){writeFileSync(`${dir}/state.json`,JSON.stringify(next));},close(){rmSync(dir,{recursive:true,force:true});}};
 }
 const lease=(holder='deployment-old',owner=spec.ownership_token,age=7200)=>({apiVersion:'coordination.k8s.io/v1',kind:'Lease',metadata:{name:spec.lock_name,resourceVersion:'1',annotations:{'oke-llm/owner-token':owner,'oke-llm/acquired-epoch':String(Math.floor(Date.now()/1000)-age)}},spec:{holderIdentity:holder,leaseDurationSeconds:3600}});
 const owned={metadata:{name:'owner'},data:{ownership_token:spec.ownership_token}};
 
 test('managed prepare mirrors chart, locks across native stage, validates and releases after finish',()=>{
   const f=fixture();try{
-    let r=f.run('prepare');assert.equal(r.status,0,r.stderr);assert.equal(r.state.lease.spec.holderIdentity,'deployment-current');assert.equal(r.state.owner.data.status,'applying');assert.equal(r.state.owner.data.helm_revision,'');assert.equal(r.state.results.at(-1).status,'prepared');assert.equal(r.state.results.at(-1).helm_revision,null);
+    let r=f.run('prepare');assert.equal(r.status,0,r.stderr);assert.equal(r.state.lease.spec.holderIdentity,'deployment-current');assert.equal(r.state.owner.data.status,'applying');assert.equal(r.state.owner.data.helm_revision,'');assert.equal(r.report.status,'prepared');assert.equal(r.report.helm_revision,null);
     assert.equal(existsSync(`${f.dir}/helm-status.json`),false);
     f.set({...f.read(),releases:[{name:'lws'}],installedVersion:'v1.0.0'});
-    r=f.run('finish');assert.equal(r.status,0,r.stderr);assert.equal(r.state.lease.spec.holderIdentity,'');assert.equal(r.state.owner.data.status,'ready');assert.equal(r.state.results.at(-1).effective_parameters.REPLICAS,'2');
-    assert.equal(r.state.owner.data.helm_revision,'3');assert.equal(r.state.results.at(-1).helm_revision,3);
+    r=f.run('finish');assert.equal(r.status,0,r.stderr);assert.equal(r.state.lease.spec.holderIdentity,'');assert.equal(r.state.owner.data.status,'ready');assert.equal(r.report.effective_parameters.REPLICAS,'2');
+    assert.equal(r.state.owner.data.helm_revision,'3');assert.equal(r.report.helm_revision,3);
     assert.equal('chart' in JSON.parse(readFileSync(`${f.dir}/helm-status.json`)),false);
     assert.equal(JSON.parse(readFileSync(`${f.dir}/helm-metadata.json`)).version,'v1.0.0');
     assert(r.state.calls.some(x=>x.tool==='helm'&&x.args.slice(0,2).join(' ')==='get metadata'));
@@ -99,7 +99,7 @@ test('explicit predefined-variable binding correlates prepare and finish; missin
   const f=fixture();try{
     const bound={OCI_DEPLOYMENT_ID:'',OCI_PIPELINE_ID:'',DELIVERY_DEPLOYMENT_ID:'deployment-current',DELIVERY_PIPELINE_ID:'pipeline-current'};
     let r=f.run('prepare',bound);assert.equal(r.status,0,r.stderr);assert.equal(r.state.lease.spec.holderIdentity,'deployment-current');
-    f.set({...f.read(),releases:[{name:'lws'}]});r=f.run('finish',bound);assert.equal(r.status,0,r.stderr);assert.equal(r.state.results.at(-1).deployment_id,'deployment-current');assert.equal(r.state.results.at(-1).pipeline_id,'pipeline-current');
+    f.set({...f.read(),releases:[{name:'lws'}]});r=f.run('finish',bound);assert.equal(r.status,0,r.stderr);assert.equal(r.report.deployment_id,'deployment-current');assert.equal(r.report.pipeline_id,'pipeline-current');
   }finally{f.close();}
   for(const binding of ['', '${OCI_DEPLOYMENT_ID}']){
     const missing=fixture();try{const r=missing.run('prepare',{OCI_DEPLOYMENT_ID:'',DELIVERY_DEPLOYMENT_ID:binding});assert.notEqual(r.status,0);assert.equal(r.state.calls.length,0);assert.match(r.stderr,/predefined OCI_DEPLOYMENT_ID/);}finally{missing.close();}
@@ -111,7 +111,7 @@ test('registry direct access token uses private config, never leaks, and is remo
       const r=f.run('prepare');assert.equal(r.status===0,ok,r.stderr);
       if(ok||extra.mirrorForbidden){assert(r.state.authChecks.length>0);assert(r.state.authChecks.every(x=>x.mode===0o600&&x.keys.join(',')==='registrytoken'&&!existsSync(x.path)));}else{assert(!r.state.authChecks?.length);}
       assert(!readdirSync(f.dir).some(name=>name.startsWith('.delivery-registry')));
-      assert(!JSON.stringify({stdout:r.stdout,stderr:r.stderr,calls:r.state.calls,results:r.state.results}).includes('fixture.token.signature'));
+      assert(!JSON.stringify({stdout:r.stdout,stderr:r.stderr,calls:r.state.calls,report:r.report}).includes('fixture.token.signature'));
       assert(!r.state.calls.some(x=>x.tool==='helm'&&x.args[0]==='registry'));
       if(r.status!==0)assert.equal(r.state.lease.spec.holderIdentity,'');
     }finally{f.close();}
@@ -120,17 +120,26 @@ test('registry direct access token uses private config, never leaks, and is remo
 test('foreign release is not adopted and reuse validates without lock or install',()=>{
   const f=fixture({releases:[{name:'lws'}]});try{
     let r=f.run('prepare');assert.notEqual(r.status,0);assert.equal(r.state.lease.spec.holderIdentity,'');assert(!r.state.mirrored);
-    f.set({calls:[],results:[],releases:[{name:'lws'}]});r=f.run('reuse');assert.equal(r.status,0,r.stderr);assert.equal(r.state.lease,undefined);assert.equal(r.state.owner,undefined);assert.equal(r.state.results.at(-1).status,'ready');
+    f.set({calls:[],releases:[{name:'lws'}]});r=f.run('reuse');assert.equal(r.status,0,r.stderr);assert.equal(r.state.lease,undefined);assert.equal(r.state.owner,undefined);assert.equal(r.report.status,'ready');
   }finally{f.close();}
 });
-test('reuse fails when evidence upload fails inside the EXIT trap',()=>{
-  const f=fixture({failUpload:true,releases:[{name:'lws'}]});try{
-    const r=f.run('reuse');assert.notEqual(r.status,0);assert.equal(r.state.results.length,0);assert.equal(r.state.owner,undefined);assert.equal(r.state.lease,undefined);assert(r.state.calls.some(x=>x.tool==='oci'&&x.args.slice(0,4).join(' ')==='artifacts generic artifact upload-by-path'));
+test('reuse writes its JSON status to logs without Artifact Registry access',()=>{
+  const f=fixture({releases:[{name:'lws'}]});try{
+    const r=f.run('reuse');assert.equal(r.status,0,r.stderr);assert.equal(r.report.status,'ready');assert.equal(r.report.exit_code,0);assert.equal(r.state.owner,undefined);assert.equal(r.state.lease,undefined);assert(!r.state.calls.some(x=>x.tool==='oci'&&x.args[0]==='artifacts'));
   }finally{f.close();}
 });
 test('finish rejects changed arguments, wrong installed versions and mismatched native Helm values',()=>{
   for(const change of [{overrides:{REPLICAS:'3'}},{installedVersion:'2.0.0'},{installedChart:'other'},{installedValues:{replicas:'99'}},{installedRevision:0},{metadataRevision:4}]){
-    const f=fixture();try{const prepared=f.run('prepare');assert.equal(prepared.status,0,prepared.stderr);f.set({...f.read(),releases:[{name:'lws'}],...change});const r=f.run('finish',change.overrides);assert.notEqual(r.status,0);assert.equal(r.state.owner.data.status,'applying');assert.equal(r.state.results.at(-1).status,'failed');assert.equal(r.state.lease.spec.holderIdentity,'');}finally{f.close();}
+    const f=fixture();try{const prepared=f.run('prepare');assert.equal(prepared.status,0,prepared.stderr);f.set({...f.read(),releases:[{name:'lws'}],...change});const r=f.run('finish',change.overrides);assert.notEqual(r.status,0);assert.equal(r.state.owner.data.status,'applying');assert.equal(r.report.status,'failed');assert.equal(r.state.lease.spec.holderIdentity,'');}finally{f.close();}
+  }
+});
+test('released Lease representations are available but control-character holders stay occupied and readable',()=>{
+  for(const kind of ['empty','null','omitted']){
+    const previous=lease(kind==='null'?null:'');if(kind==='omitted')delete previous.spec.holderIdentity;
+    const f=fixture({lease:previous});try{const r=f.run('prepare');assert.equal(r.status,0,r.stderr);assert.equal(r.state.lease.spec.holderIdentity,'deployment-current');assert(!r.state.calls.some(c=>c.tool==='oci'&&c.args[0]==='devops'));}finally{f.close();}
+  }
+  for(const holder of ['\n','\r','deployment-old\n']){
+    const f=fixture({lease:lease(holder)});try{const r=f.run('prepare');assert.notEqual(r.status,0);assert.equal(r.state.lease.spec.holderIdentity,holder);assert(r.stderr.includes('fixture-lock'));assert(r.stderr.includes('holderIdentity='+JSON.stringify(holder)));assert(!r.state.calls.some(c=>c.tool==='oci'&&c.args[0]==='devops'));}finally{f.close();}
   }
 });
 test('expired lock requires exact holder and terminal OCI deployment; active deployment fails closed',()=>{
@@ -147,8 +156,8 @@ test('uninstall needs confirmation, owned release, no consumers and retained CRD
   const cases=[{overrides:{},ok:false},{overrides:{CONFIRM_UNINSTALL:'true'},owner:undefined,ok:false},{overrides:{CONFIRM_UNINSTALL:'true'},blockers:[{}],ok:false},{overrides:{CONFIRM_UNINSTALL:'true'},manifest:{kind:'CustomResourceDefinition',metadata:{name:'unsafe'}},ok:false},{overrides:{CONFIRM_UNINSTALL:'true'},manifest:{kind:'PersistentVolumeClaim',metadata:{name:'data'}},ok:false},{overrides:{CONFIRM_UNINSTALL:'true'},manifest:{kind:'CustomResourceDefinition',metadata:{annotations:{'helm.sh/resource-policy':'keep'}}},ok:true}];
   for(const c of cases){const f=fixture({releases:[{name:'lws'}],owner:owned,...c});try{const r=f.run('undeploy',c.overrides);assert.equal(r.status===0,c.ok,r.stderr);assert.equal(!!r.state.uninstalled,c.ok);if(r.state.lease)assert.equal(r.state.lease.spec.holderIdentity,'');}finally{f.close();}}
 });
-test('unsafe templated CRD and evidence upload failures stop native deployment before prepare succeeds',()=>{
-  for(const extra of [{manifest:{kind:'CustomResourceDefinition',metadata:{name:'unsafe'}}},{manifest:{kind:'List',items:[{kind:'CustomResourceDefinition',metadata:{name:'unsafe'}}]}},{failUpload:true}]){
+test('unsafe templated CRDs stop native deployment before prepare succeeds',()=>{
+  for(const extra of [{manifest:{kind:'CustomResourceDefinition',metadata:{name:'unsafe'}}},{manifest:{kind:'List',items:[{kind:'CustomResourceDefinition',metadata:{name:'unsafe'}}]}}]){
     const f=fixture(extra);try{const r=f.run('prepare');assert.notEqual(r.status,0);assert.equal(r.state.lease.spec.holderIdentity,'');}finally{f.close();}
   }
 });
@@ -182,7 +191,7 @@ test('existing namespace mode and fixed source hooks keep model delivery namespa
  }finally{f.close();}
 });
 test('failed preflight hook releases its lease before native Helm or any namespace creation',()=>{
- const f=fixture();try{mkdirSync(`${f.dir}/runtime`);writeFileSync(`${f.dir}/runtime/preflight.sh`,'echo "GPU allocation missing" >&2; exit 9\n');const r=f.run('prepare');assert.equal(r.status,9,r.stderr);assert.match(r.stderr,/GPU allocation missing/);assert.equal(r.state.lease.spec.holderIdentity,'');assert(!r.state.calls.some(c=>c.tool==='helm'));}finally{f.close();}
+ const f=fixture();try{mkdirSync(`${f.dir}/runtime`);writeFileSync(`${f.dir}/runtime/preflight.sh`,'echo "GPU allocation missing" >&2; exit 9\n');const r=f.run('prepare');assert.equal(r.status,9,r.stderr);assert.match(r.stderr,/GPU allocation missing/);assert.equal(r.report.exit_code,9);assert.equal(r.report.status,'failed');assert.equal(r.state.lease.spec.holderIdentity,'');assert(!r.state.calls.some(c=>c.tool==='helm'));}finally{f.close();}
 });
 test('local chart versions cannot be overridden independently from their immutable source',()=>{
  const f=fixture();try{writeFileSync(`${f.dir}/specification.json`,JSON.stringify({...spec,chart:{name:'lws',repository:'',version:'1.0.0'},chart_digests:{'Chart.yaml':'fixture-digest'}}));const r=f.run('prepare',{CHART_VERSION:'1.1.0'});assert.equal(r.status,2,r.stderr);assert(!r.state.calls.some(c=>c.tool==='helm'&&c.args[0]==='push'));assert.equal(r.state.lease.spec.holderIdentity,'');}finally{f.close();}
@@ -204,7 +213,7 @@ test('chart metadata prefix mismatch fails before registry push or native Helm h
     assert(!r.state.calls.some(c=>c.tool==='helm'&&c.args[0]==='push'));
     assert(!r.state.calls.some(c=>c.tool==='oci'&&c.args[0]==='raw-request'));
     assert.equal(r.state.lease.spec.holderIdentity,'');
-    assert.equal(r.state.results.at(-1).status,'failed');
+    assert.equal(r.report.status,'failed');
   }finally{f.close();}
 });
 test('exact prefixed chart version mirrors and finishes under the same deployment',()=>{

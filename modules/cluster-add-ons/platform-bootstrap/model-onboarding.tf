@@ -13,13 +13,13 @@ locals {
     version = "0.1", component = "command", timeoutInSeconds = 1800, shell = "bash", failImmediatelyOnError = true,
     env = { variables = merge({ for name in keys(local.model_onboarding_parameters) : name => "$${${name}}" }, {
       PLATFORM_NAME      = var.name, CLUSTER_ID = var.config.cluster_id, PROJECT_ID = oci_devops_project.platform.id,
-      KUBERNETES_VERSION = var.config.target.kubernetes_version, RESULT_REPOSITORY_ID = oci_artifacts_repository.results.id,
+      KUBERNETES_VERSION = var.config.target.kubernetes_version,
       OCI_CLI_AUTH       = "resource_principal", OCI_CLI_REGION = var.config.region
     }) },
     inputArtifacts = [],
     steps = [{ type = "Command", name = "authorize-exact-model-pipelines", timeoutInSeconds = 1800, command = join("\n", concat([
       "set -euo pipefail",
-      "export MODEL_NAMESPACE MODEL_PIPELINE_IDS MODEL_PROJECT_ID MODEL_GPU_POOL_ID MODEL_ACCESS_OPERATION PLATFORM_NAME CLUSTER_ID PROJECT_ID KUBERNETES_VERSION RESULT_REPOSITORY_ID OCI_CLI_AUTH OCI_CLI_REGION"
+      "export MODEL_NAMESPACE MODEL_PIPELINE_IDS MODEL_PROJECT_ID MODEL_GPU_POOL_ID MODEL_ACCESS_OPERATION PLATFORM_NAME CLUSTER_ID PROJECT_ID KUBERNETES_VERSION OCI_CLI_AUTH OCI_CLI_REGION"
     ], [for script in sort(tolist(local.model_onboarding_scripts)) : "printf '%s  %s\\n' '${filesha256("${path.module}/scripts/${script}")}' '${script}' | sha256sum -c -"], ["printf '%s  model-access-context.json\\n' '${sha256(local.model_onboarding_context)}' | sha256sum -c -", "bash ./onboard-model.sh"])) }]
   })
 }
