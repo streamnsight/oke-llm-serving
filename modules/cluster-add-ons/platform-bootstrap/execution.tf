@@ -38,5 +38,5 @@ resource "oci_devops_deployment" "bootstrap" {
   }
   # Metadata creation order is insufficient: all child stages, inputs and IAM
   # definitions must exist before the coordinator can start its component graph.
-  depends_on = [module.components, oci_devops_deploy_stage.platform, oci_identity_policy.bootstrap, oci_logging_log.platform]
+  depends_on = [module.components, oci_devops_deploy_pipeline.platform, oci_devops_deploy_artifact.platform, oci_devops_deploy_stage.platform, oci_identity_policy.bootstrap, oci_logging_log.platform]
 }
