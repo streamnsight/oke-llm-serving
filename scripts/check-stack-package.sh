@@ -9,7 +9,7 @@ staging=$(mktemp -d)
 trap 'rm -rf "$staging"' EXIT
 unzip -tq "$archive"
 unzip -q "$archive" -d "$staging"
-for required in main.tf variables.tf schema.yaml .terraform.lock.hcl modules; do
+for required in main.tf variables.tf schema.yaml .terraform.lock.hcl modules modules/shared/inline-command-spec/main.tf; do
   [[ -e "$staging/$required" ]] || { echo "Missing package asset: $required" >&2; exit 1; }
 done
 for group in "$staging/modules/"*/; do

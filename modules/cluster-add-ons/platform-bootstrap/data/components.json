@@ -1,7 +1,7 @@
 {
   "helm_version": "v3.19.2",
   "lws": {
-    "version": "1.0.0"
+    "version": "v1.0.0"
   },
   "sources": [
     "https://lws.sigs.k8s.io/docs/installation/",

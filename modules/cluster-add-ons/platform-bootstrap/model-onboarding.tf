@@ -16,22 +16,17 @@ locals {
       KUBERNETES_VERSION = var.config.target.kubernetes_version, RESULT_REPOSITORY_ID = oci_artifacts_repository.results.id,
       OCI_CLI_AUTH       = "resource_principal", OCI_CLI_REGION = var.config.region
     }) },
-    inputArtifacts = concat([for name, artifact in oci_generic_artifacts_content_artifact_by_path.model_onboarding : {
-      name       = replace(name, ".", "-"), type = "GENERIC_ARTIFACT", artifactId = artifact.artifact_id,
-      registryId = oci_artifacts_repository.scripts.id, path = artifact.artifact_path, version = artifact.version, location = "./${name}"
-    }], [{ name = "component-access-context", type = "GENERIC_ARTIFACT", artifactId = oci_generic_artifacts_content_artifact_by_path.model_onboarding_context.artifact_id, location = "./model-access-context.json" }]),
+    inputArtifacts = [],
     steps = [{ type = "Command", name = "authorize-exact-model-pipelines", timeoutInSeconds = 1800, command = join("\n", concat([
       "set -euo pipefail",
       "export MODEL_NAMESPACE MODEL_PIPELINE_IDS MODEL_PROJECT_ID MODEL_GPU_POOL_ID MODEL_ACCESS_OPERATION PLATFORM_NAME CLUSTER_ID PROJECT_ID KUBERNETES_VERSION RESULT_REPOSITORY_ID OCI_CLI_AUTH OCI_CLI_REGION"
     ], [for script in sort(tolist(local.model_onboarding_scripts)) : "printf '%s  %s\\n' '${filesha256("${path.module}/scripts/${script}")}' '${script}' | sha256sum -c -"], ["printf '%s  model-access-context.json\\n' '${sha256(local.model_onboarding_context)}' | sha256sum -c -", "bash ./onboard-model.sh"])) }]
   })
 }
-resource "oci_generic_artifacts_content_artifact_by_path" "model_onboarding" {
-  for_each      = local.model_onboarding_scripts
-  repository_id = oci_artifacts_repository.scripts.id
-  artifact_path = "platform/model-onboarding/${each.key}"
-  version       = filesha256("${path.module}/scripts/${each.key}")
-  content       = file("${path.module}/scripts/${each.key}")
+module "inline_onboarding" {
+  source        = "../../shared/inline-command-spec"
+  specification = yamldecode(local.model_onboarding_command)
+  files         = merge({ for script in local.model_onboarding_scripts : script => file("${path.module}/scripts/${script}") }, { "model-access-context.json" = local.model_onboarding_context })
 }
 resource "oci_devops_deploy_pipeline" "model_onboarding" {
   project_id   = oci_devops_project.platform.id
@@ -54,23 +49,9 @@ resource "oci_devops_deploy_artifact" "model_onboarding" {
   deploy_artifact_type       = "COMMAND_SPEC"
   argument_substitution_mode = "NONE"
   deploy_artifact_source {
-    deploy_artifact_source_type = "GENERIC_ARTIFACT"
-    repository_id               = oci_artifacts_repository.scripts.id
-    deploy_artifact_path        = oci_generic_artifacts_content_artifact_by_path.model_onboarding_command.artifact_path
-    deploy_artifact_version     = oci_generic_artifacts_content_artifact_by_path.model_onboarding_command.version
+    deploy_artifact_source_type = "INLINE"
+    base64encoded_content       = base64encode(module.inline_onboarding.content)
   }
-}
-resource "oci_generic_artifacts_content_artifact_by_path" "model_onboarding_command" {
-  repository_id = oci_artifacts_repository.scripts.id
-  artifact_path = "platform/model-onboarding/command.yaml"
-  version       = sha256(local.model_onboarding_command)
-  content       = local.model_onboarding_command
-}
-resource "oci_generic_artifacts_content_artifact_by_path" "model_onboarding_context" {
-  repository_id = oci_artifacts_repository.scripts.id
-  artifact_path = "platform/model-onboarding/context.json"
-  version       = sha256(local.model_onboarding_context)
-  content       = local.model_onboarding_context
 }
 resource "oci_devops_deploy_stage" "model_onboarding" {
   deploy_pipeline_id              = oci_devops_deploy_pipeline.model_onboarding.id

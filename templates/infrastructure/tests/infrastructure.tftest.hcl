@@ -1,6 +1,7 @@
 # Copyright (c) 2020-2022 Oracle and/or its affiliates. All rights reserved.
 # Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
 mock_provider "oci" {
+  mock_resource "oci_devops_deployment" { defaults = { state = "SUCCEEDED" } }
   mock_resource "oci_artifacts_repository" { defaults = { id = "ocid1.artifactrepository.oc1.test.fixture" } }
   mock_data "oci_core_subnet" { defaults = { ipv6cidr_block = "", ipv6cidr_blocks = [] } }
   mock_data "oci_objectstorage_namespace" { defaults = { namespace = "fixture-namespace" } }
@@ -42,7 +43,7 @@ run "debug_creates_platform_without_gpu_allocation" {
     error_message = "Debug skipping must create the DevOps foundation while allocating no GPU or CPU pools."
   }
   assert {
-    condition     = output.infrastructure_preview.gpu_count_per_host == 4 && output.infrastructure_preview.bootstrap.automatically_started == false && output.infrastructure_preview.cpu_placement == "existing_cluster_cpu_pools" && output.infrastructure_preview.iam_home_region == "us-chicago-1"
+    condition     = output.infrastructure_preview.gpu_count_per_host == 4 && output.infrastructure_preview.bootstrap.automatically_started == true && output.infrastructure_preview.bootstrap.deployment.state == "SUCCEEDED" && output.infrastructure_preview.cpu_placement == "existing_cluster_cpu_pools" && output.infrastructure_preview.iam_home_region == "us-chicago-1"
     error_message = "Describe actual host GPU count and explicit bootstrap on existing CPU capacity."
   }
 }
@@ -132,7 +133,7 @@ run "component_updates_use_artifact_registry_without_a_platform_bucket" {
   command = plan
   variables { node_count = 2 }
   assert {
-    condition     = output.platform.specification.repository_id != null && output.platform.result_repository_id != null
+    condition     = output.platform.specification.delivery == "inline_command_spec" && output.platform.result_repository_id != null
     error_message = "Specifications and run reports belong in Generic Artifact Registry."
   }
 }

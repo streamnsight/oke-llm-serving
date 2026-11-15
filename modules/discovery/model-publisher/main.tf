@@ -9,7 +9,7 @@ terraform {
 }
 locals {
   enabled      = var.model_spec != null && var.publication != null
-  dependencies = toset(["llm-deployment/model-target", "llm-deployment/model-project", "llm-deployment/model-delivery", "llm-deployment/model-storage", "shared/component-delivery"])
+  dependencies = toset(["llm-deployment/model-target", "llm-deployment/model-project", "llm-deployment/model-delivery", "llm-deployment/model-storage", "shared/component-delivery", "shared/inline-command-spec"])
   module_files = local.enabled ? merge([for dependency in local.dependencies : {
     for relative in fileset("${var.modules_dir}/${dependency}", "**") : "modules/${dependency}/${relative}" => file("${var.modules_dir}/${dependency}/${relative}")
     if !startswith(relative, ".") && !startswith(relative, "tests/") && !startswith(relative, "work/") && !startswith(relative, "node_modules/") && !strcontains(relative, "/.") && !can(regex("\\.(tfstate(\\..*)?|tfvars(\\.json)?|tfplan)$", relative))

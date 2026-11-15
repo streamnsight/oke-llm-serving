@@ -20,6 +20,8 @@ locals {
     lock_duration_seconds = 3 * c.timeout_seconds + 1800,
     script_digests        = { for script in local.scripts : script => filesha256("${path.module}/scripts/${script}") }
     runtime_digests       = { for path, content in var.runtime_files : path => sha256(content) }
+    chart                 = { for key, value in c.chart : key => value if key != "files" }
+    chart_digests         = { for path, content in c.chart.files : path => sha256(content) }
   }) }
   generations = { for key, c in local.specifications : key => sha256(jsonencode(c)) }
   # Retire intentionally removes deploy, not undeploy. Removing the map entry
@@ -42,13 +44,6 @@ resource "oci_artifacts_container_repository" "chart" {
   display_name   = local.mirror_paths[each.key]
   is_public      = false
 }
-resource "oci_generic_artifacts_content_artifact_by_path" "script" {
-  for_each      = local.scripts
-  repository_id = var.source_repository_id
-  artifact_path = "${var.name}/component-delivery/scripts/${each.key}"
-  version       = filesha256("${path.module}/scripts/${each.key}")
-  content       = file("${path.module}/scripts/${each.key}")
-}
 resource "oci_generic_artifacts_content_artifact_by_path" "runtime" {
   for_each      = var.runtime_files
   repository_id = var.source_repository_id
@@ -57,7 +52,9 @@ resource "oci_generic_artifacts_content_artifact_by_path" "runtime" {
   content       = each.value
 }
 locals {
-  chart_files = merge({}, [for key, c in local.managed : { for path, content in c.chart.files : "${key}/${path}" => { component = key, path = path, content = content } }]...)
+  chart_files    = merge({}, [for key, c in local.managed : { for path, content in c.chart.files : "${key}/${path}" => { component = key, path = path, content = content } }]...)
+  values_encoded = { for key, c in local.managed : key => base64encode(c.values_yaml) }
+  values_bytes   = { for key, content in local.values_encoded : key => length(content) / 4 * 3 - (endswith(content, "==") ? 2 : endswith(content, "=") ? 1 : 0) }
 }
 resource "oci_generic_artifacts_content_artifact_by_path" "chart_file" {
   for_each      = local.chart_files
@@ -66,20 +63,6 @@ resource "oci_generic_artifacts_content_artifact_by_path" "chart_file" {
   version       = sha256(each.value.content)
   content       = each.value.content
 }
-resource "oci_generic_artifacts_content_artifact_by_path" "specification" {
-  for_each      = var.components
-  repository_id = var.source_repository_id
-  artifact_path = "${var.name}/components/${each.key}/specification.json"
-  version       = local.generations[each.key]
-  content       = jsonencode(local.specifications[each.key])
-}
-resource "oci_generic_artifacts_content_artifact_by_path" "values" {
-  for_each      = local.managed
-  repository_id = var.source_repository_id
-  artifact_path = "${var.name}/components/${each.key}/values.yaml"
-  version       = local.generations[each.key]
-  content       = each.value.values_yaml
-}
 resource "oci_devops_deploy_artifact" "values" {
   for_each                   = local.managed
   project_id                 = var.project_id
@@ -87,10 +70,14 @@ resource "oci_devops_deploy_artifact" "values" {
   deploy_artifact_type       = "GENERIC_FILE"
   argument_substitution_mode = "SUBSTITUTE_PLACEHOLDERS"
   deploy_artifact_source {
-    deploy_artifact_source_type = "GENERIC_ARTIFACT"
-    repository_id               = var.source_repository_id
-    deploy_artifact_path        = oci_generic_artifacts_content_artifact_by_path.values[each.key].artifact_path
-    deploy_artifact_version     = oci_generic_artifacts_content_artifact_by_path.values[each.key].version
+    deploy_artifact_source_type = "INLINE"
+    base64encoded_content       = local.values_encoded[each.key]
+  }
+  lifecycle {
+    precondition {
+      condition     = local.values_bytes[each.key] <= 51200
+      error_message = "Helm values for ${each.key} are ${local.values_bytes[each.key]} UTF-8 bytes; OCI inline artifacts allow at most 51200. Keep large data out of Helm values."
+    }
   }
 }
 resource "oci_devops_deploy_artifact" "chart" {
@@ -139,12 +126,6 @@ locals {
       }
     ) },
     inputArtifacts = concat(
-      [for script in sort(tolist(local.scripts)) : {
-        name       = replace(script, ".", "-"), type = "GENERIC_ARTIFACT", location = "./${script}",
-        artifactId = oci_generic_artifacts_content_artifact_by_path.script[script].artifact_id
-      }],
-      [{ name = "specification", type = "GENERIC_ARTIFACT", location = "./specification.json",
-      artifactId = oci_generic_artifacts_content_artifact_by_path.specification[stage.component].artifact_id }],
       [for path, artifact in oci_generic_artifacts_content_artifact_by_path.runtime : { name = "runtime-${substr(sha256(path), 0, 16)}", type = "GENERIC_ARTIFACT", location = "./runtime/${path}", artifactId = artifact.artifact_id }],
       [for key, artifact in oci_generic_artifacts_content_artifact_by_path.chart_file : { name = "chart-${substr(sha256(key), 0, 16)}", type = "GENERIC_ARTIFACT", location = "./chart/${local.chart_files[key].path}", artifactId = artifact.artifact_id } if local.chart_files[key].component == stage.component]
     ),
@@ -159,12 +140,13 @@ locals {
     }]
   }) }
 }
-resource "oci_generic_artifacts_content_artifact_by_path" "command" {
+module "inline_command" {
   for_each      = local.stages
-  repository_id = var.source_repository_id
-  artifact_path = "${var.name}/components/${each.key}/command.yaml"
-  version       = sha256(local.command_specs[each.key])
-  content       = local.command_specs[each.key]
+  source        = "../inline-command-spec"
+  specification = yamldecode(local.command_specs[each.key])
+  files = merge({ for script in local.scripts : script => file("${path.module}/scripts/${script}") }, {
+    "specification.json" = jsonencode(local.specifications[each.value.component])
+  })
 }
 resource "oci_devops_deploy_artifact" "command" {
   for_each                   = local.stages
@@ -173,10 +155,10 @@ resource "oci_devops_deploy_artifact" "command" {
   deploy_artifact_type       = "COMMAND_SPEC"
   argument_substitution_mode = "NONE"
   deploy_artifact_source {
-    deploy_artifact_source_type = "GENERIC_ARTIFACT"
-    repository_id               = var.source_repository_id
-    deploy_artifact_path        = oci_generic_artifacts_content_artifact_by_path.command[each.key].artifact_path
-    deploy_artifact_version     = oci_generic_artifacts_content_artifact_by_path.command[each.key].version
+    deploy_artifact_source_type = "INLINE"
+    # OCI's API transport encoding only: the decoded YAML contains readable
+    # Bash and quoted heredocs, with no runtime base64 script decoding.
+    base64encoded_content = base64encode(module.inline_command[each.key].content)
   }
 }
 resource "oci_devops_deploy_stage" "shell" {

@@ -1,13 +1,16 @@
 # Copyright (c) 2020-2022 Oracle and/or its affiliates. All rights reserved.
 # Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
 locals {
-  operation_files = merge(local.runtime_files, {
-    for asset in ["operation.sh", "benchmark.sh", "bench-client.sh"] : asset => file("${path.module}/scripts/${asset}")
-    }, {
+  operation_shared_files = {
+    "common.sh"          = local.runtime_files["common.sh"]
+    "operation.sh"       = file("${path.module}/scripts/operation.sh")
     "lock.sh"            = file("${path.module}/../../shared/component-delivery/scripts/lock.sh")
     "tools.sh"           = file("${path.module}/../../shared/component-delivery/scripts/tools.sh")
     "specification.json" = jsonencode({ cluster_id = var.platform.cluster_id, helm_version = "v3.19.2" })
-  })
+  }
+  operation_files = { for operation in ["validate", "benchmark"] : operation => merge(local.operation_shared_files, {
+    for asset in(operation == "validate" ? ["validate.sh"] : ["benchmark.sh", "bench-client.sh"]) : asset => file("${path.module}/scripts/${asset}")
+  }) }
   operation_parameters = merge(local.defaults, {
     CHART_VERSION     = local.chart_version, RECOVER_LOCK_HOLDER = "none",
     BENCHMARK_BACKEND = var.benchmark_backend, BENCHMARK_REQUESTS = "64", BENCHMARK_INPUT_TOKENS = "256", BENCHMARK_OUTPUT_TOKENS = "64"
@@ -20,31 +23,24 @@ locals {
       DELIVERY_DEPLOYMENT_ID     = "$${OCI_DEPLOYMENT_ID}", DELIVERY_PIPELINE_ID = "$${OCI_PIPELINE_ID}",
       OCI_CLI_AUTH               = "resource_principal", OCI_CLI_REGION = var.platform.region
     }) },
-    inputArtifacts = [for path, artifact in oci_generic_artifacts_content_artifact_by_path.operation_file : {
-      name = "model-${substr(sha256(path), 0, 16)}", type = "GENERIC_ARTIFACT", location = "./runtime/${path}", artifactId = artifact.artifact_id
+    inputArtifacts = [{
+      name       = "model-config", type = "GENERIC_ARTIFACT", location = "./runtime/config.json",
+      registryId = var.platform.script_repository_id, path = module.delivery.runtime_artifacts["config.json"].artifact_path, version = module.delivery.runtime_artifacts["config.json"].version
     }],
     steps = [{ type = "Command", name = "${operation}-current-model", timeoutInSeconds = 3600, command = join("\n", concat([
       "set -euo pipefail",
       "export ${join(" ", sort(concat(keys(local.operation_parameters), ["DELIVERY_OPERATION", "DELIVERY_GENERATION", "DELIVERY_RESULT_REPOSITORY", "DELIVERY_REGION", "DELIVERY_DEPLOYMENT_ID", "DELIVERY_PIPELINE_ID", "OCI_DEPLOYMENT_ID", "OCI_PIPELINE_ID", "OCI_CLI_AUTH", "OCI_CLI_REGION"])))}"
-      ], [for path, content in local.operation_files : "printf '%s  runtime/${path}\\n' '${sha256(content)}' | sha256sum -c -"], [
+      ], [for path, content in merge(local.operation_files[operation], { "config.json" = local.runtime_files["config.json"] }) : "printf '%s  runtime/${path}\\n' '${sha256(content)}' | sha256sum -c -"], [
       "cp runtime/specification.json specification.json", "bash runtime/operation.sh"
     ])) }]
   }) }
   all_pipeline_ids = concat(module.delivery.all_pipeline_ids, [for op in sort(keys(oci_devops_deploy_pipeline.operation)) : oci_devops_deploy_pipeline.operation[op].id])
 }
-resource "oci_generic_artifacts_content_artifact_by_path" "operation_file" {
-  for_each      = local.operation_files
-  repository_id = var.platform.script_repository_id
-  artifact_path = "${local.identity}/operations/runtime/${each.key}"
-  version       = sha256(each.value)
-  content       = each.value
-}
-resource "oci_generic_artifacts_content_artifact_by_path" "operation_spec" {
+module "inline_operation" {
   for_each      = local.operation_specs
-  repository_id = var.platform.script_repository_id
-  artifact_path = "${local.identity}/operations/${each.key}/command.yaml"
-  version       = sha256(each.value)
-  content       = each.value
+  source        = "../../shared/inline-command-spec"
+  specification = yamldecode(each.value)
+  files         = { for path, content in local.operation_files[each.key] : "runtime/${path}" => content }
 }
 resource "oci_devops_deploy_artifact" "operation" {
   for_each                   = local.operation_specs
@@ -53,10 +49,8 @@ resource "oci_devops_deploy_artifact" "operation" {
   deploy_artifact_type       = "COMMAND_SPEC"
   argument_substitution_mode = "NONE"
   deploy_artifact_source {
-    deploy_artifact_source_type = "GENERIC_ARTIFACT"
-    repository_id               = var.platform.script_repository_id
-    deploy_artifact_path        = oci_generic_artifacts_content_artifact_by_path.operation_spec[each.key].artifact_path
-    deploy_artifact_version     = oci_generic_artifacts_content_artifact_by_path.operation_spec[each.key].version
+    deploy_artifact_source_type = "INLINE"
+    base64encoded_content       = base64encode(module.inline_operation[each.key].content)
   }
 }
 resource "oci_devops_deploy_pipeline" "operation" {

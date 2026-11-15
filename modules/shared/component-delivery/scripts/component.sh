@@ -155,13 +155,13 @@ render_values() {
   ! grep -Eq '\$\{[A-Za-z_][A-Za-z0-9_]*\}' effective-values.yaml || { message="Unresolved values placeholder"; return 2; }
 }
 mirror_chart() {
-  local repository chart mirror archive existing
+  local repository chart mirror archive existing chart_version
   repository=$(jq -er .chart.repository specification.json)
   chart=$(jq -er .chart.name specification.json)
   mirror=$(jq -er .mirror_url specification.json)
   [[ $CHART_VERSION =~ ^v?[0-9]+\.[0-9]+\.[0-9]+([+-][A-Za-z0-9.-]+)?$ ]] || { message="CHART_VERSION must be an explicit semantic version"; return 2; }
   mkdir -p upstream mirrored
-  if jq -e '(.chart.files // {})|length>0' specification.json >/dev/null; then
+  if jq -e '(.chart_digests // {})|length>0' specification.json >/dev/null; then
     [[ $CHART_VERSION == "$(jq -r .chart.version specification.json)" ]] || { message="Local chart version is frozen with its source; update the model stack to change it"; return 2; }
     source ./archive.sh
     delivery_archive "$chart" chart "upstream/$chart-$CHART_VERSION.tgz"
@@ -174,6 +174,14 @@ mirror_chart() {
   [[ ${#archives[@]} == 1 && -f ${archives[0]} ]] || return 2
   archive=${archives[0]}
   [[ $(helm show chart "$archive" | yq -r .name) == "$chart" ]] || { message="Upstream chart name mismatch"; return 2; }
+  # Helm chooses the OCIR tag from Chart.yaml, not the requested pull version.
+  # Upstream may resolve 1.0.0 to a chart declaring v1.0.0, which would leave the
+  # native Helm stage requesting a tag that this push never created.
+  chart_version=$(helm show chart "$archive" | yq -r .version)
+  [[ "$chart_version" == "$CHART_VERSION" ]] || {
+    message="Chart metadata version '$chart_version' differs from CHART_VERSION '$CHART_VERSION'. Set CHART_VERSION to the exact chart metadata version so the OCIR tag and native Helm stage match."
+    echo "$message" >&2; return 2;
+  }
   helm template "$release" "$archive" --namespace "$namespace" --values effective-values.yaml > rendered-chart.yaml
   retention_guard rendered-chart.yaml
   registry_config=$(mktemp "$PWD/.delivery-registry.XXXXXX")

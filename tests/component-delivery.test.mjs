@@ -42,7 +42,7 @@ if(tool==='kubectl') {
  if(a[0]==='list')out(state.releases||[]);
  else if(a[0]==='status') {if(state.notReady)fail('NotReady');out({name:a[1],namespace:arg('-n'),version:state.installedRevision??3,info:{status:'deployed'}});}
  else if(a[0]==='pull') {if(arg('--destination')==='mirrored'){registryAuth();if(state.mirrorForbidden)fail('403 Anonymous users are only allowed read access on public repos');if(!state.mirrored)fail('manifest not found: 404');}fs.mkdirSync(arg('--destination'),{recursive:true});fs.writeFileSync(path.join(arg('--destination'),'lws-1.0.0.tgz'),'chart');}
- else if(a[0]==='show'){if(a[1]==='crds')out(state.crdBundle||[]);else out({name:'lws'});}
+ else if(a[0]==='show'){if(a[1]==='crds')out(state.crdBundle||[]);else out({name:'lws',version:state.upstreamVersion||'1.0.0'});}
  else if(a[0]==='get'&&a[1]==='metadata')out({name:a[2],namespace:arg('-n'),revision:state.metadataRevision??state.installedRevision??3,status:'deployed',chart:state.installedChart||'lws',version:state.installedVersion||'1.0.0'});
  else if(a[0]==='get'&&a[1]==='values')out(state.installedValues||{replicas:process.env.REPLICAS});
  else if(a[0]==='template'||a[0]==='get')out(state.manifest||{apiVersion:'apps/v1',kind:'Deployment',metadata:{name:'controller'}});
@@ -61,6 +61,7 @@ if(tool==='kubectl') {
  else fail('unexpected OCI command');
 } else if(tool==='yq') {
  if(a.includes('.name'))out(JSON.parse(fs.readFileSync(0,'utf8')).name);
+ else if(a.includes('.version'))out(JSON.parse(fs.readFileSync(0,'utf8')).version);
  else if(a[0]==='-o=json')out(JSON.parse(fs.readFileSync(a.at(-1),'utf8')));
  else if(a[0]==='-e'){const data=JSON.parse(fs.readFileSync(a.at(-1),'utf8'));if(!data||Array.isArray(data)||typeof data!=='object')fail('not map');}
  else {const data=JSON.parse(fs.readFileSync(a.at(-1),'utf8'));for(const d of(Array.isArray(data)?data:[data]))if(a.includes('.')||(a.some(x=>x.includes('PersistentVolumeClaim'))?['CustomResourceDefinition','PersistentVolumeClaim']:['CustomResourceDefinition']).includes(d.kind))out(JSON.stringify(d)+'\n');}
@@ -184,7 +185,7 @@ test('failed preflight hook releases its lease before native Helm or any namespa
  const f=fixture();try{mkdirSync(`${f.dir}/runtime`);writeFileSync(`${f.dir}/runtime/preflight.sh`,'echo "GPU allocation missing" >&2; exit 9\n');const r=f.run('prepare');assert.equal(r.status,9,r.stderr);assert.match(r.stderr,/GPU allocation missing/);assert.equal(r.state.lease.spec.holderIdentity,'');assert(!r.state.calls.some(c=>c.tool==='helm'));}finally{f.close();}
 });
 test('local chart versions cannot be overridden independently from their immutable source',()=>{
- const f=fixture();try{writeFileSync(`${f.dir}/specification.json`,JSON.stringify({...spec,chart:{name:'lws',repository:'',version:'1.0.0',files:{'Chart.yaml':'apiVersion: v2\nname: lws\nversion: 1.0.0\n'}}}));const r=f.run('prepare',{CHART_VERSION:'1.1.0'});assert.equal(r.status,2,r.stderr);assert(!r.state.calls.some(c=>c.tool==='helm'&&c.args[0]==='push'));assert.equal(r.state.lease.spec.holderIdentity,'');}finally{f.close();}
+ const f=fixture();try{writeFileSync(`${f.dir}/specification.json`,JSON.stringify({...spec,chart:{name:'lws',repository:'',version:'1.0.0'},chart_digests:{'Chart.yaml':'fixture-digest'}}));const r=f.run('prepare',{CHART_VERSION:'1.1.0'});assert.equal(r.status,2,r.stderr);assert(!r.state.calls.some(c=>c.tool==='helm'&&c.args[0]==='push'));assert.equal(r.state.lease.spec.holderIdentity,'');}finally{f.close();}
 });
 const gnuTar=spawnSync('tar',['--version'],{encoding:'utf8'}).stdout?.includes('GNU tar');
 test('local chart archive bytes are unchanged after a time gap and source mtime/mode changes',{skip:!gnuTar},async()=>{
@@ -193,4 +194,29 @@ test('local chart archive bytes are unchanged after a time gap and source mtime/
   const build=()=>execFileSync('bash',['-c',`set -euo pipefail; source '${modulePath}/scripts/archive.sh'; delivery_archive fixture chart result.tgz`],{cwd:d});
   build();const first=readFileSync(`${d}/result.tgz`);await new Promise(r=>setTimeout(r,1100));execFileSync('touch',[`${d}/chart/Chart.yaml`]);execFileSync('chmod',['0600',`${d}/chart/templates/service.yaml`]);build();assert.deepEqual(readFileSync(`${d}/result.tgz`),first);
  }finally{rmSync(d,{recursive:true,force:true});}
+});
+
+test('chart metadata prefix mismatch fails before registry push or native Helm handoff',()=>{
+  const f=fixture({upstreamVersion:'v1.0.0'});try{
+    const r=f.run('prepare',{CHART_VERSION:'1.0.0'});
+    assert.equal(r.status,2,r.stderr);
+    assert.match(r.stderr,/metadata version 'v1\.0\.0' differs from CHART_VERSION '1\.0\.0'/);
+    assert(!r.state.calls.some(c=>c.tool==='helm'&&c.args[0]==='push'));
+    assert(!r.state.calls.some(c=>c.tool==='oci'&&c.args[0]==='raw-request'));
+    assert.equal(r.state.lease.spec.holderIdentity,'');
+    assert.equal(r.state.results.at(-1).status,'failed');
+  }finally{f.close();}
+});
+test('exact prefixed chart version mirrors and finishes under the same deployment',()=>{
+  const f=fixture({upstreamVersion:'v1.0.0'});try{
+    let r=f.run('prepare',{CHART_VERSION:'v1.0.0'});
+    assert.equal(r.status,0,r.stderr);
+    assert(r.state.calls.some(c=>c.tool==='helm'&&c.args[0]==='pull'&&c.args[c.args.indexOf('--version')+1]==='v1.0.0'));
+    assert(r.state.calls.some(c=>c.tool==='helm'&&c.args[0]==='push'));
+    f.set({...f.read(),releases:[{name:'lws'}],installedVersion:'v1.0.0'});
+    r=f.run('finish',{CHART_VERSION:'v1.0.0'});
+    assert.equal(r.status,0,r.stderr);
+    assert.equal(r.state.lease.spec.holderIdentity,'');
+    assert.equal(r.state.owner.data.status,'ready');
+  }finally{f.close();}
 });

@@ -23,3 +23,5 @@ Infrastructure Apply also [enables missing OKE hardware add-ons](../modules/clus
 Terraform module labels/resource names stay stable during directory reorganization. Run `terraform init` after updating source paths to refresh the local module cache; directory moves do not require a second state or reallocation of existing GPU hosts. Packaging retains the same grouped module paths and validates relocated references.
 
 `work/` contains ignored local state/report backups, private runtime evidence and built ZIPs. Node/YAML is a development-test dependency only; it is not packaged or required by RMS runtime discovery.
+
+`modules/shared/inline-command-spec` builds readable inline YAML from module-owned text files and preserves exact file bytes. Component Apply uses a stable revision and the native DevOps deployment resource to execute and await the independent component graph. Metadata destruction remains separate from explicit undeploy.

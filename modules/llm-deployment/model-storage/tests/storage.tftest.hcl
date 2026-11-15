@@ -40,12 +40,12 @@ run "object_storage_uses_retained_private_data_and_cpu_job_adapter" {
     error_message = "Weights are retained private model data; Terraform must not claim a successful runtime transfer."
   }
   assert {
-    condition     = length(oci_generic_artifacts_content_artifact_by_path.input) == 5 && jsondecode(oci_generic_artifacts_content_artifact_by_path.input["model.json"].content).model.revision == "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" && alltrue([for name, artifact in oci_generic_artifacts_content_artifact_by_path.input : artifact.version == sha256(artifact.content)])
-    error_message = "Only pinned config/scripts belong in Generic Artifact Registry."
+    condition     = length(oci_generic_artifacts_content_artifact_by_path.input) == 1 && jsondecode(oci_generic_artifacts_content_artifact_by_path.input["model.json"].content).model.revision == "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" && oci_generic_artifacts_content_artifact_by_path.input["model.json"].version == sha256(local.config) && length(local.inline_files) == 4 && module.inline_command[0].byte_size <= 51200 && length(yamldecode(output.command_spec).inputArtifacts) == 1
+    error_message = "Only the potentially large pinned manifest stays in Registry; four small source files and the complete command spec must be inline within the size limit."
   }
   assert {
-    condition     = oci_devops_deploy_stage.stage[0].deploy_stage_type == "SHELL" && oci_devops_deploy_artifact.stage[0].argument_substitution_mode == "NONE" && keys(local.parameters) == ["JOB_DEADLINE_SECONDS", "STAGING_IMAGE"]
-    error_message = "Use readable native variables and Generic input files; the Shell runner only controls a CPU Job."
+    condition     = oci_devops_deploy_stage.stage[0].deploy_stage_type == "SHELL" && oci_devops_deploy_artifact.stage[0].argument_substitution_mode == "NONE" && oci_devops_deploy_artifact.stage[0].deploy_artifact_source[0].deploy_artifact_source_type == "INLINE" && strcontains(module.inline_command[0].preparation_command, "cat > 'stage.sh'") && keys(local.parameters) == ["JOB_DEADLINE_SECONDS", "STAGING_IMAGE"]
+    error_message = "Use readable native variables and inline Shell sources; the runner only controls a CPU Job."
   }
   assert {
     condition     = alltrue([for rule in oci_identity_policy.workload[0].statements : strcontains(rule, "request.principal.type = 'workload'") && strcontains(rule, "request.principal.namespace = 'fixture-staging'") && strcontains(rule, "request.principal.cluster_id = 'cluster'")]) && !strcontains(join("\n", oci_identity_policy.workload[0].statements), "OBJECT_DELETE")

@@ -68,6 +68,7 @@ locals {
     scratch_gib    = var.scratch_gib, storage_class = var.storage_class, cpu_node_selector = var.cpu_node_selector, hf_token_secret_id = var.hf_token_secret_id
   }) : "{}"
   artifact_contents = local.enabled ? merge({ "model.json" = local.config }, { for s in local.scripts : s => file("${path.module}/scripts/${s}") }) : {}
+  inline_files      = local.enabled ? { for s in local.scripts : s => file("${path.module}/scripts/${s}") } : {}
   parameters        = { STAGING_IMAGE = coalesce(var.staging_image, "unset"), JOB_DEADLINE_SECONDS = tostring(var.deadline_seconds) }
   command_spec = local.enabled ? yamlencode({
     version = "0.1", component = "command", shell = "bash", timeoutInSeconds = 28800, failImmediatelyOnError = true,
@@ -78,7 +79,7 @@ locals {
       OCI_CLI_AUTH        = "resource_principal", OCI_CLI_REGION = var.region
     } },
     inputArtifacts = [for name, artifact in oci_generic_artifacts_content_artifact_by_path.input : {
-      name       = replace(name, ".", "-"), type = "GENERIC_ARTIFACT", artifactId = artifact.artifact_id,
+      name       = replace(name, ".", "-"), type = "GENERIC_ARTIFACT",
       registryId = var.artifact_repository_id, path = artifact.artifact_path, version = artifact.version, location = "./${name}"
     }],
     steps = [{ type = "Command", name = "stage-model-on-cpu", timeoutInSeconds = 28800, command = join("\n", concat([
@@ -88,7 +89,9 @@ locals {
   }) : null
 }
 resource "oci_generic_artifacts_content_artifact_by_path" "input" {
-  for_each      = local.artifact_contents
+  # A pinned manifest can reach 256 KiB and contains Apply-time bucket values;
+  # its fixed key remains plan-known while all fixed source files are inline.
+  for_each      = local.enabled ? { "model.json" = local.config } : {}
   repository_id = var.artifact_repository_id
   artifact_path = "model-storage/${var.name}/${each.key}"
   version       = sha256(each.value)
@@ -111,6 +114,12 @@ resource "oci_devops_deploy_pipeline" "stage" {
   }
   depends_on = [terraform_data.requirements]
 }
+module "inline_command" {
+  count         = local.enabled ? 1 : 0
+  source        = "../../shared/inline-command-spec"
+  specification = yamldecode(local.command_spec)
+  files         = local.inline_files
+}
 resource "oci_devops_deploy_artifact" "stage" {
   count                      = local.enabled ? 1 : 0
   project_id                 = var.project_id
@@ -118,18 +127,9 @@ resource "oci_devops_deploy_artifact" "stage" {
   deploy_artifact_type       = "COMMAND_SPEC"
   argument_substitution_mode = "NONE"
   deploy_artifact_source {
-    deploy_artifact_source_type = "GENERIC_ARTIFACT"
-    repository_id               = var.artifact_repository_id
-    deploy_artifact_path        = oci_generic_artifacts_content_artifact_by_path.command[0].artifact_path
-    deploy_artifact_version     = oci_generic_artifacts_content_artifact_by_path.command[0].version
+    deploy_artifact_source_type = "INLINE"
+    base64encoded_content       = base64encode(module.inline_command[0].content)
   }
-}
-resource "oci_generic_artifacts_content_artifact_by_path" "command" {
-  count         = local.enabled ? 1 : 0
-  repository_id = var.artifact_repository_id
-  artifact_path = "model-storage/${var.name}/command.yaml"
-  version       = sha256(local.command_spec)
-  content       = local.command_spec
 }
 resource "oci_devops_deploy_stage" "stage" {
   count                           = local.enabled ? 1 : 0
@@ -219,7 +219,7 @@ locals {
   } : null
 }
 output "bootstrap_manifest" { value = local.bootstrap_manifest }
-output "command_spec" { value = local.command_spec }
+output "command_spec" { value = try(module.inline_command[0].content, null) }
 output "all_pipeline_ids" { value = [for pipeline in oci_devops_deploy_pipeline.stage : pipeline.id] }
 output "storage" {
   value = {

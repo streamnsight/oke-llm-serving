@@ -55,8 +55,8 @@ run "cpu_debug_creates_model_only_delivery" {
     error_message = "Model runtime identities may not administer clusters, node pools, GPU instances or buckets."
   }
   assert {
-    condition     = alltrue([for spec in values(local.operation_specs) : length(yamldecode(spec).inputArtifacts) > 3 && yamldecode(spec).env.variables.MODEL_NAMESPACE == "$${MODEL_NAMESPACE}"]) && output.onboarding_arguments.MODEL_NAMESPACE == output.namespace
-    error_message = "Operations use file artifacts and expose the immutable namespace parameter for trusted onboarding."
+    condition     = alltrue([for operation, spec in local.operation_specs : length(yamldecode(spec).inputArtifacts) == 1 && yamldecode(spec).env.variables.MODEL_NAMESPACE == "${MODEL_NAMESPACE}" && yamldecode(spec).inputArtifacts[0].path == module.delivery.runtime_artifacts["config.json"].artifact_path && yamldecode(spec).inputArtifacts[0].version == module.delivery.runtime_artifacts["config.json"].version && module.inline_operation[operation].byte_size <= 51200 && strcontains(module.inline_operation[operation].preparation_command, "cat > 'runtime/operation.sh'")]) && alltrue([for artifact in oci_devops_deploy_artifact.operation : artifact.deploy_artifact_source[0].deploy_artifact_source_type == "INLINE"]) && !contains(keys(local.operation_files.validate), "benchmark.sh") && !contains(keys(local.operation_files.benchmark), "validate.sh") && output.onboarding_arguments.MODEL_NAMESPACE == output.namespace
+    error_message = "Each operation inlines only its required readable sources, reuses the existing model config input, respects the payload limit and preserves immutable namespace onboarding."
   }
 }
 run "multi_node_preserves_separate_host_geometry" {
