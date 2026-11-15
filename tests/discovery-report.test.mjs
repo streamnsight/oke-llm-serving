@@ -36,7 +36,7 @@ function execute(overrides = {}) {
     scan: {assessed_regions: ["eu-frankfurt-1", "us-chicago-1"]}, publication: {published_at: "published-time", expires_at: "expiry-time"},
     option_count: 2, recommended_option_id: "first", failure_summary: [], notices: ["Counts are a snapshot"],
     options: {first: option("eu-frankfurt-1"), second: option("us-chicago-1")},
-    regional_capacity: [{region: "eu-frankfurt-1", gpu_shape: "GPU.8", gpus_per_host: 8, available_gpus: 136, available_hosts: 17, coverage: "complete", expected_ads: 1, known_ads: 1, limit_increase_possible: true, minimum_model_hosts: null, limits: [quota("AD", 0, 0)], availability_domains: [{availability_domain: "AD-1", available_hosts: 17, entitled_hosts: 0, entitlement_status: "limit_increase_required", limit_increase_requests: [{limit_name: "gpu-count", current_limit: 0, scope: "AD", minimum_gpus_for_whole_hosts: null}]}]}], ...overrides,
+    regional_capacity: [{region: "eu-frankfurt-1", gpu_shape: "GPU.8", gpus_per_host: 8, available_gpus: 136, available_hosts: 17, coverage: "complete", expected_ads: 1, known_ads: 1, limit_increase_possible: true, minimum_model_hosts: null, limits: [quota("AD", 0, 0)], availability_domains: [{availability_domain: "AD-1", available_hosts: 17, entitled_hosts: 0, limits: [quota("AD", 0, 0)], entitlement_status: "limit_increase_required", limit_increase_requests: [{limit_name: "gpu-count", current_limit: 0, scope: "AD", minimum_gpus_for_whole_hosts: null}]}]}], ...overrides,
   };
   const nodes = Object.fromEntries([...template.matchAll(/\bid="([^"]+)"/g)].map(match => [match[1], new Element("div")]));
   nodes["report-data"].textContent = JSON.stringify(report); nodes.sort.value = "region";
@@ -91,8 +91,8 @@ test("deployment actions precede technical serving configuration", () => {
   }
 });
 test("zero and unknown-only supply are hidden while positive supply with zero limits remains", () => {
-  const positive = {region: "needs-limits", gpu_shape: "GPU", available_hosts: 3, available_gpus: 24, availability_domains: [{availability_domain: "AD",available_hosts: 3,entitled_hosts: 0}], limit_increase_possible: true};
-  const {nodes} = execute({regional_capacity: [positive, {...positive,region:"zero",available_hosts:0,available_gpus:0}, {...positive,region:"unknown",available_hosts:null,available_gpus:null}]});
+  const positive = {region: "needs-limits", gpu_shape: "GPU", available_hosts: 3, available_gpus: 24, availability_domains: [{availability_domain: "AD",available_hosts: 3,entitled_hosts: 0,limits:[quota("AD",0,0)],limit_increase_requests:[{limit_name:"gpu-count",current_limit:0,scope:"AD"}]}], limit_increase_possible: true};
+  const {nodes} = execute({regional_capacity: [positive, {...positive,region:"zero",available_hosts:0,available_gpus:0,availability_domains:[{availability_domain:"AD",available_hosts:0}]}, {...positive,region:"unknown",available_hosts:null,available_gpus:null,availability_domains:[{availability_domain:"AD",available_hosts:null}]}]});
   assert.equal(nodes.capacity.children.length, 1);
   assert.match(nodes.capacity.textContent, /needs-limits/);
   assert.match(nodes.capacity.textContent, /Review limit increase/);
@@ -164,11 +164,14 @@ test("capacity table shows per-AD supply and shared regional limit without a reg
   const {nodes} = execute({regional_capacity: [{
     region: "region-a", gpu_shape: "GPU.1", gpus_per_host: 1, available_hosts: 54, available_gpus: 54,
     known_ads: 2, expected_ads: 2, limits: [quota("REGION", 4, 2)],
-    availability_domains: [{availability_domain: "AD-1", available_hosts: 34}, {availability_domain: "AD-2", available_hosts: 20}]
+    availability_domains: [{availability_domain: "AD-1", available_hosts: 34, limits:[quota("REGION",4,2)]}, {availability_domain: "AD-2", available_hosts: 20, limits:[quota("REGION",4,2)]}]
   }]});
-  assert.ok(nodes.capacity.textContent.includes("AD-1 34 GPUs / 34 hosts physically available"));
-  assert.ok(nodes.capacity.textContent.includes("AD-2 20 GPUs / 20 hosts physically available"));
-  assert.match(nodes.capacity.textContent, /Region: 4 GPUs Remaining headroom: 2 GPUs/);
+  assert.equal(nodes.capacity.children.length,2);
+  assert.match(nodes.capacity.children[0].children[0].textContent,/region-a AD-1/);
+  assert.match(nodes.capacity.children[1].children[0].textContent,/region-a AD-2/);
+  assert.match(nodes.capacity.children[0].children[2].textContent.replace(/\s+/g," "),/34 GPUs \/ 34 hosts physically available/);
+  assert.match(nodes.capacity.children[1].children[2].textContent.replace(/\s+/g," "),/20 GPUs \/ 20 hosts physically available/);
+  assert.match(nodes.capacity.textContent.replace(/\s+/g," "), /Region: 4 GPUs Remaining headroom: 2 GPUs/);
   assert.doesNotMatch(nodes.capacity.textContent, /54 GPUs|hosts in region/);
 });
 test("unknown limits and quota units are explicit; zero headroom is not unknown", () => {
@@ -178,4 +181,29 @@ test("unknown limits and quota units are explicit; zero headroom is not unknown"
   const summary = created.find(node => node.className === "option").children[0].textContent;
   assert.match(summary, /Global: Unknown units \(unverified\)/);
   assert.match(summary, /Remaining headroom: Global: 0 units \(unverified\)/);
+});
+
+test("capacity rows put region and AD first and bold only numeric quantities beside normal units", () => {
+  const ad="jVha:AP-MELBOURNE-1-AD-1";
+  const {nodes}=execute({regional_capacity:[{region:"ap-melbourne-1",gpu_shape:"BM.GPU.A10.4",memory_gb_per_gpu:24,gpus_per_host:4,known_ads:1,expected_ads:1,minimum_model_hosts:1,availability_domains:[{availability_domain:ad,available_hosts:7,entitled_hosts:3,limits:[quota("REGION",32,12)],limit_increase_requests:[]}]}]});
+  const row=nodes.capacity.children[0],[identity,perHost,physical,limits]=row.children;
+  assert.equal(identity.children[0].tag,"strong");assert.equal(identity.children[0].textContent,"ap-melbourne-1 "+ad);
+  assert.equal(identity.children[1].textContent,"BM.GPU.A10.4");assert.equal(identity.children[1].tag,"div");
+  assert.equal(identity.children[2].textContent,"24 GB per GPU");
+  const bold=node=>[...(node.tag==="strong"?[node.textContent]:[]),...node.children.flatMap(bold)];
+  assert.deepEqual(bold(perHost),["4"]);assert.deepEqual(bold(physical),["28"]);assert.deepEqual(bold(limits),["32","12"]);
+  assert.match(physical.textContent.replace(/\s+/g," "),/^28 GPUs \/ 7 hosts physically available/);
+  assert.equal(physical.children[0].children[1].tag,"span");
+});
+test("each AD row keeps its own limits and exclusion badge and is searchable by AD", () => {
+  const {nodes}=execute({regional_capacity:[{region:"region-a",gpu_shape:"GPU.4",gpus_per_host:4,known_ads:2,expected_ads:2,limits:[quota("REGION",999,999)],availability_domains:[
+    {availability_domain:"AD-1",available_hosts:7,limits:[quota("AD",0,0)],limit_increase_requests:[{limit_name:"gpu-count",scope:"AD",current_limit:0}]},
+    {availability_domain:"AD-2",available_hosts:3,limits:[{...quota("AD",32,8),availability_domain:"AD-2"}],limit_increase_requests:[]}
+  ]}]});
+  const [first,second]=nodes.capacity.children;
+  assert.match(first.textContent,/Review limit increase/);assert.doesNotMatch(second.textContent,/Review limit increase/);
+  assert.doesNotMatch(first.textContent,/999/);assert.doesNotMatch(second.textContent,/999/);
+  assert.match(second.children[3].textContent.replace(/\s+/g," "),/AD AD-2: 32 GPUs/);
+  nodes["capacity-search"].value="AD-2";nodes["capacity-search"].events.input();
+  assert.equal(nodes.capacity.children.length,1);assert.match(nodes.capacity.children[0].children[0].textContent,/AD-2/);
 });

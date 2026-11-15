@@ -66,6 +66,7 @@ table { width: 100%; border-collapse: collapse; font-size: 13px; }
 th { position: sticky; top: 0; z-index: 1; background: var(--oci-color-neutral); text-align: left; font-size: 12px; }
 th, td { padding: 14px 16px; vertical-align: top; border-bottom: 1px solid var(--oci-color-divider); }
 td strong, td small { display: block; }
+#capacity strong { display: inline; }
 td small { color: var(--oci-color-text-secondary); margin-top: 4px; }
 .ad-details { margin-top: 8px; min-width: 220px; }
 .ad-row { margin-top: 14px; }

@@ -188,36 +188,40 @@ function renderOptions() {
     if ((serving.dependencies || []).length || (serving.companions || []).length) code(details(config, "Recipe dependency and companion details", "recipe-details"), JSON.stringify({dependencies: serving.dependencies || [], companions: serving.companions || []}, null, 2));
   }
 }
+function capacityQuantity(parent, value, unit, prefix = "") {
+  const line = add(parent, "div");
+  if (prefix) add(line, "span", prefix);
+  const known = value != null && value !== "" && Number.isFinite(Number(value)) && value >= 0;
+  add(line, known ? "strong" : "span", known ? number(value) : "Unknown");
+  if (unit) add(line, "span", " " + unit);
+}
 function renderCapacity() {
   const filter = $("capacity-search").value.toLowerCase();
-  const rows = (report.regional_capacity || []).filter(row => (row.available_hosts > 0 || row.known_reported_hosts > 0) && [row.region, row.gpu_shape].join(" ").toLowerCase().includes(filter));
+  const rows = (report.regional_capacity || []).flatMap(row => (row.availability_domains || [])
+    .filter(ad => ad.available_hosts > 0).map(ad => ({row, ad})))
+    .filter(({row, ad}) => [row.region, ad.availability_domain, row.gpu_shape].join(" ").toLowerCase().includes(filter));
   $("capacity").replaceChildren(); $("capacity-empty").hidden = rows.length > 0;
-  for (const row of rows) {
+  for (const {row, ad} of rows) {
     const tr = add($("capacity"), "tr"), cells = Array.from({length: 5}, () => add(tr, "td"));
-    add(cells[0], "strong", row.region); add(cells[0], "div", row.gpu_shape); add(cells[0], "small", gb(row.memory_gb_per_gpu) + " per GPU");
-    add(cells[1], "strong", number(row.gpus_per_host));
-    for (const ad of (row.availability_domains || []).filter(ad => ad.available_hosts > 0)) {
-      add(cells[2], "strong", ad.availability_domain);
-      add(cells[2], "div", number(row.gpus_per_host == null ? null : ad.available_hosts * row.gpus_per_host) + " GPUs / " + number(ad.available_hosts) + " hosts physically available");
-    }
+    add(cells[0], "strong", row.region + " " + ad.availability_domain);
+    add(cells[0], "div", row.gpu_shape); add(cells[0], "small", gb(row.memory_gb_per_gpu) + " per GPU");
+    capacityQuantity(cells[1], row.gpus_per_host, "");
+    capacityQuantity(cells[2], row.gpus_per_host == null ? null : ad.available_hosts * row.gpus_per_host, "GPUs / " + number(ad.available_hosts) + " hosts physically available");
     add(cells[2], "small", number(row.known_ads) + " / " + number(row.expected_ads) + " ADs assessed");
-    const limits = row.limits || [];
+    const limits = ad.limits || [];
     if (!limits.length) add(cells[3], "div", "Configured limit and headroom unknown");
     for (const limit of limits) {
-      add(cells[3], "strong", limitScope(limit) + ": " + limitQuantity(limit, "current_limit"));
-      add(cells[3], "div", "Remaining headroom: " + limitQuantity(limit, "remaining_headroom"));
+      capacityQuantity(cells[3], limit.current_limit, text(limit.unit), limitScope(limit) + ": ");
+      capacityQuantity(cells[3], limit.remaining_headroom, text(limit.unit), "Remaining headroom: ");
       add(cells[3], "small", limit.name);
     }
-    if (row.limit_increase_possible) badge(cells[4], "Review limit increase", true);
+    if ((ad.limit_increase_requests || []).length) badge(cells[4], "Review limit increase", true);
     else add(cells[4], "div", "See AD entitlement");
     add(cells[4], "small", row.minimum_model_hosts == null ? "Model sizing unknown; validate before requesting limits." : "Aggregate-memory lower bound: " + number(row.minimum_model_hosts) + " hosts within one AD. Layout/runtime fit unvalidated.");
-    const ads = details(cells[4], "AD capacity and limit details", "ad-details");
-    for (const ad of (row.availability_domains || []).filter(ad => ad.available_hosts > 0)) {
-      const detail = add(ads, "div", undefined, "ad-row"); add(detail, "strong", ad.availability_domain);
-      add(detail, "p", number(ad.available_hosts) + " physical hosts · " + number(ad.entitled_hosts) + " entitled hosts · " + label(ad.entitlement_status));
-      add(detail, "p", "Observed: " + text(ad.observed_at), "muted oci-caption");
-      for (const request of ad.limit_increase_requests || []) add(detail, "p", "Review " + text(request.limit_name) + " (" + text(request.scope) + "), current limit " + number(request.current_limit) + (request.minimum_gpus_for_whole_hosts == null ? ". Model fit unknown." : "; aggregate whole-host lower bound " + number(request.minimum_gpus_for_whole_hosts) + " GPUs. Validate layout and runtime."));
-    }
+    const detail = details(cells[4], "AD capacity and limit details", "ad-details");
+    add(detail, "p", number(ad.available_hosts) + " physical hosts · " + number(ad.entitled_hosts) + " entitled hosts · " + label(ad.entitlement_status));
+    add(detail, "p", "Observed: " + text(ad.observed_at), "muted oci-caption");
+    for (const request of ad.limit_increase_requests || []) add(detail, "p", "Review " + text(request.limit_name) + " (" + text(request.scope) + "), current limit " + number(request.current_limit) + (request.minimum_gpus_for_whole_hosts == null ? ". Model fit unknown." : "; aggregate whole-host lower bound " + number(request.minimum_gpus_for_whole_hosts) + " GPUs. Validate layout and runtime."));
   }
 }
 for (const notice of report.notices || []) add($("notices"), "li", notice);
