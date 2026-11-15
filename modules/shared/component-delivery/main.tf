@@ -75,8 +75,8 @@ resource "oci_devops_deploy_artifact" "values" {
   }
   lifecycle {
     precondition {
-      condition     = local.values_bytes[each.key] <= 51200
-      error_message = "Helm values for ${each.key} are ${local.values_bytes[each.key]} UTF-8 bytes; OCI inline artifacts allow at most 51200. Keep large data out of Helm values."
+      condition     = local.values_bytes[each.key] > 0 && local.values_bytes[each.key] <= 51200 && length(local.values_encoded[each.key]) <= 51200
+      error_message = "Helm values for ${each.key} are ${local.values_bytes[each.key]} decoded UTF-8 bytes and ${length(local.values_encoded[each.key])} encoded API characters; content must be nonempty and both sizes must fit the conservative 51200 limit."
     }
   }
 }

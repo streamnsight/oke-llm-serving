@@ -39,3 +39,46 @@ run "measure_utf8_bytes_not_unicode_character_count" {
   variables { files = { "unicode.txt" = join("", [for i in range(1024) : "ééééééééééééééééééééééééé"]) } }
   expect_failures = [output.content]
 }
+
+run "reject_encoded_transport_overflow_with_decoded_content_below_limit" {
+  command = plan
+  variables {
+    files         = {}
+    specification = { steps = [{ type = "Command", command = join("", [for i in range(1000) : "0123456789012345678901234567890123456789"]) }] }
+  }
+  assert {
+    condition     = output.byte_size < 51200 && output.encoded_size > 51200
+    error_message = "This regression must exercise an encoded-field overflow that decoded-only accounting misses."
+  }
+  expect_failures = [output.content]
+}
+
+run "accept_exact_encoded_field_boundary" {
+  command = plan
+  variables {
+    files = {}
+    specification = {
+      steps   = []
+      padding = substr(join("", [for i in range(1024) : "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"]), 0, 38400 - length(yamlencode({ steps = [], padding = "" })))
+    }
+  }
+  assert {
+    condition     = output.byte_size == 38400 && output.encoded_size == 51200
+    error_message = "A 38400-byte complete ASCII document fits the 51200-character transport field exactly."
+  }
+}
+run "reject_first_encoded_field_boundary_overflow" {
+  command = plan
+  variables {
+    files = {}
+    specification = {
+      steps   = []
+      padding = substr(join("", [for i in range(1024) : "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"]), 0, 38401 - length(yamlencode({ steps = [], padding = "" })))
+    }
+  }
+  assert {
+    condition     = output.byte_size == 38401 && output.encoded_size == 51204
+    error_message = "One more decoded byte crosses the encoded field budget."
+  }
+  expect_failures = [output.content]
+}

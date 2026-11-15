@@ -49,7 +49,7 @@ run "conditional_native_helm_delivery" {
     error_message = "Editable chart versions and values placeholders must reach native Helm."
   }
   assert {
-    condition     = alltrue([for key, spec in local.command_specs : strcontains(yamldecode(spec).steps[0].command, "export ") && strcontains(yamldecode(spec).steps[0].command, "sha256sum -c -") && length(yamldecode(spec).inputArtifacts) == 0 && module.inline_command[key].byte_size <= 51200 && strcontains(module.inline_command[key].preparation_command, "cat > 'component.sh'") && strcontains(module.inline_command[key].preparation_command, "cat > 'specification.json'")]) && alltrue([for artifact in values(oci_devops_deploy_artifact.command) : artifact.deploy_artifact_source[0].deploy_artifact_source_type == "INLINE"])
+    condition     = alltrue([for key, spec in local.command_specs : strcontains(yamldecode(spec).steps[0].command, "export ") && strcontains(yamldecode(spec).steps[0].command, "sha256sum -c -") && length(yamldecode(spec).inputArtifacts) == 0 && module.inline_command[key].encoded_size <= 51200 && strcontains(module.inline_command[key].preparation_command, "cat > 'component.sh'") && strcontains(module.inline_command[key].preparation_command, "cat > 'specification.json'")]) && alltrue([for artifact in values(oci_devops_deploy_artifact.command) : artifact.deploy_artifact_source[0].deploy_artifact_source_type == "INLINE"])
     error_message = "Readable Shell sources and compact specifications must be delivered inline, retaining exported parameters and checksum verification without Registry script/command files."
   }
   assert {
@@ -70,7 +70,7 @@ run "bundled_chart_bodies_remain_file_inputs_with_digest_bound_generation" {
     } }
   }
   assert {
-    condition     = !contains(keys(local.specifications.bundled.chart), "files") && local.specifications.bundled.chart_digests["templates/workload.yaml"] == sha256("large-chart-body-kept-outside-specification") && length(oci_generic_artifacts_content_artifact_by_path.chart_file) == 2 && !strcontains(module.inline_command["bundled/deploy"].content, "large-chart-body-kept-outside-specification") && module.inline_command["bundled/deploy"].byte_size < 51200
+    condition     = !contains(keys(local.specifications.bundled.chart), "files") && local.specifications.bundled.chart_digests["templates/workload.yaml"] == sha256("large-chart-body-kept-outside-specification") && length(oci_generic_artifacts_content_artifact_by_path.chart_file) == 2 && !strcontains(module.inline_command["bundled/deploy"].content, "large-chart-body-kept-outside-specification") && module.inline_command["bundled/deploy"].encoded_size < 51200
     error_message = "Bundled chart source stays in file artifacts; compact inline specifications bind its digests without duplicating the bodies."
   }
 }

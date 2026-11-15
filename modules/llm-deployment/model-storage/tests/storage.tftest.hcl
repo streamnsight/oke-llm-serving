@@ -39,7 +39,7 @@ run "object_storage_uses_retained_private_data_and_cpu_job_adapter" {
     error_message = "Weights are retained private model data; Terraform must not claim a successful runtime transfer."
   }
   assert {
-    condition     = length(oci_generic_artifacts_content_artifact_by_path.input) == 1 && jsondecode(oci_generic_artifacts_content_artifact_by_path.input["model.json"].content).model.revision == "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" && oci_generic_artifacts_content_artifact_by_path.input["model.json"].version == sha256(local.config) && length(local.inline_files) == 4 && module.inline_command[0].byte_size <= 51200 && length(yamldecode(output.command_spec).inputArtifacts) == 1
+    condition     = length(oci_generic_artifacts_content_artifact_by_path.input) == 1 && jsondecode(oci_generic_artifacts_content_artifact_by_path.input["model.json"].content).model.revision == "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" && oci_generic_artifacts_content_artifact_by_path.input["model.json"].version == sha256(local.config) && length(local.inline_files) == 4 && module.inline_command[0].encoded_size <= 51200 && length(yamldecode(output.command_spec).inputArtifacts) == 1
     error_message = "Only the potentially large pinned manifest stays in Registry; four small source files and the complete command spec must be inline within the size limit."
   }
   assert {

@@ -2,7 +2,6 @@
 # Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
 locals {
   operation_shared_files = {
-    "common.sh"          = local.runtime_files["common.sh"]
     "operation.sh"       = file("${path.module}/scripts/operation.sh")
     "lock.sh"            = file("${path.module}/../../shared/component-delivery/scripts/lock.sh")
     "tools.sh"           = file("${path.module}/../../shared/component-delivery/scripts/tools.sh")
@@ -11,6 +10,9 @@ locals {
   operation_files = { for operation in ["validate", "benchmark"] : operation => merge(local.operation_shared_files, {
     for asset in(operation == "validate" ? ["validate.sh"] : ["benchmark.sh", "bench-client.sh"]) : asset => file("${path.module}/scripts/${asset}")
   }) }
+  # These inputs already exist for model deployment; reuse their immutable
+  # paths/versions instead of duplicating the large common library inline.
+  operation_input_files = { for path in ["common.sh", "config.json"] : path => local.runtime_files[path] }
   operation_parameters = merge(local.defaults, {
     CHART_VERSION     = local.chart_version, RECOVER_LOCK_HOLDER = "none",
     BENCHMARK_BACKEND = var.benchmark_backend, BENCHMARK_REQUESTS = "64", BENCHMARK_INPUT_TOKENS = "256", BENCHMARK_OUTPUT_TOKENS = "64"
@@ -23,14 +25,14 @@ locals {
       DELIVERY_DEPLOYMENT_ID = "$${OCI_DEPLOYMENT_ID}", DELIVERY_PIPELINE_ID = "$${OCI_PIPELINE_ID}",
       OCI_CLI_AUTH           = "resource_principal", OCI_CLI_REGION = var.platform.region
     }, operation == "benchmark" ? { DELIVERY_RESULT_REPOSITORY = var.platform.result_repository_id } : {}) },
-    inputArtifacts = [{
-      name       = "model-config", type = "GENERIC_ARTIFACT", location = "./runtime/config.json",
-      registryId = var.platform.script_repository_id, path = module.delivery.runtime_artifacts["config.json"].artifact_path, version = module.delivery.runtime_artifacts["config.json"].version
+    inputArtifacts = [for path in sort(keys(local.operation_input_files)) : {
+      name       = "model-${replace(path, ".", "-")}", type = "GENERIC_ARTIFACT", location = "./runtime/${path}",
+      registryId = var.platform.script_repository_id, path = module.delivery.runtime_artifacts[path].artifact_path, version = module.delivery.runtime_artifacts[path].version
     }],
     steps = [{ type = "Command", name = "${operation}-current-model", timeoutInSeconds = 3600, command = join("\n", concat([
       "set -euo pipefail",
       "export ${join(" ", sort(concat(keys(local.operation_parameters), ["DELIVERY_OPERATION", "DELIVERY_GENERATION", "DELIVERY_REGION", "DELIVERY_DEPLOYMENT_ID", "DELIVERY_PIPELINE_ID", "OCI_DEPLOYMENT_ID", "OCI_PIPELINE_ID", "OCI_CLI_AUTH", "OCI_CLI_REGION"], operation == "benchmark" ? ["DELIVERY_RESULT_REPOSITORY"] : [])))}"
-      ], [for path, content in merge(local.operation_files[operation], { "config.json" = local.runtime_files["config.json"] }) : "printf '%s  runtime/${path}\\n' '${sha256(content)}' | sha256sum -c -"], [
+      ], [for path, content in merge(local.operation_files[operation], local.operation_input_files) : "printf '%s  runtime/${path}\\n' '${sha256(content)}' | sha256sum -c -"], [
       "cp runtime/specification.json specification.json", "bash runtime/operation.sh"
     ])) }]
   }) }
