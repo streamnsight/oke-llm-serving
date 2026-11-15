@@ -3,6 +3,7 @@
 # Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
 # Terraform provider mocks do not suppress local-exec provisioners. Never call OCI.
 set -euo pipefail
+if [[ "$*" == --version ]]; then printf 'fixture-version\n'; exit 0; fi
 repository=""; cluster=""; command_words=()
 while (( $# )); do
   case "$1" in
@@ -13,10 +14,14 @@ while (( $# )); do
     *) command_words+=("$1"); shift;;
   esac
 done
-if [[ "$repository" == ocid1.artifactrepository.oc1.test.* && "${command_words[*]}" == 'artifacts generic artifact list' ]]; then
+if [[ "${command_words[*]}" == 'ce addon list --help' ]]; then
+  printf 'Mock OCI add-on list help\n'
+elif [[ "$repository" == ocid1.artifactrepository.oc1.test.* && "${command_words[*]}" == 'artifacts generic artifact list' ]]; then
   printf '{"data":{"items":[]}}\n'
 elif [[ "$cluster" == ocid1.cluster.oc1.test.fixture && "${command_words[*]}" == 'ce addon list' ]]; then
-  printf '{"data":{"items":[{"addon-name":"NodeFeatureDiscovery","lifecycle-state":"ACTIVE"},{"addon-name":"NvidiaGpuOperator","lifecycle-state":"ACTIVE"},{"addon-name":"NvidiaNetworkOperator","lifecycle-state":"ACTIVE"},{"addon-name":"GpuHealthMonitoring","lifecycle-state":"ACTIVE"}]}}\n'
+  printf '{"data":[{"name":"NodeFeatureDiscovery","lifecycle-state":"ACTIVE"},{"name":"NvidiaGpuOperator","lifecycle-state":"ACTIVE"},{"name":"NvidiaNetworkOperator","lifecycle-state":"ACTIVE"},{"name":"GpuHealthMonitoring","lifecycle-state":"ACTIVE"}]}\n'
+elif [[ "$cluster" == ocid1.cluster.oc1.test.fixture && "${command_words[*]}" == 'ce addon get --addon-name NvidiaGpuOperator' ]]; then
+  printf '{"data":{"name":"NvidiaGpuOperator","configurations":[]}}\n'
 else
   echo 'Unmocked OCI CLI call refused by Terraform test fixture.' >&2
   exit 97
