@@ -101,15 +101,14 @@ run "connection_region_is_optional_for_local_discovery" {
 run "normal_discovery_is_embedded_in_the_report" {
   command = plan
   assert {
-    condition     = module.discovery_report.summary.schema_version == "4.0" && module.discovery_report.summary.diagnostics == null && !contains(keys(module.discovery_report.summary), "profile") && !contains(keys(module.discovery_report.summary), "assessment") && module.discovery_report.summary.option_count == 0 && length(module.discovery_report.summary.failure_summary) > 0 && !var.include_diagnostics
+    condition     = module.discovery_report.summary.schema_version == "4.0" && !contains(keys(module.discovery_report.summary), "diagnostics") && !contains(keys(module.discovery_report.summary), "profile") && !contains(keys(module.discovery_report.summary), "assessment") && module.discovery_report.summary.option_count == 0 && length(module.discovery_report.summary.failure_summary) > 0
     error_message = "The HTML embeds a useful report without exposing duplicate root JSON outputs."
   }
 }
-run "full_diagnostics_are_opt_in" {
+run "capacity_and_headroom_have_no_discovery_switches" {
   command = plan
-  variables { include_diagnostics = true }
   assert {
-    condition     = module.discovery_report.summary.diagnostics.serving_configuration.status == "requires_expert_configuration" && module.discovery_report.summary.diagnostics.profile.memory.status == "unsupported"
-    error_message = "Retain full audit evidence behind one explicit diagnostic option."
+    condition     = !contains(keys(local.discovery_query), "query_resource_availability") && !contains(keys(local.discovery_query), "only_shapes_with_limits")
+    error_message = "Discovery must always scan physical capacity, including zero-limit shapes, and supported effective headroom."
   }
 }

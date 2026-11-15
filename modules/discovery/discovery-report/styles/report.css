@@ -54,7 +54,7 @@ input { width: 360px; }
 .badge-warning { background: var(--oci-color-ornament-gold); color: var(--oci-color-text); }
 .command { white-space: pre-wrap; overflow-wrap: anywhere; padding: 16px; margin: 12px 0; color: var(--oci-color-text); background: var(--oci-color-neutral); border: 1px solid var(--oci-color-divider); border-radius: var(--oci-rounded-sm); font-size: 12px; line-height: 1.65; max-height: 28rem; overflow: auto; }
 .recipe-details { margin: 16px 0; }
-.recipe-details > summary, .ad-details > summary, .diagnostics > summary { cursor: pointer; color: var(--oci-color-link); }
+.recipe-details > summary, .ad-details > summary { cursor: pointer; color: var(--oci-color-link); }
 .deployment-steps { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; padding-top: 20px; border-top: 1px solid var(--oci-color-divider); }
 .action-links { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; margin: 12px 0; }
 .action-primary { display: inline-flex; min-height: 38px; align-items: center; padding: 8px 14px; text-decoration: none; color: var(--oci-component-button-primary-text-color); background: var(--oci-component-button-primary-background-color); border-radius: var(--oci-rounded-sm); font-weight: 600; }

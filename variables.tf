@@ -51,17 +51,6 @@ variable "compartment_id" {
   type        = string
   default     = null
 }
-variable "query_resource_availability" {
-  description = "Query supported compute limit headroom. Disable only for capacity-only investigation."
-  type        = bool
-  default     = true
-}
-
-variable "only_shapes_with_limits" {
-  description = "Skip capacity checks for shapes with a confirmed zero limit. False also finds capacity that needs a limit increase. Unknown mappings remain included."
-  type        = bool
-  default     = false
-}
 variable "compartment_ocid" {
   description = "Resource Manager stack compartment, automatically supplied by RMS."
   type        = string
@@ -80,14 +69,4 @@ variable "artifact_compartment_id" {
 variable "par_lifetime_hours" {
   type    = number
   default = 24
-}
-variable "skip_gpu_allocation" {
-  type        = bool
-  default     = false
-  description = "Temporary debug default for generated infrastructure stacks: skip GPU allocation while creating DevOps and CPU platform components."
-}
-variable "include_diagnostics" {
-  description = "Include expandable model, engine and regional diagnostic evidence in the HTML report. This does not run unselected engine/cache alternative lookups."
-  type        = bool
-  default     = false
 }

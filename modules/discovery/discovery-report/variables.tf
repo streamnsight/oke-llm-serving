@@ -15,7 +15,3 @@ variable "publication" {
 }
 variable "scan" { type = any }
 variable "serving_configuration" { type = any }
-variable "include_diagnostics" {
-  type    = bool
-  default = false
-}

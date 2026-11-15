@@ -8,16 +8,15 @@ locals {
   )
 }
 module "infrastructure_publication" {
-  count               = 1
-  source              = "./modules/discovery/infrastructure-publisher"
-  tenancy_ocid        = var.tenancy_ocid
-  compartment_id      = coalesce(var.artifact_compartment_id, var.compartment_ocid, var.compartment_id, var.tenancy_ocid)
-  region              = try(coalesce(var.region, local.oci_discovery.home_region), null)
-  template_dir        = "${path.module}/templates/infrastructure"
-  modules_dir         = "${path.module}/modules"
-  options             = { for id, option in local.infrastructure_options : id => option if var.publish_infrastructure_bundles }
-  par_lifetime_hours  = var.par_lifetime_hours
-  skip_gpu_allocation = var.skip_gpu_allocation
+  count              = 1
+  source             = "./modules/discovery/infrastructure-publisher"
+  tenancy_ocid       = var.tenancy_ocid
+  compartment_id     = coalesce(var.artifact_compartment_id, var.compartment_ocid, var.compartment_id, var.tenancy_ocid)
+  region             = try(coalesce(var.region, local.oci_discovery.home_region), null)
+  template_dir       = "${path.module}/templates/infrastructure"
+  modules_dir        = "${path.module}/modules"
+  options            = { for id, option in local.infrastructure_options : id => option if var.publish_infrastructure_bundles }
+  par_lifetime_hours = var.par_lifetime_hours
   model = {
     repository                = try(module.model_profile.profile.model.repository, local.effective_model),
     revision                  = try(module.model_profile.profile.model.resolved_revision, null),

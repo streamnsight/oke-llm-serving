@@ -4,7 +4,7 @@ Licensed under the Universal Permissive License v 1.0 as shown at http://oss.ora
 -->
 # Resource Manager discovery
 
-Run `make package` and upload `work/packages/oke-llm-discovery.zip` to RMS with working directory `.`. Enter a public Hugging Face URL/ID, revision, context tokens and concurrent sequences per replica. Empty region/shape filters assess all READY subscribed regions and visible GPU shapes. Discovery allocates no GPUs.
+Run `make package` and upload `work/packages/oke-llm-discovery.zip` to RMS with working directory `.`. Enter a public Hugging Face URL/ID, revision, context tokens and concurrent sequences per replica. Empty region/shape filters assess all READY subscribed regions and visible GPU shapes. Discovery allocates no GPUs. Supported limit headroom is always queried, and physical capacity checks include shapes with zero configured limits so regions for limit-increase requests remain visible. Neither check is a user toggle.
 
 Optional deployment policy is chosen downstream. Infrastructure controls Prometheus/GPU telemetry and KEDA installation or reuse. The model stack controls model monitoring resources, request autoscaling and weight delivery (direct Hub, existing PVC or optional staging). Discovery uses baseline recommendations—monitoring on, scaling off—and still derives mandatory topology/recipe requirements; these are not discovery form inputs.
 
@@ -17,13 +17,13 @@ The page contains:
 1. Model identity, revision, type/architecture, layer and attention dimensions, Hub-published parameter/dtype counts, checkpoint formats/download size, license and source link.
 2. Known resident-weight and KV-payload components for the entered context/concurrency, with dtype/margin assumptions. Complete estimates remain unknown where unsupported; the visible planning payload budget and its expandable formula are explicitly separate from hybrid cache/vision allocation.
 3. Collapsed deployment options showing region/AD, exact GPU shape, observed supply, GPUs per replica, allocated hosts, packed replicas and unused GPUs. Expanded details include image, planned command, original upstream command, provenance, component requirements and separate infrastructure/model PAR and RMS links.
-4. Positive reported regional capacity and per-AD entitlement evidence, including potential limit-increase requests where physical hosts exist even with zero quota. Zero-host and unknown-only rows stay in optional diagnostics. Aggregate-memory lower bounds do not establish a valid model layout or runtime. Zero physical capacity is not a limit-increase opportunity.
+4. Positive reported regional capacity and per-AD entitlement evidence, including potential limit-increase requests where physical hosts exist even with zero quota. Zero-host and unknown-only rows are excluded from deployment choices; missing evidence remains unconfirmed. Aggregate-memory lower bounds do not establish a valid model layout or runtime. Zero physical capacity is not a limit-increase opportunity.
 
 Counts for alternative shapes are not added together. Regional totals require unique complete whole-AD reports for the same exact shape; partial/conflicting coverage remains unknown. A positive report is a snapshot, not a reservation. All generated serving configurations still require runtime validation.
 
 Recommendations use hardware fit first: more VRAM per GPU, less per-replica sharding, RDMA-capable hardware, then additional complete replicas covered by both capacity and entitlement in the selected AD. Regional physical supply and fewer allocated GPUs break later ties. Display sorting is independent of this policy. VRAM is a fit proxy; bandwidth, compute and actual throughput still require hardware validation. No future capacity or RDMA placement is reserved.
 
-Report JSON, scripts and Redwood styling are embedded in the page. Opening, filtering or expanding it makes no new discovery requests. `include_diagnostics=true` adds a collapsed evidence section, without enabling unused engine/cache lookups. There are no duplicate public JSON outputs.
+Report JSON, scripts and Redwood styling are embedded in the page. Opening, filtering or expanding it makes no new discovery requests. Useful exclusions, per-AD limits and memory assumptions are included automatically. A second raw model/engine/scan dump and its checkbox are omitted. There are no duplicate public JSON outputs.
 
 The style tokens and shell come from the supplied `oci-design-system-redwood-jet` package; the report uses native HTML controls with module-owned layout styles and no JET runtime or CDN dependency. Oracle documents [RMS schema types and output controls](https://docs.oracle.com/en-us/iaas/Content/ResourceManager/Concepts/terraformconfigresourcemanager_topic-schema.htm).
 
@@ -31,7 +31,7 @@ The style tokens and shell come from the supplied `oci-design-system-redwood-jet
 
 Each confirmed option has **both** deployment ZIPs immediately:
 
-- **GPU pool and shared components:** choose an existing cluster in the indicated region, review Plan and provision retained infrastructure. Skip this when reusing a suitable platform. Existing CPU pools run controllers; GPU allocation is managed only here.
+- **GPU pool and shared components:** choose an existing cluster in the indicated region, review Plan and provision retained infrastructure. Skip this when reusing a suitable platform. Existing CPU pools run controllers; GPU allocation is managed only here. The temporary skip-allocation debug control is editable in this infrastructure stack, never in discovery.
 - **Model project and pipelines:** select the cluster. The stack creates a separate project/environment/repositories/pipelines for the model and infers matching pool/networking. It can be created before GPUs/controllers exist; execution waits for trusted namespace onboarding and real readiness. Ambiguous pool/network choices have optional advanced overrides.
 
 Neither clicking a link nor creating a model stack starts inference. Model deploy/validate/benchmark/undeploy are explicit operations. See [model target and access](model-binding.md).

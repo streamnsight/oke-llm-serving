@@ -124,13 +124,14 @@ test("discovery excludes deployment-policy inputs and downstream forms own them"
   const root = new URL("../", import.meta.url);
   const discovery = parse(readFileSync(new URL("schema.yaml", root), "utf8"));
   const variables = readFileSync(new URL("variables.tf", root), "utf8");
-  for (const name of ["monitoring_enabled", "autoscaling_enabled", "model_storage_mode"]) {
+  for (const name of ["monitoring_enabled", "autoscaling_enabled", "model_storage_mode", "query_resource_availability", "only_shapes_with_limits", "include_diagnostics", "skip_gpu_allocation"]) {
     assert.equal(discovery.variables[name], undefined);
     assert.ok(!discovery.variableGroups.some(group => group.variables.includes(name)));
     assert.ok(!variables.includes(`variable "${name}"`));
   }
   const infra = parse(readFileSync(new URL("templates/infrastructure/schema.yaml", root), "utf8"));
   const model = parse(readFileSync(new URL("templates/llm-deployment/schema.yaml", root), "utf8"));
+  assert.equal(infra.variables.skip_gpu_allocation.default, false);
   assert.equal(infra.variables.monitoring_enabled.default, true);
   assert.equal(infra.variables.autoscaling_enabled.default, false);
   assert.equal(model.variables.monitoring_enabled.default, true);

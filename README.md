@@ -20,7 +20,7 @@ The only RMS output is **Open discovery report**, a link to a self-contained HTM
 - Memory requirements for the entered context/concurrency: resident weights, KV cache, runtime allowance, margin and estimation limits.
 - Every eligible region/AD/shape option, with observed host/GPU capacity, entitlement, requested hosts, GPUs per replica, allocated/unused GPUs and complete replicas that fit the allocation.
 - Collapsed options with planned/upstream recipe commands, image/configuration provenance, required components and separate infrastructure/model PAR and regional RMS URLs.
-- Useful exclusions when no option is available; detailed diagnostics are opt-in.
+- Capacity and effective limit headroom are always checked, including zero-limit shapes. Positive capacity needing higher limits is shown as an alternative; exclusions and memory assumptions are included automatically.
 
 Recommendations prioritize hardware fit (VRAM and sharding), RDMA capability and quantity-confirmed growth headroom. GPU count is a later tie-breaker, with no throughput/cost prediction. Technical serving details appear below deployment actions; the capacity table shows only positive supply, including regions needing limit increases.
 

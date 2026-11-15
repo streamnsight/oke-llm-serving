@@ -24,7 +24,7 @@ else if(command.includes('availability-domain list')) data=[{name:'AD-1'}];
 else if(command.includes('compute shape list')) data=scenario==='no-gpus'?[]:[{shape:'VM.GPU.A10.1',gpus:1,'gpu-description':'A10','memory-in-gbs':240,ocpus:15,'quota-names':['gpu-a10-count']},...(scenario==='multiple-shapes'?[{shape:'BM.GPU.A10.4',gpus:4,'gpu-description':'A10','memory-in-gbs':1024,ocpus:64,'quota-names':['gpu-a10-count']}]:[])];
 else if(command.includes('limits definition list'))data=[{name:'gpu-a10-count','is-resource-availability-supported':true},...(scenario==='unrelated-limits'?[{name:'gpu-unused-count','is-resource-availability-supported':true}]:[])];
 else if(command.includes('limits value list')) data=scenario==='unmapped'?[]:[{name:'gpu-a10-count','scope-type':'AD','availability-domain':scenario==='other-ad-zero'?'AD-2':'AD-1',value:['zero','other-ad-zero'].includes(scenario)?0:8},...(scenario==='unrelated-limits'?[{name:'gpu-unused-count','scope-type':'REGION',value:100}]:[])];
-else if(command.includes('resource-availability get'))data={available:8,used:0};
+else if(command.includes('resource-availability get'))data={available:scenario==='zero'?0:8,used:0};
 else if(command.includes('compute-capacity-report create')) {
  const request=JSON.parse(fs.readFileSync(flag('--shape-availabilities').replace('file://',''),'utf8'));
  const expected=scenario==='multiple-shapes'?['BM.GPU.A10.4','VM.GPU.A10.1']:['VM.GPU.A10.1'];
@@ -37,7 +37,7 @@ function run(scenario='',overrides={},extraEnv={}) {
  const dir=mkdtempSync(`${tmpdir()}/oke-cli-test-`);
  try {
   mkdirSync(`${dir}/bin`);writeFileSync(`${dir}/bin/oci`,fake,{mode:0o755});
-  const q={tenancy_ocid:'tenancy',compartment_id:'target',region:'bootstrap',regions:'[]',shape_names:'[]',query_resource_availability:'true',only_shapes_with_limits:'false',observation_id:'test',gpu_catalog:JSON.stringify({source:'fixture',shapes:{'VM.GPU.A10.1':{memory_bytes_per_gpu:24000000000}}}),...overrides};
+  const q={tenancy_ocid:'tenancy',compartment_id:'target',region:'bootstrap',regions:'[]',shape_names:'[]',observation_id:'test',gpu_catalog:JSON.stringify({source:'fixture',shapes:{'VM.GPU.A10.1':{memory_bytes_per_gpu:24000000000}}}),...overrides};
   const proc=spawnSync('bash',[`${root}/modules/discovery/oci-discovery/scripts/discover-oci.sh`],{input:JSON.stringify(q),encoding:'utf8',env:{...process.env,TF_VAR_auth:'',OCI_AUTH:'',OCI_RESOURCE_PRINCIPAL_VERSION:'',OCI_CLI_AUTH:'',PATH:`${dir}/bin:${process.env.PATH}`,CLI_TEST_LOG:`${dir}/calls`,CLI_TEST_SCENARIO:scenario,...extraEnv}});
   const calls=(()=>{try{return readFileSync(`${dir}/calls`,'utf8').trim().split('\n').map(JSON.parse);}catch{return [];}})();
   const result=proc.status===0?JSON.parse(JSON.parse(proc.stdout).result):null;
@@ -52,10 +52,16 @@ test('CLI discovers future subscriptions and preserves numeric planner observati
  for(const call of r.calls.filter(c=>c.includes('shape')||c.includes('definition')||c.includes('value')))assert.ok(call.includes('--all'));
  assert.equal(r.calls.filter(c=>c.includes('shape')).length,2,'separate compartment inventory and tenancy physical shapes');
 });
-test('known zero skips reports; unmapped or another AD zero does not',()=>{
- for(const [scenario,expected] of [['zero',0],['unmapped',1],['other-ad-zero',1]]) {
-  const r=run(scenario,{only_shapes_with_limits:'true'});assert.equal(r.status,0,r.stderr);
-  assert.equal(r.calls.filter(c=>c.includes('compute-capacity-report')).length,expected,scenario);
+test('zero limits never suppress capacity scans for limit-increase alternatives',()=>{
+ for(const scenario of ['zero','unmapped','other-ad-zero']) {
+  const r=run(scenario);assert.equal(r.status,0,r.stderr);
+  assert.equal(r.calls.filter(c=>c.includes('compute-capacity-report')).length,1,scenario);
+  assert.equal(r.result.regions[0].capacity.availability_domains[0].assessment.shapes[0].available_instances,2);
+  if(scenario==='zero') {
+   assert.equal(r.calls.filter(c=>c.includes('resource-availability')).length,1,'query supported headroom even when the configured limit is zero');
+   const limit=r.result.regions[0].inventory.limits[0];
+   assert.equal(limit.tenancy_limit,0);assert.equal(limit.resource_availability.available,0);
+  }
  }
 });
 test('only shape-relevant quota headroom is queried while physical reports remain batched',()=>{

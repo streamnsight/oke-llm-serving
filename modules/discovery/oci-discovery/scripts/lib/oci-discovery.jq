@@ -14,10 +14,8 @@ def limit_plan($q; $defs; $quotas):
    . + {matched_shape_quota_name:(.name as $n | ($quotas|index($n))!=null), description:$defs[.name].description,
      availability_supported:($defs[.name].is_resource_availability_supported // false)}] |
   sort_by([if .matched_shape_quota_name then 0 else 1 end, .name,.scope_type,.availability_domain]);
-def skip_reason($q; $used): .scope_type as $scope |
-  if $q.query_resource_availability|not then "Headroom queries disabled."
-  elif $q.only_shapes_with_limits and ((.matched_shape_quota_name|not) or .value==0) then "Skipped by only_shapes_with_limits."
-  elif (.availability_supported|not) or (["AD","REGION","GLOBAL"]|index($scope))==null then "Availability unsupported or scope unresolved."
+def skip_reason($used): .scope_type as $scope |
+  if (.availability_supported|not) or (["AD","REGION","GLOBAL"]|index($scope))==null then "Availability unsupported or scope unresolved."
   elif .scope_type=="AD" and ((.availability_domain // "")|length)==0 then "Availability unsupported or scope unresolved."
   elif $used>=1000 then "Query budget exhausted." else "" end;
 def limit_observation($reason; $availability): {
@@ -28,11 +26,7 @@ def limit_observation($reason; $availability): {
   } else $availability | {status:(if .available!=null or .fractional_availability!=null then "observed" else "unknown" end),
     reason:null, available,used,fractional_availability,fractional_usage,effective_quota_value} end)
 };
-def capacity_names($q; $limits; $ad): [ .[] | . as $s | {
-  shape, zero:any($limits[]; . as $l | ($s.quota_names|index($l.name))!=null and
-    (.scope_type!="AD" or .availability_domain==$ad) and .value==0)
-}] | {visible:map(.shape), assessed:[.[]|select(($q.only_shapes_with_limits and .zero)|not)|.shape],
-      skipped:[.[]|select($q.only_shapes_with_limits and .zero)|.shape]};
+def capacity_names: map(.shape) | {visible:., assessed:., skipped:[]};
 def capacity_assessment($q; $region; $ad; $names): . as $report |
   [$names[] as $name | $report.shape_availabilities[]? | select(.instance_shape==$name) | {
     shape:$name, fault_domain, availability_status, available_instances:.available_count, requested_instances:1,

@@ -33,7 +33,7 @@ run "actual_capacity_packing_memory_and_all_links_are_compact" {
     error_message = "Aggregate physical capacity only across unique ADs of the exact shape; keep entitlement separate and label decimal GB consistently."
   }
   assert {
-    condition     = output.summary.option_count == 1 && output.summary.options.selected.links.launch_url == var.publications.selected.launch_url && output.summary.options.selected.links.download_url == var.publications.selected.download_url && output.summary.options.selected.links.model_deployment.launch_url == var.model_publications.selected.launch_url && output.summary.options.selected.links.expires_at == var.publications.selected.expires_at && output.summary.diagnostics == null
+    condition     = output.summary.option_count == 1 && output.summary.options.selected.links.launch_url == var.publications.selected.launch_url && output.summary.options.selected.links.download_url == var.publications.selected.download_url && output.summary.options.selected.links.model_deployment.launch_url == var.model_publications.selected.launch_url && output.summary.options.selected.links.expires_at == var.publications.selected.expires_at && !contains(keys(output.summary), "diagnostics")
     error_message = "The embedded report data must retain both infrastructure/model launch and PAR URLs with exact expiry."
   }
   assert {
@@ -145,14 +145,6 @@ run "unsupported_memory_remains_unknown_and_failure_is_actionable" {
   assert {
     condition     = output.summary.model.memory_gb.resident_weights == null && output.summary.model.memory_gb.kv_per_replica == null && output.summary.option_count == 0 && contains(output.summary.failure_summary, "No supported serving layout") && output.summary.status == "no_confirmed_options"
     error_message = "Unknown memory is null, not zero; an empty option list must retain an explanation."
-  }
-}
-run "diagnostic_evidence_is_explicitly_opt_in" {
-  command = plan
-  variables { include_diagnostics = true }
-  assert {
-    condition     = output.summary.diagnostics.profile == var.profile && output.summary.diagnostics.regions == var.regions
-    error_message = "Detailed evidence remains available only when explicitly requested."
   }
 }
 run "html_payload_cannot_close_the_data_script" {

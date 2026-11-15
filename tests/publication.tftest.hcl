@@ -57,14 +57,6 @@ run "publication_can_be_disabled_for_discovery_only" {
     error_message = "Assessment-only mode retains the HTML report and confirmed choices but publishes no infrastructure/model launch ZIPs."
   }
 }
-run "debug_gpu_gate_reaches_the_publisher" {
-  command = apply
-  variables { skip_gpu_allocation = true }
-  assert {
-    condition     = module.discovery_report.summary.options.selected.skip_gpu_allocation
-    error_message = "Discovery's debug setting must reach the actual published option."
-  }
-}
 
 run "zero_options_still_publish_a_report" {
   command = apply

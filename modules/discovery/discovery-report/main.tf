@@ -147,8 +147,7 @@ locals {
         launch_url = try(var.model_publications[id].launch_url, null), download_url = try(var.model_publications[id].download_url, null),
         expires_at = try(var.model_publications[id].expires_at, null)
       }
-    },
-    skip_gpu_allocation = try(var.publications[id].skip_gpu_allocation, false)
+    }
   } }
   summary = {
     schema_version = "4.0", scan = var.scan, publication = var.publication,
@@ -184,10 +183,9 @@ locals {
       try(var.assessment.blocking_reasons, []),
       [for request in try(var.assessment.limit_increase_recommendations, []) : "GPU limit increase: ${request.limit_name} in ${request.region}${request.availability_domain == null ? "" : "/${request.availability_domain}"}; current limit ${request.current_limit}."],
       flatten([for row in try(var.assessment.shape_observations, []) : try(row.exclusion_reasons, [])]),
-      length(try(var.assessment.blocking_reasons, [])) == 0 && length(try(var.assessment.shape_observations, [])) == 0 ? ["No confirmed model/hardware options were produced; enable diagnostic details to inspect the assessment."] : []
+      length(try(var.assessment.blocking_reasons, [])) == 0 && length(try(var.assessment.shape_observations, [])) == 0 ? ["No confirmed model/hardware options were produced. Review model requirements and regional capacity and limit details."] : []
     )),
-    notices     = ["Memory uses decimal GB (1 GB = 1,000,000,000 bytes). Null means unknown, not zero.", "Regional counts sum unique whole-AD observations of one exact shape only. Partial coverage has no complete regional total; known_reported counts are a lower bound.", "Different shapes may share supply. Entitlement ceilings are not additive across ADs or regions. Capacity is a snapshot, not a reservation.", "All serving configurations require runtime validation; infrastructure links do not establish CUDA/RDMA/API/performance compatibility."],
-    diagnostics = var.include_diagnostics ? { profile = var.profile, assessment = var.assessment, regions = var.regions, serving_configuration = var.serving_configuration } : null
+    notices = ["Memory uses decimal GB (1 GB = 1,000,000,000 bytes). Null means unknown, not zero.", "Regional counts sum unique whole-AD observations of one exact shape only. Partial coverage has no complete regional total; known_reported counts are a lower bound.", "Different shapes may share supply. Entitlement ceilings are not additive across ADs or regions. Capacity is a snapshot, not a reservation.", "All serving configurations require runtime validation; infrastructure links do not establish CUDA/RDMA/API/performance compatibility."],
   }
 }
 output "summary" { value = local.summary }

@@ -26,7 +26,6 @@ locals {
   defaults = { for id, option in var.options : id => {
     availability_domain      = option.availability_domain, gpu_shape = option.gpu_shape, node_count = option.node_count,
     boot_volume_gib          = max(200, ceil(try(coalesce(var.model.checkpoint_download_bytes, 0), 0) * max(1, try(option.replicas_per_node, 1)) * 2 / pow(1024, 3)) + 100),
-    skip_gpu_allocation      = var.skip_gpu_allocation,
     enable_lws               = try(option.platform_plan.components.lws.required, option.pipeline_parallel_size > 1, false),
     enable_disaggregated_set = try(option.platform_plan.components.lws.enable_disaggregated_set, false),
     monitoring_enabled       = try(option.platform_plan.monitoring.enabled, true),
@@ -147,7 +146,6 @@ output "deployment_options" {
     object_name          = local.object_names[id], launch_object_name = local.launch_object_names[id], published_at = local.published_at, expires_at = oci_objectstorage_preauthrequest.infrastructure[id].time_expires,
     zip_sha256           = archive_file.infrastructure[id].output_sha256, download_url = local.rms_par_urls[id],
     launch_url           = "https://cloud.oracle.com/resourcemanager/stacks/create?region=${urlencode(option.region)}&zipUrl=${urlencode(local.rms_par_urls[id])}",
-    skip_gpu_allocation  = var.skip_gpu_allocation,
     remaining_input      = "Select an existing cluster and review Plan. Apply creates platform resources and, unless debug skipping is enabled, GPU hosts."
   } }
 }

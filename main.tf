@@ -14,10 +14,10 @@ locals {
   region_scope = sort(distinct(compact([for name in var.regions : try(trimspace(name), "")])))
   shape_scope  = sort(distinct(compact([for name in var.shape_names : try(trimspace(name), "")])))
   discovery_query = {
-    tenancy_ocid            = var.tenancy_ocid, compartment_id = coalesce(var.compartment_id, var.tenancy_ocid),
-    region                  = var.region == null ? "" : var.region, regions = jsonencode(local.region_scope),
-    shape_names             = jsonencode(local.shape_scope), query_resource_availability = tostring(var.query_resource_availability),
-    only_shapes_with_limits = tostring(var.only_shapes_with_limits), observation_id = var.observation_id
+    tenancy_ocid   = var.tenancy_ocid, compartment_id = coalesce(var.compartment_id, var.tenancy_ocid),
+    region         = var.region == null ? "" : var.region, regions = jsonencode(local.region_scope),
+    shape_names    = jsonencode(local.shape_scope),
+    observation_id = var.observation_id
   }
 }
 module "oci_discovery" {
@@ -66,7 +66,6 @@ module "discovery_report" {
   model_publications    = local.published_model_options
   publication           = { published_at = local.publication_location.published_at, expires_at = timeadd(local.publication_location.published_at, "${var.par_lifetime_hours}h"), bundles_enabled = var.publish_infrastructure_bundles }
   serving_configuration = module.serving_resolution.resolution
-  include_diagnostics   = var.include_diagnostics
   scan = {
     observation_id     = var.observation_id, home_region = try(local.oci_discovery.home_region, null),
     subscribed_regions = sort(tolist(local.subscribed_regions)), assessed_regions = sort(tolist(local.selected_regions))

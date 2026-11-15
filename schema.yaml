@@ -15,23 +15,13 @@ variableGroups:
   - title: Model and workload
     variables: [model, revision, context_length, concurrency]
   - title: Capacity observation
-    variables: [observation_id, compartment_id, regions, shape_names, query_resource_availability, only_shapes_with_limits, include_diagnostics]
+    variables: [observation_id, compartment_id, regions, shape_names]
   - title: Infrastructure launch bundles
-    variables: [publish_infrastructure_bundles, artifact_compartment_id, par_lifetime_hours, skip_gpu_allocation]
+    variables: [publish_infrastructure_bundles, artifact_compartment_id, par_lifetime_hours]
   - title: OCI context
     visible: false
     variables: [tenancy_ocid, compartment_ocid, region]
 variables:
-  include_diagnostics:
-    type: boolean
-    default: false
-    title: Include detailed diagnostic evidence
-    description: Adds an expandable section with full model, engine and regional evidence to the HTML report. Does not run unused alternative-engine/cache lookups.
-  skip_gpu_allocation:
-    type: boolean
-    default: false
-    title: Debug only — skip GPU allocation in generated stacks
-    description: Generated stacks still create DevOps resources and can install shared CPU controllers. Normal deployments allocate GPUs; discovery itself never allocates GPUs.
   compartment_ocid:
     type: string
     visible: false
@@ -103,14 +93,6 @@ variables:
     default: "[]"
     title: Optional GPU shape subset
     description: Empty means all visible GPU shapes.
-  query_resource_availability:
-    type: boolean
-    title: Query supported limit headroom
-  only_shapes_with_limits:
-    type: boolean
-    title: Only check shapes with configured limits
-    default: false
-    description: Skip confirmed zero-limit shapes. Leave disabled to find capacity for limit-increase requests. Unknown quota mappings remain included.
   region_scope_item:
     type: oci:identity:region:name
     title: Region to include

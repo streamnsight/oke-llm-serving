@@ -146,7 +146,6 @@ function renderOptions() {
     deploymentStep(steps, "1. GPU pool and shared components", "Create this stack when you need a pool or shared controllers. Reuse an existing compatible platform for additional models.", row.links.launch_url, row.links.download_url, row.links.expires_at);
     const modelLinks = row.links.model_deployment || {};
     deploymentStep(steps, "2. Model project and pipelines", "Create an independent DevOps project for this model. Select the cluster; matching pool, networking and shared components are inferred. Model execution waits for readiness and namespace onboarding.", modelLinks.launch_url, modelLinks.download_url, modelLinks.expires_at);
-    if (row.skip_gpu_allocation) add(body, "p", "Debug default: the infrastructure stack skips GPU allocation while creating CPU platform delivery resources.", "muted");
     const config = add(body, "section"); add(config, "h3", "Serving configuration"); badge(config, label(row.configuration_status), true);
     add(config, "p", "Runtime validation: " + label(row.runtime_validation) + ". Memory method: " + label(row.memory_method) + ".", "muted");
     facts(add(config, "dl", undefined, "facts"), [["Serving framework / version", text(serving.framework) + " / " + text(serving.version)], ["Container platform", serving.platform], ["Recipe GPU family", serving.source_hardware], ["Planned GPU family", serving.selected_hardware]]);
@@ -191,7 +190,6 @@ function renderCapacity() {
   }
 }
 for (const notice of report.notices || []) add($("notices"), "li", notice);
-if (report.diagnostics) code(details($("diagnostics"), "Detailed discovery evidence", "diagnostics"), JSON.stringify(report.diagnostics, null, 2));
 $("search").addEventListener("input", renderOptions);
 $("sort").addEventListener("change", renderOptions);
 $("capacity-search").addEventListener("input", renderCapacity);

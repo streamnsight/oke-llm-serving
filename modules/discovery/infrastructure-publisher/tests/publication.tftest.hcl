@@ -81,17 +81,14 @@ run "long_model_archive_path_does_not_lengthen_the_launch_url" {
     error_message = "Real-length PAR tokens plus descriptive paths reproduce the old failure; the short launch path must avoid it regardless of model name."
   }
 }
-run "debug_default_is_carried_into_both_editable_defaults" {
+run "allocation_debug_control_belongs_only_to_the_generated_stack" {
   command = apply
-  variables {
-    skip_gpu_allocation = true
-    options             = { debug = { region = "us-phoenix-1", availability_domain = "AD-1", gpu_shape = "BM.GPU.A10.4", node_count = 1, availability = "available_at_scan" } }
-  }
   assert {
-    condition     = jsondecode(local.files.debug["recommendations_override.tf.json"]).variable.skip_gpu_allocation.default && yamldecode(local.files.debug["schema.yaml"]).variables.skip_gpu_allocation.default && output.deployment_options.debug.skip_gpu_allocation
-    error_message = "Debug discovery must produce infrastructure ZIPs that skip GPUs without disabling the platform."
+    condition     = !contains(keys(jsondecode(local.files.selected["recommendations_override.tf.json"]).variable), "skip_gpu_allocation") && !yamldecode(local.files.selected["schema.yaml"]).variables.skip_gpu_allocation.default && strcontains(local.files.selected["variables.tf"], "variable \"skip_gpu_allocation\"")
+    error_message = "Discovery must not choose the allocation debug mode; the infrastructure form retains its editable false default."
   }
 }
+
 run "customer_endpoint_uses_the_classic_storage_host_for_rms" {
   command   = apply
   providers = { oci = oci.customer }

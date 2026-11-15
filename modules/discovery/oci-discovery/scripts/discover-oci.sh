@@ -13,11 +13,10 @@ cat > "$scratch/input.json"
 jq -e '
   if type!="object" or any(.[];type!="string") then error("Expected Terraform external string-map query") else . end |
   .regions=((.regions|fromjson)//[]|map(if type=="string" then gsub("^[[:space:]]+|[[:space:]]+$";"") else . end)|map(select(.!=""))|unique) | .shape_names=((.shape_names|fromjson)//[]|map(if type=="string" then gsub("^[[:space:]]+|[[:space:]]+$";"") else . end)|map(select(.!=""))|unique) |
-  .gpu_catalog|=fromjson | .query_resource_availability|=fromjson | .only_shapes_with_limits|=fromjson |
+  .gpu_catalog|=fromjson |
   if (.tenancy_ocid|length)>0 and
     (.regions|type)=="array" and all(.regions[];type=="string") and
     (.shape_names|type)=="array" and all(.shape_names[];type=="string") and
-    (.query_resource_availability|type)=="boolean" and (.only_shapes_with_limits|type)=="boolean" and
     (.gpu_catalog.shapes|type)=="object" then . else error("Invalid discovery query") end |
   .compartment_id=(if (.compartment_id//"")!="" then .compartment_id else .tenancy_ocid end)
 ' "$scratch/input.json" > "$scratch/query.json"
@@ -109,7 +108,7 @@ scan_region() (
   used=0; : > "$dir/observations.jsonl"
   while IFS= read -r limit; do
     printf '%s' "$limit" > "$dir/limit.json"
-    reason=$(jq_lib -r --slurpfile q "$query" --argjson used "$used" 'include "oci-discovery"; skip_reason($q[0];$used)' "$dir/limit.json")
+    reason=$(jq_lib -r --argjson used "$used" 'include "oci-discovery"; skip_reason($used)' "$dir/limit.json")
     printf '{}' > "$dir/availability.json"
     if [[ -z "$reason" ]]; then
       name=$(jq -r .name "$dir/limit.json"); scope=$(jq -r .scope_type "$dir/limit.json")
@@ -123,7 +122,7 @@ scan_region() (
   i=0; : > "$dir/combined.jsonl"
   while ((i<ad_index)); do
     ad_dir="$dir/ad-$i"; ad=$(cat "$ad_dir/name")
-    jq_lib --slurpfile q "$query" --slurpfile limits "$dir/limit-plan.json" --arg ad "$ad" 'include "oci-discovery"; capacity_names($q[0];$limits[0];$ad)' "$ad_dir/physical.json" > "$ad_dir/names.json"
+    jq_lib 'include "oci-discovery"; capacity_names' "$ad_dir/physical.json" > "$ad_dir/names.json"
     count=$(jq '.assessed|length' "$ad_dir/names.json")
     if ((count>0)); then
       jq '[.assessed[]|{instanceShape:.}]' "$ad_dir/names.json" > "$ad_dir/request.json"
@@ -133,7 +132,7 @@ scan_region() (
     jq_lib -cn --slurpfile q "$query" --slurpfile names "$ad_dir/names.json" --slurpfile shapes "$ad_dir/shapes.json" --slurpfile assessment "$ad_dir/assessment.json" --arg ad "$ad" '
       include "oci-discovery"; {name:$ad,shapes:($shapes[0]|inventory_shapes($q[0].gpu_catalog)),
         capacity:{name:$ad,visible_gpu_shapes:$names[0].visible,assessed_gpu_shapes:$names[0].assessed,skipped_zero_limit_shapes:$names[0].skipped,assessment:$assessment[0],
-          status:(if $assessment[0]!=null then $assessment[0].status elif ($names[0].visible|length)>0 then "skipped_zero_limits" else "no_gpu_shapes_listed" end)}}' >> "$dir/combined.jsonl"
+          status:(if $assessment[0]!=null then $assessment[0].status else "no_gpu_shapes_listed" end)}}' >> "$dir/combined.jsonl"
     i=$((i+1))
   done
   jq_lib -n --slurpfile q "$query" --arg region "$region" --slurpfile ads "$dir/combined.jsonl" --slurpfile limits "$dir/observations.json" --slurpfile quotas "$dir/quotas.json" --argjson used "$used" 'include "oci-discovery"; regional_result($q[0];$region;$ads;$limits[0];$quotas[0];$used)' > "$dir/result.json"
