@@ -17,19 +17,19 @@ RDMA follows the selected model execution/transfer topology and hardware/region 
 | Prometheus/operator and monitoring CRDs | On | Native Helm; persistent 50-GiB data claim, 24-hour retention, editable parameters |
 | KEDA and external metrics API | On as a shared capability | Independent native Helm; each model opts into its own ScaledObject later |
 | LWS / DisaggregatedSet | Required by selected topology | Independent native Helm plus explicit owned raw-CRD preparation |
-| GPU/network operators | Reuse OKE capabilities | Missing/inactive native GPU support blocks enhanced-cluster allocation; the managed RDMA path also requires Network Operator. No duplicate standalone operator |
+| OKE hardware add-ons | Enable missing, reuse existing | NFD, NVIDIA GPU integration, Network Operator for RDMA, compatible bare-metal health controller. Existing settings and shared add-ons are retained; failed configurations stop allocation |
 | Router, LMCache instances, serving replicas and ScaledObjects | Model layer | Not installed by infrastructure bootstrap |
 | Optional model-data staging | Direct Hub download by default | Separate retained bucket and CPU download Job pipeline when configured |
 
 Prometheus and KEDA controllers can install concurrently: KEDA installation does not require a live Prometheus endpoint. A model's later scaling configuration must validate that endpoint and its query. KEDA queries Prometheus directly; this does not require a separate Prometheus Adapter. Node autoscaling is not enabled.
 
-OKE's GPU/network add-ons are optional. The allocation preflight checks existing service configuration and publishes `allocation.addon_prerequisites`; it does not enable or upgrade missing add-ons. Basic-cluster/manual integrations remain unverified. An ACTIVE Network Operator does not prove pod RDMA devices are configured, and GPU metric exporter/scrape configuration remains unfinished. Compute Cluster placement configures host RDMA agents separately. Runtime checks must still verify advertised devices, CUDA and fabric operation.
+OKE's GPU/network add-ons are optional. Infrastructure Apply [enables missing native add-ons](oke-managed-addons.md) on an enhanced cluster before the allocation preflight publishes `allocation.addon_prerequisites`. Existing add-on versions/settings are preserved and failed installations need explicit repair. An ACTIVE Network Operator does not prove pod RDMA devices are configured; GPU health policy and metric exporter/scrape configuration remain separate. Compute Cluster placement configures host RDMA agents separately. Runtime checks must still verify advertised devices, CUDA and fabric operation.
 
 Images and bundled dependencies come from each Helm chart. Module-local chart versions freeze the platform recommendation; the recipe-selected vLLM image is a separate runtime decision. Chart mirroring and the native stage share the editable `CHART_VERSION` argument. Updating component charts is an explicit deployment operation, not an automatic consequence of looking up a newer model recipe.
 
 ## Run the pipelines
 
-1. Review Terraform Plan, then Apply. This creates pipelines; it does not start installations automatically.
+1. Review Terraform Plan, then Apply. This enables missing native OKE hardware add-ons and creates DevOps pipelines. Shared Helm controllers are installed by running their pipelines explicitly.
 2. The default `cluster_authorization_mode=iam` grants pipeline principals Kubernetes administration through `CLUSTER_MANAGE`, scoped to this exact cluster. It grants no OCI cluster update/delete or node-pool permissions. For explicit Kubernetes RBAC instead, select `rbac` and review/apply `bootstrap_rbac` as cluster administrator. Both stage types also need private API connectivity; the stack supplies a private OKE environment and a separate private Shell runner channel.
 3. Run `platform.bootstrap_pipeline_id` to coordinate the selected component graph, or invoke any `component_pipeline_ids` independently. Independent components start concurrently; each pipeline checks its own release prerequisites. Run settings on the component pipeline are editable and used by both preflight and native Helm.
 4. Run `platform.validation_pipeline_id` for fresh, read-only checks. It verifies current releases, managed ownership/generation markers, controller rollouts, Prometheus StatefulSet/PVC readiness and KEDA API aggregation when selected. GPU debug mode records its reduced scope and does not wait for GPUs.

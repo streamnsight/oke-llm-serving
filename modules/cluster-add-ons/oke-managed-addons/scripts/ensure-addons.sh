@@ -31,7 +31,7 @@ case "$mode" in
   ResourcePrincipal|resource_principal) auth_args=(--auth resource_principal);;
   APIKey|api_key) auth_args=(--auth api_key);;
   '') if [[ -n ${OCI_RESOURCE_PRINCIPAL_VERSION:-} && -z ${OCI_CLI_AUTH:-} ]]; then auth_args=(--auth resource_principal); fi;;
-  *) echo 'Unsupported provider authentication mode for repository cleanup.' >&2; exit 2;;
+  *) echo 'Unsupported provider authentication mode for OKE add-on installation.' >&2; exit 2;;
 esac
 cli() { oci ${auth_args[@]+"${auth_args[@]}"} --region "$REGION" --output json --connection-timeout 10 --read-timeout 60 "$@"; }
 refresh() {
