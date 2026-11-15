@@ -35,13 +35,13 @@ variable "observation_id" {
   default     = "initial"
 }
 variable "regions" {
-  description = "Empty selects every READY subscription. Optional subset for reruns/troubleshooting."
+  description = "Blank rows are ignored. An empty effective list selects every READY subscription; explicit names are trimmed and deduplicated."
   type        = set(string)
   default     = []
   nullable    = false
 }
 variable "shape_names" {
-  description = "Empty selects all visible GPU shapes."
+  description = "Blank rows are ignored. An empty effective list selects all visible GPU shapes; explicit names are trimmed and deduplicated."
   type        = set(string)
   default     = []
   nullable    = false

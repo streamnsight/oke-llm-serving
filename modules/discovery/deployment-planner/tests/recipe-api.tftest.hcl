@@ -314,3 +314,25 @@ run "same_budget_explains_different_TP_and_replica_packing_on_A100_variants" {
     error_message = "The same 71.83 GB budget needs TP4 on 24/40 GB devices and TP2 on 80 GB devices; pack complete replicas into the eight-GPU host."
   }
 }
+
+run "regional_known_supply_ignores_zero_and_missing_ADs" {
+  command = plan
+  variables {
+    regions = [{
+      inventory = {
+        region = "region-one"
+        availability_domains = [for ad in ["AD-1", "AD-2", "AD-3"] : {name=ad, shapes=[{shape="BM.GPU.A10.4",gpus=4,rdma_ports=0,quota_names=["gpu-count"]}]}]
+        limits = [{name="gpu-count",description="GPUs for test instances",scope_type="REGION",availability_domain=null,tenancy_limit=64,resource_availability={status="observed",available=64}}]
+      }
+      capacity = {region="region-one",availability_domains=[
+        {name="AD-1",assessment={observed_at="saved",shapes=[{shape="BM.GPU.A10.4",available_instances=2,availability_status="AVAILABLE"}]}},
+        {name="AD-2",assessment={observed_at="saved",shapes=[{shape="BM.GPU.A10.4",available_instances=0,availability_status="OUT_OF_HOST_CAPACITY"}]}},
+        {name="AD-3",assessment={observed_at="saved",shapes=[]}}
+      ]}
+    }]
+  }
+  assert {
+    condition = length(output.assessment.suggestions)==1 && output.assessment.suggestions[0].recommendation.regional_known_hosts==2 && output.assessment.suggestions[0].recommendation.ad_max_replicas==2
+    error_message = "An available AD remains selectable with a known-host lower bound when other ADs have zero or missing capacity. Unknown data must not enter sum() as null or become a claimed complete total."
+  }
+}

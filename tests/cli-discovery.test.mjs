@@ -120,3 +120,13 @@ test('literal legacy RMS region expressions never become endpoint hosts',()=>{
  const first=r.calls.find(c=>c.includes('region-subscription'));assert.equal(first.includes('--region'),false);
  assert.equal(r.result.home_region,'new-region-99');
 });
+
+test('an explicit unknown region is rejected rather than treated as an empty scope',()=>{
+ const r=run('',{regions:'["not-a-ready-subscription"]'});
+ assert.notEqual(r.status,0);assert.match(r.stderr,/READY tenancy subscriptions/);
+});
+test('an explicit unmatched shape is not silently expanded to every GPU',()=>{
+ const r=run('',{shape_names:'["NOT.A.REAL.SHAPE"]'});
+ assert.equal(r.status,0,r.stderr);assert.equal(r.result.regions[0].inventory.availability_domains[0].shapes.length,0);
+ assert.equal(r.result.regions[0].capacity.availability_domains[0].status,'no_gpu_shapes_listed');
+});

@@ -15,10 +15,11 @@ locals {
     ad_usable_hosts = min(option.available_instances, try(coalesce(try(option.entitled_instances, null), one([
       for row in local.availability_observations : row.entitled_instances if row.region == option.region && row.availability_domain == option.availability_domain && row.shape == option.gpu_shape
     ])), 0))
+    # one([]) is null, not an error. Unreported ADs add nothing to this known lower bound.
     # Sum physical supply for this exact shape once per AD; never add quota ceilings.
-    regional_known_hosts = sum(concat([0], [for ad in distinct([for row in local.shape_rows : row.ad if row.region == option.region && row.shape.shape == option.gpu_shape]) : try(one(distinct([
+    regional_known_hosts = sum(concat([0], [for ad in distinct([for row in local.shape_rows : row.ad if row.region == option.region && row.shape.shape == option.gpu_shape]) : try(coalesce(one(distinct([
       for row in local.shape_rows : row.capacity.available_instances if row.region == option.region && row.ad == ad && row.shape.shape == option.gpu_shape && try(row.capacity.availability_status == "AVAILABLE" && row.capacity.available_instances > 0, false) && try(row.capacity.fault_domain == null, true)
-    ])), 0)]))
+    ])), 0), 0)]))
     node_count = option.node_count, replicas = option.replicas, allocated_gpus = option.node_count * option.gpus_per_node
   } }
   recommendation_metrics = { for id, input in local.recommendation_inputs : id => merge(input, {

@@ -10,10 +10,13 @@ terraform {
   }
 }
 locals {
+  # RMS list controls can submit blank rows rather than an empty collection.
+  region_scope = sort(distinct(compact([for name in var.regions : try(trimspace(name), "")])))
+  shape_scope  = sort(distinct(compact([for name in var.shape_names : try(trimspace(name), "")])))
   discovery_query = {
     tenancy_ocid            = var.tenancy_ocid, compartment_id = coalesce(var.compartment_id, var.tenancy_ocid),
-    region                  = var.region == null ? "" : var.region, regions = jsonencode(sort(tolist(var.regions))),
-    shape_names             = jsonencode(sort(tolist(var.shape_names))), query_resource_availability = tostring(var.query_resource_availability),
+    region                  = var.region == null ? "" : var.region, regions = jsonencode(local.region_scope),
+    shape_names             = jsonencode(local.shape_scope), query_resource_availability = tostring(var.query_resource_availability),
     only_shapes_with_limits = tostring(var.only_shapes_with_limits), observation_id = var.observation_id
   }
 }

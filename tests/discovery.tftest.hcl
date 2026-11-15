@@ -67,6 +67,28 @@ run "null_scopes_use_empty_defaults" {
     error_message = "Null filters must become empty arrays rather than malformed external inputs."
   }
 }
+run "blank_RMS_rows_mean_no_scope_filter" {
+  command = plan
+  variables {
+    regions     = ["", " \t ", null]
+    shape_names = [""]
+  }
+  assert {
+    condition     = local.discovery_query.regions == "[]" && local.discovery_query.shape_names == "[]"
+    error_message = "RMS blank list rows must become empty arrays before the external lookup."
+  }
+}
+run "explicit_scope_names_are_trimmed_without_discarding_nonempty_filters" {
+  command = plan
+  variables {
+    regions     = [" new-future-region-1 ", "new-future-region-1", "", null]
+    shape_names = [" BM.GPU.H100.8 ", "BM.GPU.H100.8", "\n", null]
+  }
+  assert {
+    condition     = local.discovery_query.regions == jsonencode(["new-future-region-1"]) && local.discovery_query.shape_names == jsonencode(["BM.GPU.H100.8"])
+    error_message = "Only blank values are discarded; real filters stay exact, trimmed and deduplicated."
+  }
+}
 
 run "connection_region_is_optional_for_local_discovery" {
   command = plan
