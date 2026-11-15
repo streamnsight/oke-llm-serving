@@ -9,7 +9,7 @@ staging=$(mktemp -d)
 trap 'rm -rf "$staging"' EXIT
 unzip -tq "$1"
 unzip -q "$1" -d "$staging"
-for required in main.tf schema.yaml .terraform.lock.hcl recommendations_override.tf.json inputs/infrastructure-spec.json bundle-manifest.json; do
+for required in main.tf schema.yaml .terraform.lock.hcl recommendations_override.tf.json inputs/infrastructure-spec.json bundle-manifest.json modules/cluster-add-ons/oke-managed-addons/main.tf modules/cluster-add-ons/oke-managed-addons/scripts/ensure-addons.sh; do
   [[ -f "$staging/$required" ]] || { echo "Missing rendered asset: $required" >&2; exit 1; }
 done
 [[ ! -d "$staging/templates/infrastructure" && ! -d "$staging/modules/discovery/infrastructure-publisher" ]]

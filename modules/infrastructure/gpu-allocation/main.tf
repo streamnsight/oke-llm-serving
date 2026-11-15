@@ -10,7 +10,7 @@ terraform {
 data "oci_containerengine_cluster" "target" { cluster_id = var.cluster_id }
 data "oci_containerengine_addons" "target" {
   count      = data.oci_containerengine_cluster.target.type == "ENHANCED_CLUSTER" ? 1 : 0
-  cluster_id = var.cluster_id
+  cluster_id = coalesce(var.addon_cluster_id, var.cluster_id)
 }
 resource "terraform_data" "identity" { triggers_replace = var.name }
 data "oci_containerengine_node_pools" "owned" {

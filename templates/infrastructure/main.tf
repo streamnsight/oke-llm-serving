@@ -80,6 +80,17 @@ resource "terraform_data" "specification" {
     }
   }
 }
+module "native_addons" {
+  source             = "../../modules/cluster-add-ons/oke-managed-addons"
+  cluster_id         = var.cluster_id
+  cluster_type       = module.target.target.cluster_type
+  kubernetes_version = module.target.target.kubernetes_version
+  region             = var.region
+  gpu_shape          = var.gpu_shape
+  requires_rdma      = local.requires_rdma
+  installed_addons   = module.target.target.oke_addons
+  depends_on         = [terraform_data.specification]
+}
 module "allocation" {
   providers           = { oci = oci, oci.home = oci.home }
   count               = var.skip_gpu_allocation ? 0 : 1
@@ -87,6 +98,7 @@ module "allocation" {
   tenancy_ocid        = var.tenancy_ocid
   compartment_id      = local.compartment_id
   cluster_id          = var.cluster_id
+  addon_cluster_id    = module.native_addons.cluster_id
   region              = var.region
   availability_domain = var.availability_domain
   name                = var.platform_name
@@ -123,7 +135,8 @@ output "infrastructure_preview" {
     network_selection       = local.requires_rdma ? "RDMA Compute Cluster placement; fabric validation pending" : "Ethernet pool; no inter-host RDMA fabric selected by this execution plan",
     gpu_selector            = "oke-llm/allocation=${var.platform_name}",
     cpu_budget              = module.bootstrap.platform.cpu_budget,
-    bootstrap               = { type = "OCI DevOps native Helm + Shell", automatically_started = false, gpu_network_support = "reuse OKE-managed capabilities; verify actual allocatable resources", shared_controllers = module.bootstrap.platform.required_components, model_workloads = "none" },
+    native_addons           = module.native_addons.status,
+    bootstrap               = { type = "OCI DevOps native Helm + Shell", automatically_started = false, gpu_network_support = "enable missing OKE-managed add-ons; reuse existing settings; verify actual allocatable resources", shared_controllers = module.bootstrap.platform.required_components, model_workloads = "none" },
     runtime_readiness       = "not_checked_by_terraform", gpu_kernel_cuda_rdma_validation = "requires_live_nodes_and_later_model_tests"
   })
 }

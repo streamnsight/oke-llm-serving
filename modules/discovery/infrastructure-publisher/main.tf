@@ -11,7 +11,7 @@ locals {
   # The store also holds the HTML report, including assessments with no options.
   published_at = terraform_data.publication[0].output
   # Model ZIPs are published alongside infrastructure directly by discovery.
-  dependencies = toset(["infrastructure/gpu-allocation", "discovery/accelerator-inventory", "discovery/capacity-assessment", "infrastructure/deployment-target", "infrastructure/oke-node-image", "cluster-add-ons/platform-bootstrap", "shared/component-delivery"])
+  dependencies = toset(["infrastructure/gpu-allocation", "discovery/accelerator-inventory", "discovery/capacity-assessment", "infrastructure/deployment-target", "infrastructure/oke-node-image", "cluster-add-ons/oke-managed-addons", "cluster-add-ons/platform-bootstrap", "shared/component-delivery"])
   module_files = merge([for dependency in local.dependencies : {
     for relative in fileset("${var.modules_dir}/${dependency}", "**") : "modules/${dependency}/${relative}" => file("${var.modules_dir}/${dependency}/${relative}")
     if !startswith(relative, ".") && !startswith(relative, "tests/") && !startswith(relative, "work/") && !startswith(relative, "__pycache__/") && !strcontains(relative, "/__pycache__/") && !startswith(relative, "node_modules/") && !strcontains(relative, "/.") &&

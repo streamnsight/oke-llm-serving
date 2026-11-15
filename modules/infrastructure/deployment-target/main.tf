@@ -117,7 +117,7 @@ output "target" {
     gpu_nsg_ids        = local.worker_nsgs.gpu, cpu_nsg_ids = local.worker_nsgs.cpu, devops_nsg_ids = local.runner_nsgs, pod_nsg_ids = local.pod_nsgs,
     endpoint_subnet_id = local.endpoint_subnet, api_connectivity = "requires_routing_security_and_runtime_check",
     native_cni         = local.native_cni, ready = length(local.issues) == 0, issues = local.issues,
-    oke_addons         = try([for a in data.oci_containerengine_addons.target[0].addons : { name = a.addon_name, installed_version = a.current_installed_version, state = a.state }], [])
+    oke_addons         = try([for a in data.oci_containerengine_addons.target[0].addons : { name = a.addon_name, installed_version = a.current_installed_version, state = a.state, configurations = { for c in coalesce(a.configurations, []) : c.key => c.value } }], [])
     cpu_shapes         = sort(distinct([for p in local.pools : p.node_shape if !strcontains(p.node_shape, "GPU") && try(p.node_config_details[0].size > 0, false)]))
   }
   precondition {

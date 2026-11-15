@@ -80,3 +80,8 @@ variable "pod_nsg_ids" {
   type    = list(string)
   default = []
 }
+variable "addon_cluster_id" {
+  description = "Optional dependency binding from native add-on installation; standalone callers retain read-only prerequisite checks."
+  type        = string
+  default     = null
+}

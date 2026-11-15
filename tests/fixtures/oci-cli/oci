@@ -3,10 +3,11 @@
 # Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
 # Terraform provider mocks do not suppress local-exec provisioners. Never call OCI.
 set -euo pipefail
-repository=""; command_words=()
+repository=""; cluster=""; command_words=()
 while (( $# )); do
   case "$1" in
     --repository-id) repository=$2; shift 2;;
+    --cluster-id) cluster=$2; shift 2;;
     --region|--output|--connection-timeout|--read-timeout|--compartment-id) shift 2;;
     --all) shift;;
     *) command_words+=("$1"); shift;;
@@ -14,6 +15,8 @@ while (( $# )); do
 done
 if [[ "$repository" == ocid1.artifactrepository.oc1.test.* && "${command_words[*]}" == 'artifacts generic artifact list' ]]; then
   printf '{"data":{"items":[]}}\n'
+elif [[ "$cluster" == ocid1.cluster.oc1.test.fixture && "${command_words[*]}" == 'ce addon list' ]]; then
+  printf '{"data":{"items":[{"addon-name":"NodeFeatureDiscovery","lifecycle-state":"ACTIVE"},{"addon-name":"NvidiaGpuOperator","lifecycle-state":"ACTIVE"},{"addon-name":"NvidiaNetworkOperator","lifecycle-state":"ACTIVE"},{"addon-name":"GpuHealthMonitoring","lifecycle-state":"ACTIVE"}]}}\n'
 else
   echo 'Unmocked OCI CLI call refused by Terraform test fixture.' >&2
   exit 97

@@ -22,10 +22,14 @@ variables {
 override_module {
   target = module.target
   outputs = { target = {
-    ready                  = true, issues = [], gpu_image = { id = "gpu-image" }, cpu_image = null, kubernetes_version = "v1.34.1",
-    cluster_compartment_id = "cluster-compartment", vcn_id = "vcn", subnet_id = "worker", cpu_subnet_id = "worker", devops_subnet_id = "runner", pod_subnet_id = null,
-    gpu_nsg_ids            = [], cpu_nsg_ids = [], pod_nsg_ids = [], devops_nsg_ids = [], oke_addons = []
+    ready        = true, issues = [], gpu_image = { id = "gpu-image" }, cpu_image = null, kubernetes_version = "v1.34.1",
+    cluster_type = "ENHANCED_CLUSTER", cluster_compartment_id = "cluster-compartment", vcn_id = "vcn", subnet_id = "worker", cpu_subnet_id = "worker", devops_subnet_id = "runner", pod_subnet_id = null,
+    gpu_nsg_ids  = [], cpu_nsg_ids = [], pod_nsg_ids = [], devops_nsg_ids = [], oke_addons = []
   } }
+}
+override_module {
+  target  = module.native_addons
+  outputs = { cluster_id = "addons-ready-cluster", status = { management = "enable_missing_reuse_existing_retain_on_destroy" } }
 }
 override_module {
   target  = module.allocation
