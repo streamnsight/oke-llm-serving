@@ -14,7 +14,7 @@
 ## Phase 3 — validation and delivery
 - [x] Pass focused Terraform/script tests and RMS-compatible package checks.
 - [x] Update the affected RMS source and validate the first inline automatic deployment without creating, resizing or deleting GPU resources.
-- [ ] Commit, leave the requested usable feature branch in the main workspace and rebuild stack packages; record remaining limitations.
+- [x] Commit, leave the requested usable feature branch in the main workspace and rebuild stack packages; record remaining limitations.
 
 ## Validation evidence
 
@@ -38,8 +38,10 @@ The first live automatic coordinator completed successfully on 2026-11-15 at 06:
 ## Final local validation and operational boundary
 
 - Full Node suite: 131 passed, 3 optional skips, 0 failures. Platform Terraform: 16 passed; shared delivery: 3; model delivery: 8; model storage: 7; infrastructure template: 11; publishers: 13 infrastructure and 7 model.
-- Final configured archives: infrastructure 4/4 and model 3/3 Terraform cases, including fresh-worker saved-Plan archive creation. The complete release ZIP still needs its final committed-source rebuild below.
+- Final configured archives: infrastructure 4/4 and model 3/3 Terraform cases, including fresh-worker saved-Plan archive creation. The committed-source discovery ZIP, including both templates, also passed Terraform 1.5.7 initialization/validation. All three release packages were rebuilt; no node_modules or local state is shipped.
 - Routine failures no longer make Artifact Registry calls. Original failure codes survive secondary report/cleanup errors. Successful native benchmark JSON remains a deliberate downloadable artifact.
 - The failed workload used the current lock script. Released empty/null/missing holders are covered; occupied holders ending in newlines are preserved exactly and displayed as escaped JSON. No actual Lease was unlocked or modified. The live Lease could not be established before the user began destroying the stacks, so its exact conflict cause is not claimed fixed.
 - IAM membership, compartment and declared upload permission matched the failed model pipeline. Early policy propagation is plausible but not proven; permissions were not widened.
 - The temporary read-only diagnostic was canceled at 07:00:00 UTC on 2026-11-15; its exact temporary stage and inline artifact were deleted and verified absent. No existing pipeline, project, Lease, node pool or GPU allocation was changed by that diagnostic. No obsolete software/report objects were manually pruned after the user announced destruction.
+
+Implementation and local validation are complete on the requested feature branch. The remaining unchecked item is explicitly deferred live validation after teardown; this branch is not merged into main. User README/schema edits and local state/tfvars were preserved.
