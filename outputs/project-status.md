@@ -16,7 +16,7 @@ Live RMS discovery publication, PAR downloads, hosted report rendering and nativ
 
 The shared CPU component foundation was previously validated live: LWS reuse, parallel Prometheus/KEDA installation, fresh aggregate readiness and guarded KEDA uninstall/reinstall retaining six KEDA CRDs. See [that validation](native-component-validation-2026-11-13.md). Prometheus and the shared KEDA controller default on; model autoscaling remains opt-in and LWS follows topology. Existing CPU pools host controllers; infrastructure creates no CPU pool. The temporary `skip_gpu_allocation` debug flag suppresses allocation only and must never be enabled after retaining GPU hosts.
 
-Model workloads use a repository-owned native Helm chart for Deployment/LWS and an optional pinned Production Stack router dependency. Native Helm and artifact-backed Shell stages remain explicit operations. Shared components have platform lifecycle; model releases, routes/cache instances and scaling resources have model lifecycle. Scripts/configuration/evidence use Generic Artifacts, charts use OCIR; Object Storage holds discovery bundles/reports and explicitly selected retained model data.
+Model workloads use a repository-owned native Helm chart for Deployment/LWS and an optional pinned Production Stack router dependency. Native Helm and artifact-backed Shell stages remain explicit operations. Shared components have platform lifecycle; model releases, routes/cache instances and scaling resources have model lifecycle. Small scripts/configuration use readable inline artifacts; larger file inputs and execution evidence use Generic Artifacts, charts use OCIR; Object Storage holds discovery bundles/reports and explicitly selected retained model data.
 
 ## Remaining work and validation limits
 
