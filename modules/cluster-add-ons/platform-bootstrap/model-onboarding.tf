@@ -3,7 +3,7 @@
 locals {
   model_onboarding_scripts = toset(["onboard-model.sh", "model-access.jq"])
   model_onboarding_parameters = {
-    MODEL_NAMESPACE = "", MODEL_PIPELINE_IDS = "[]", MODEL_PROJECT_ID = "", MODEL_GPU_POOL_ID = "runtime", MODEL_ACCESS_OPERATION = "grant"
+    MODEL_NAMESPACE = "", MODEL_PIPELINE_IDS = "", MODEL_PROJECT_ID = "", MODEL_GPU_POOL_ID = "runtime", MODEL_ACCESS_OPERATION = "grant"
   }
   model_onboarding_context = jsonencode({ components = { for key, c in local.component_specs : key => {
     namespace    = c.namespace, mode = c.mode, owner_name = module.components.owner_names[key], ownership_token = c.ownership_token,
@@ -38,7 +38,7 @@ resource "oci_devops_deploy_pipeline" "model_onboarding" {
       content {
         name          = items.key
         default_value = items.value
-        description   = "Use the model stack's onboarding_arguments. Namespace must belong to this platform; active pipeline defaults must declare that model project, cluster, platform, GPU pool and namespace. grant or revoke is explicit."
+        description   = items.key == "MODEL_PIPELINE_IDS" ? "Comma-separated list of 1 to 16 unique exact model deployment pipeline OCIDs." : "Use the model stack's onboarding_arguments. Namespace must belong to this platform; active pipeline defaults must declare that model project, cluster, platform, GPU pool and namespace. grant or revoke is explicit."
       }
     }
   }

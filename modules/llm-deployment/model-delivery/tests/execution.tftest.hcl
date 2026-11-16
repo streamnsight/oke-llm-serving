@@ -48,12 +48,12 @@ run "apply_onboards_deploys_then_validates" {
   assert {
     condition = tomap({ for item in oci_devops_deployment.onboarding.deployment_arguments[0].items : item.name => item.value }) == tomap({
       MODEL_NAMESPACE    = output.namespace, MODEL_PROJECT_ID = "project", MODEL_GPU_POOL_ID = "gpu-pool",
-      MODEL_PIPELINE_IDS = replace(jsonencode(sort(output.all_pipeline_ids)), "\"", "\\\""), MODEL_ACCESS_OPERATION = "grant"
+      MODEL_PIPELINE_IDS = join(",", sort(output.all_pipeline_ids)), MODEL_ACCESS_OPERATION = "grant"
     })
-    error_message = "Trusted onboarding must receive the exact boundary and pipeline set, with JSON quotes preserved through Managed Shell's assignment layer."
+    error_message = "Trusted onboarding must receive the exact boundary and complete pipeline set as plain comma-separated IDs."
   }
   assert {
-    condition     = output.onboarding_arguments == local.onboarding_arguments && output.model_delivery.onboarding.arguments == local.onboarding_arguments && tolist(jsondecode(replace(local.onboarding_arguments.MODEL_PIPELINE_IDS, "\\\"", "\""))) == sort(output.all_pipeline_ids)
+    condition     = output.onboarding_arguments == local.onboarding_arguments && output.model_delivery.onboarding.arguments == local.onboarding_arguments && split(",", local.onboarding_arguments.MODEL_PIPELINE_IDS) == sort(output.all_pipeline_ids)
     error_message = "Automatic and manual onboarding must use identical transport arguments that reconstruct the exact sorted pipeline IDs."
   }
   assert {
