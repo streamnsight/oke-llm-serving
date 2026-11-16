@@ -427,7 +427,7 @@ by this planning update.
 - [x] Add recipe/profile resolution and RMS/Terraform routing/cache inputs.
 - [x] Render MP launcher, in-process controller reporting, memory budgets and router ports.
 - [x] Validate launcher lifecycle, manifest behavior and rejection of incompatible combinations.
-- [ ] Run Terraform regression and generated RMS archive checks.
+- [x] Run Terraform regression and generated RMS archive checks.
 - [ ] Record exact runtime compatibility and remaining multi-replica validation.
 
 Initial MP adapter is single-host TP, one disposable host tier per serving Pod.
@@ -469,3 +469,12 @@ weights. Seven final cache launcher/chart checks passed, alongside the existing
 benchmark regressions and the explicit cache-readiness check. Final delivery
 Terraform suite: 45 passed. Candidate discovery/model-template archives passed
 Terraform 1.5.7; final archives are rebuilt from the final committed source.
+
+Both final committed-source archives passed Terraform 1.5.7 initialization,
+validation and archive layout checks, including the discovery ZIP's embedded
+infrastructure and model roots. A direct standalone `validate` of the child
+model-delivery module requires its caller-provided `oci.home` alias; the
+mock-provider test harness and generated root archive validations provide that
+context. No live cache correctness or multi-replica runtime result is claimed.
+Main-branch integration remains pending that runtime validation. The current
+working feature branch may consume these locally validated sources.
