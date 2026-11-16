@@ -20,8 +20,9 @@ Success means every generated serving/router/benchmark/staging image identifies 
 
 ## Phase 3 — deliver and verify
 
-- [ ] Commit, rebuild the discovery entry with both templates and validate actual generated archives with Terraform 1.5.7.
-- [ ] Preserve existing RMS values while updating sources; review the model Plan for zero GPU infrastructure mutations, then rerun deploy and automatic validation. Benchmark remains manual.
-- [ ] Check actual Pod image pull/startup/health and a refreshed Plan. Do not claim inference validation when its configured probe is disabled.
+- [x] Commit, rebuild the discovery entry with both templates and validate actual generated archives with Terraform 1.5.7.
+- [x] Preserve RMS values while updating sources, except the later user-requested model main override. The reviewed Plan had zero GPU infrastructure mutations; deploy and automatic validation succeeded. Benchmark remains manual.
+- [x] Check actual Pod image pull/startup/health. A separate bounded chat request returned OK; the configured automatic inference probe remains disabled.
+- [x] Check a refreshed RMS Plan: zero managed resource changes.
 
 Live result: the fully qualified digest reference passed CRI-O inspection, the image pulled and vLLM started. The subsequent startup failure is the recipe-enabled Rust frontend rejecting the model chat template; image registry selection is no longer the blocker. Model and container digests remain unchanged.

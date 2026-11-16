@@ -22,9 +22,10 @@ Success means model Apply runs trusted onboarding, workload deployment and indep
 
 - [x] Pass focused runtime and Terraform lifecycle regressions, including failure propagation and unchanged revisions.
 - [x] Validate the configured generated model ZIP and RMS Terraform compatibility; rebuild discovery with both embedded templates.
-- [ ] Preserve current RMS settings, review a Plan for no GPU infrastructure mutations, then Apply the authorized execution chain.
-- [ ] Confirm actual onboarding/workload/validation outcome, and use a refreshed Plan to check idempotency.
-- [ ] Commit the usable feature branch and record live limits accurately.
+- [x] Preserve current RMS settings, review a Plan for no GPU infrastructure mutations, then Apply the authorized execution chain. The requested main override was the only Console value changed.
+- [x] Confirm actual onboarding/workload/validation success in RMS.
+- [x] Use a refreshed RMS Plan to check idempotency: zero managed resource changes, including no repeated execution or INLINE artifact updates.
+- [x] Commit the usable feature branch and record live limits accurately. Frontend/default and direct-HF revision changes are on `fix/vllm-python-frontend`.
 
 Routine readiness/failure summaries stay in DevOps Logging. Existing ownership, lease and namespace authorization boundaries remain enforced. An inference probe disabled by configuration does not prove token-generation performance.
 
@@ -33,3 +34,5 @@ Routine readiness/failure summaries stay in DevOps Logging. Existing ownership, 
 The first RMS Plan exposed incomplete ListStages fields in the pinned provider. Reading full stage details fixed target discovery; seventeen target regressions and Terraform 1.5.7 validation pass. The reviewed next Plan contained no GPU infrastructure mutations and started only onboarding/deploy/validate.
 
 The first automatic Apply reached trusted onboarding but failed before namespace creation: Managed Shell removed JSON quote characters from MODEL_PIPELINE_IDS. The stored API argument was valid JSON; real Bash assignment reproduced the exact jq column 107 error. A live retry also stripped single-level escaping. The final interface uses comma-separated OCIDs and normalizes them to a strictly validated internal JSON array in the trusted script. Existing project/namespace/pipeline ownership checks remain unchanged. Workload and benchmark did not run during that failure.
+
+The later startup blockers are resolved: the approved existing-root repair enabled scheduling, fully qualified images fixed CRI-O inspection, Python frontend selection fixed template handling, and direct-HF main avoided the reproduced upstream revision-wrapper bug without modifying the image. The full automatic Apply then succeeded, including independent validation. A separate bounded chat request returned OK. Benchmarks, multi-node/RDMA and other modalities were not exercised. See [the startup record](vllm-frontend-startup-plan.md).
