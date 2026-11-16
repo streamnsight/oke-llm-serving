@@ -74,7 +74,7 @@ facts($("model-details"), [
   ["Parameters (Hub-published)", number(model.parameter_count)], ["Checkpoint download size", gb(model.memory_gb.checkpoint_download)],
   ["Checkpoint formats in repository", (model.checkpoint_formats || []).join(", ") || "Unknown"],
   ["Selected checkpoint", model.selected_checkpoint], ["Published tensor dtypes", Object.keys(model.parameters_by_dtype || {}).join(", ") || "Unknown"],
-  ["Quantization", model.quantization ? JSON.stringify(model.quantization) : "Not declared"],
+  ["Quantization", model.quantization ? Object.entries(model.quantization).filter(([key]) => ["quant_method", "bits", "weight_block_size", "activation_scheme", "group_size"].includes(key)).map(([key, value]) => key + ": " + JSON.stringify(value)).join(" · ") || "Declared; see pinned model configuration" : "Not declared"],
   ["Declared maximum context", positive(model.declared_context_length) + " tokens"], ["Library / license", text(model.library) + " / " + text(model.license)],
   ["Revision", model.revision], ["Last modified on Hugging Face", model.last_modified],
   ["Access", model.gated === true || model.gated === "auto" || model.gated === "manual" ? "Gated model · Hub access required" : model.gated === false ? "Public model" : "Unknown"],
@@ -83,12 +83,12 @@ if (model.experts > 0) facts($("model-details"), [["Experts / active per token",
 $("model-provenance").textContent = text(model.weights_source) + ". Checkpoint download size describes storage; it is separate from resident GPU memory.";
 const cachedTokens = model.context_length > 0 && model.concurrency_per_replica > 0 ? model.context_length * model.concurrency_per_replica : null;
 $("workload").textContent = number(model.context_length) + " context tokens × " + number(model.concurrency_per_replica) + " concurrent sequences per replica = " + number(cachedTokens) + " live cached tokens when all sequences reach the requested length.";
-for (const [name, value] of [["Resident weights", model.memory_gb.resident_weights], [model.memory_gb.kv_per_replica == null && model.memory_gb.full_attention_kv != null ? "Full-attention KV payload / replica" : "KV cache reservation / replica", model.memory_gb.kv_per_replica ?? model.memory_gb.full_attention_kv], ["Runtime allowance / GPU", model.memory_gb.runtime_allowance], [model.memory_gb.total_estimated == null && model.recipe_memory_budget_gb != null ? "Planning payload budget / replica" : "Estimated total / replica", model.memory_gb.total_estimated ?? model.recipe_memory_budget_gb]]) {
+for (const [name, value] of [["Weight baseline (checkpoint precision)", model.memory_gb.resident_weights], [model.memory_gb.kv_per_replica == null && model.memory_gb.full_attention_kv != null ? "Full-attention KV payload / replica" : "KV cache reservation / replica", model.memory_gb.kv_per_replica ?? model.memory_gb.full_attention_kv], ["Runtime allowance / GPU", model.memory_gb.runtime_allowance], [model.component_planning?.payload_budget_bytes > 0 || (model.memory_gb.total_estimated == null && model.recipe_memory_budget_gb != null) ? "Planning payload budget / replica" : "Estimated total / replica", model.component_planning?.payload_budget_bytes > 0 ? Math.max(model.component_planning.payload_budget_bytes / 1e9, model.recipe_memory_budget_gb || 0) : model.memory_gb.total_estimated ?? model.recipe_memory_budget_gb]]) {
   const node = add($("memory-metrics"), "div", undefined, "metric"); add(node, "span", name); add(node, "strong", gb(value));
 }
 if (model.memory_status !== "estimated") {
   const note = add($("memory-status"), "div", undefined, "callout");
-  add(note, "strong", "Complete memory estimate unavailable");
+  add(note, "strong", model.component_planning?.payload_budget_bytes > 0 ? "Heuristic planning scenario available" : "Complete memory estimate unavailable");
   add(note, "p", (model.memory_reasons || []).join(" ") || "This model architecture does not yet have a complete memory estimator.");
   if (model.recipe_memory_budget_gb != null) add(note, "p", "Recipe-based aggregate sizing budget: " + gb(model.recipe_memory_budget_gb) + ". This is heuristic guidance; per-rank fit and runtime use remain unvalidated.");
   if (model.partial_memory?.linear_attention_layers > 0) add(note, "p", number(model.partial_memory.full_attention_layers) + " full-attention layers contribute the KV payload above. " + number(model.partial_memory.linear_attention_layers) + " linear-attention layers also need recurrent/cache state; cache-manager padding, cached state checkpoints and vision workspace are not included in that payload.");
@@ -98,8 +98,14 @@ if (model.planning_memory?.selected_payload_budget_bytes > 0) {
   facts(add(explanation, "dl", undefined, "facts"), [["Weights used in sizing", gb(budget.weight_bytes == null ? null : budget.weight_bytes / 1e9)], ["All-layer KV sizing surrogate", gb(budget.kv_surrogate_bytes == null ? null : budget.kv_surrogate_bytes / 1e9)], ["Recipe minimum", gb(budget.recipe_minimum_bytes == null ? null : budget.recipe_minimum_bytes / 1e9)], ["Payload safety margin", number(budget.safety_margin_fraction * 100) + "%"], ["Selected payload budget", gb(budget.selected_payload_budget_bytes / 1e9)], ["Additional runtime allowance per GPU", gb(budget.runtime_allowance_per_gpu_bytes / 1e9)]]);
   add(explanation, "p", "Sizing takes the largest of the recipe minimum, any supported analytical estimate, and (weights + all-layer KV surrogate) × (1 + margin). It divides that payload approximately across TP ranks, adds the runtime allowance per GPU, and checks against 90% of device memory. The all-layer surrogate treats every text layer as full attention; it is not an estimate of actual hybrid-cache allocation or a bound on recurrent/vision memory. Validation and benchmarking establish the real fit.");
 }
+if (model.component_planning?.payload_budget_bytes > 0) {
+  const p = model.component_planning, box = details($("memory-status"), "Memory planning scenario and assumptions", "recipe-details");
+  facts(add(box, "dl", undefined, "facts"), [["Planning payload / replica", gb(p.payload_budget_bytes / 1e9)], ["Cache scenario", gb(p.cache_scenario_bytes == null ? null : p.cache_scenario_bytes / 1e9)], ["Workspace allowance", gb(p.workspace_allowance_bytes == null ? null : p.workspace_allowance_bytes / 1e9)], ["Evidence / confidence", text(p.weight_source) + " / " + text(p.status)], ["Cache basis", text(p.cache_source)], ["Margin", number(p.safety_margin_fraction * 100) + "%"]]);
+  add(box, "p", p.formula); add(box, "p", p.interpretation);
+  if (p.context_within_declared_maximum === false) add(box, "p", "Requested context exceeds the model's declared maximum; deployment requires an explicitly supported extension.");
+}
 const assumptions = model.memory_assumptions || {};
-$("memory-assumptions").textContent = "Compute dtype: " + text(assumptions.weight_dtype) + " · KV dtype: " + text(assumptions.kv_dtype) + " · Safety margin: " + (model.safety_margin_fraction == null ? "Unknown" : number(model.safety_margin_fraction * 100) + "%") + ". Estimates use decimal GB. " + (assumptions.prefix_sharing === false ? "No prefix-sharing savings assumed. " : "") + (assumptions.offload === false ? "No offload savings assumed. " : "") + "These values are estimates, not measured GPU usage.";
+$("memory-assumptions").textContent = "Weight precision: " + text(assumptions.weight_dtype) + " · KV dtype: " + text(assumptions.kv_dtype) + " · Safety margin: " + (model.safety_margin_fraction == null ? "Unknown" : number(model.safety_margin_fraction * 100) + "%") + ". Estimates use decimal GB. " + (assumptions.prefix_sharing === false ? "No prefix-sharing savings assumed. " : "") + (assumptions.offload === false ? "No offload savings assumed. " : "") + "These values are estimates, not measured GPU usage.";
 if (!report.option_count) {
   const note = add($("failures"), "div", undefined, "callout");
   add(note, "strong", "No deployable option was confirmed");
@@ -205,6 +211,9 @@ function renderCapacity() {
     const tr = add($("capacity"), "tr"), cells = Array.from({length: 5}, () => add(tr, "td"));
     add(cells[0], "strong", row.region + " " + ad.availability_domain);
     add(cells[0], "div", row.gpu_shape); add(cells[0], "small", gb(row.memory_gb_per_gpu) + " per GPU");
+    const compatibility = row.dtype_compatibility || {status: "not_verified", reason: "Dtype compatibility not assessed."};
+    badge(cells[0], compatibility.status === "compatible" ? "Dtype compatible" : compatibility.status === "not_compatible" ? "Not compatible" : "Not verified", compatibility.status !== "compatible");
+    add(cells[0], "small", text(compatibility.required_precision) + ": " + text(compatibility.reason));
     capacityQuantity(cells[1], row.gpus_per_host, "");
     capacityQuantity(cells[2], row.gpus_per_host == null ? null : ad.available_hosts * row.gpus_per_host, "GPUs / " + number(ad.available_hosts) + " hosts physically available");
     add(cells[2], "small", number(row.known_ads) + " / " + number(row.expected_ads) + " ADs assessed");

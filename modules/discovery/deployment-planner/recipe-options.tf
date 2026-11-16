@@ -15,17 +15,18 @@ locals {
     alltrue([for t in local.a.layer_types : contains(["full_attention", "sliding_attention"], t)]) &&
     alltrue([for n in [local.a.layers, local.a.heads, local.a.kv_heads, local.a.head_dim] : n > 0]) &&
   local.a.heads % local.a.kv_heads == 0, false)
-  payload_estimate = local.memory_supported ? try(local.profile.memory.recommended_aggregate_bytes, ceil((local.profile.memory.weight_bytes + local.profile.memory.kv_bytes + local.profile.memory.runtime_allowance_bytes) * (1 + local.profile.memory.assumptions.safety_margin_fraction))) : local.fallback_payload_known ? ceil((
-    max(local.profile.weights.tensor_data_bytes, local.profile.weights.tensor_elements * (local.profile.memory.assumptions.kv_dtype == "float32" ? 4 : 2)) +
+  legacy_payload_estimate = local.memory_supported ? try(local.profile.memory.recommended_aggregate_bytes, ceil((local.profile.memory.weight_bytes + local.profile.memory.kv_bytes + local.profile.memory.runtime_allowance_bytes) * (1 + local.profile.memory.assumptions.safety_margin_fraction))) : local.fallback_payload_known ? ceil((
+    local.profile.weights.tensor_data_bytes +
     2 * local.a.layers * local.a.kv_heads * local.a.head_dim * (local.profile.memory.assumptions.kv_dtype == "float32" ? 4 : 2) * local.profile.memory.assumptions.context_length * local.profile.memory.assumptions.concurrency +
     local.profile.memory.runtime_allowance_bytes
   ) * (1 + local.profile.memory.assumptions.safety_margin_fraction)) : null
+  payload_estimate = try(coalesce(try(local.profile.memory.planning.payload_budget_bytes, null), local.legacy_payload_estimate), null)
   sizing_rows = [for row in local.quantity_observations : merge(row, {
     hardware      = try(row.gpu.recipe_hardware, "unknown")
     platform      = try("linux/${row.gpu.cpu_architecture}", "unknown")
-    minimum_gpus  = try(ceil(local.payload_estimate / (row.gpu.memory_bytes_per_gpu * 0.9)), null)
-    minimum_nodes = try(ceil(ceil(local.payload_estimate / (row.gpu.memory_bytes_per_gpu * 0.9)) / row.shape.gpus), null)
-  }) if local.resolution_present && try(row.gpu.memory_bytes_per_gpu > 0 && row.gpu.compute_capability >= (local.profile.memory.assumptions.kv_dtype == "bfloat16" ? 80 : 75), false)]
+    minimum_gpus  = try(ceil(local.payload_estimate / (row.gpu.memory_bytes_per_gpu * 0.9 - local.profile.memory.runtime_allowance_bytes)), null)
+    minimum_nodes = try(ceil(ceil(local.payload_estimate / (row.gpu.memory_bytes_per_gpu * 0.9 - local.profile.memory.runtime_allowance_bytes)) / row.shape.gpus), null)
+  }) if try(row.gpu.memory_bytes_per_gpu * 0.9 > local.profile.memory.runtime_allowance_bytes, false)]
   sizing_diagnostics = [for row in local.sizing_rows : {
     id                                      = substr(sha256(jsonencode([local.profile.model, local.profile.memory.assumptions, var.serving_resolution, row.region, row.ad, row.shape.shape, "payload-only"])), 0, 16)
     region                                  = row.region, availability_domain = row.ad, gpu_shape = row.shape.shape, gpus_per_node = row.shape.gpus
@@ -34,7 +35,7 @@ locals {
     configuration_status                    = "undetermined_requires_expert", runtime_validation = "not_run"
     recipe_hardware_status                  = contains(local.tested_hardware, row.hardware) ? "upstream_hardware_match_only" : "no_tested_recipe_for_this_hardware"
     recipe_hardware                         = row.hardware, image_platform = row.platform
-    assessed_image_available                = try(var.serving_resolution.engine.available_images[row.platform] != null, row.platform == var.serving_resolution.engine.platform)
+    assessed_image_available                = try(var.serving_resolution.engine.available_images[row.platform] != null, row.platform == var.serving_resolution.engine.platform, false)
     capacity_status                         = row.capacity_status, limit_status = row.limit_status, headroom_status = row.headroom_status
     entitled_instances                      = row.entitled_instances
     available_instances                     = try(row.capacity.available_instances, null)
@@ -43,7 +44,7 @@ locals {
     remaining_checks                        = ["Expert must supply TP/PP, node count, per-rank memory bound and suitable args; aggregate sizing is not an executable configuration.", "No assumption that weights/KV divide evenly or that the model can use this many GPUs.", "Recheck quantity-specific capacity/limits, node CPU architecture, CUDA/driver compatibility, then validate and benchmark."]
   }]
   sizing_options = [for option in local.sizing_diagnostics : option if try(
-    option.capacity_status == "positive" && option.limit_status == "positive" &&
+    try(local.precision_checks[option.gpu_shape].status == "compatible", false) && option.capacity_status == "positive" && option.limit_status == "positive" &&
     option.available_instances >= option.estimated_minimum_nodes * var.replicas &&
   option.entitled_instances >= option.estimated_minimum_nodes * var.replicas, false)]
   recipe_targets = [for shape, gpu in local.catalog : {

@@ -25,7 +25,7 @@ run "hybrid_model_keeps_known_weights_and_partial_KV_without_claiming_complete_f
     error_message = "Hybrid/vision models still have independently known unquantized weight memory from Hub counts."
   }
   assert {
-    condition     = output.profile.memory.partial.full_attention_layers == 16 && output.profile.memory.partial.linear_attention_layers == 48 && output.profile.memory.partial.full_attention_kv_bytes == 1073741824 && output.profile.memory.kv_bytes == null && output.profile.memory.recommended_aggregate_bytes == null && output.profile.memory.status == "unsupported"
+    condition     = output.profile.memory.partial.full_attention_layers == 16 && output.profile.memory.partial.linear_attention_layers == 48 && output.profile.memory.partial.full_attention_kv_bytes == 1073741824 && output.profile.memory.kv_bytes == null && output.profile.memory.recommended_aggregate_bytes == null && output.profile.memory.status == "heuristic" && output.profile.memory.planning.payload_budget_bytes > 55562855904
     error_message = "The 16 full-attention layers have 1 GiB KV payload for 4096x4; linear state/vision/cache allocation must not become a fabricated complete estimate."
   }
 }

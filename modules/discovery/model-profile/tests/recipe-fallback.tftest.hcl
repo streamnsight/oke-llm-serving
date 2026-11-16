@@ -33,7 +33,7 @@ override_data {
 run "GGUF_profiles_the_declared_BF16_config_without_claiming_resident_memory" {
   command = plan
   assert {
-    condition     = output.profile.model.repository == "RecursiveSI/flint-nvfp4-gguf" && output.profile.model.chat_template_available && output.profile.architecture.architectures[0] == "FlintForCausalLM" && output.profile.memory.status == "unsupported" && output.profile.weights.checkpoint_download_bytes == 23000000000
+    condition     = output.profile.model.repository == "RecursiveSI/flint-nvfp4-gguf" && output.profile.model.chat_template_available && output.profile.architecture.architectures[0] == "FlintForCausalLM" && output.profile.memory.status == "heuristic" && output.profile.weights.checkpoint_download_bytes == 23000000000
     error_message = "Preserve GGUF checkpoint identity, obtain declared config/tokenizer and keep resident-memory uncertainty."
   }
   assert {
@@ -50,7 +50,7 @@ run "shared_metadata_still_pins_external_config_without_refetching_recipe" {
     }
   }
   assert {
-    condition     = length(data.http.fallback_recipe) == 0 && output.profile.model.config_sources.revisions["RecursiveSI/flint"] == "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" && output.profile.memory.status == "unsupported"
+    condition     = length(data.http.fallback_recipe) == 0 && output.profile.model.config_sources.revisions["RecursiveSI/flint"] == "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" && output.profile.memory.status == "heuristic"
     error_message = "Reusing recipe metadata must avoid duplicate HTTP work while independently pinning external files and preserving unknown memory."
   }
 }

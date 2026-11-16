@@ -93,7 +93,7 @@ run "flint_sizing_options_do_not_invent_a_serving_layout" {
     serving_resolution={status="resolved_requires_validation",recipe={hardware={gb200="verified"},selected_hardware="gb200"},engine={platform="linux/amd64"}}
   }
   assert {
-    condition=length(output.assessment.candidates)==0 && output.assessment.status=="requires_validation" && output.assessment.sizing_diagnostics[0].estimated_minimum_gpus==5 && output.assessment.sizing_diagnostics[0].configuration_status=="undetermined_requires_expert" && output.assessment.sizing_diagnostics[0].recipe_hardware_status=="no_tested_recipe_for_this_hardware"
+    condition=length(output.assessment.candidates)==0 && output.assessment.status=="requires_validation" && output.assessment.sizing_diagnostics[0].estimated_minimum_gpus==6 && output.assessment.sizing_diagnostics[0].configuration_status=="undetermined_requires_expert" && output.assessment.sizing_diagnostics[0].recipe_hardware_status=="no_tested_recipe_for_this_hardware"
     error_message="Flint on A10 must expose a memory-only lower bound, not fabricate TP/PP or claim runtime feasibility."
   }
   assert {
@@ -123,5 +123,36 @@ run "uncatalogued_gpu_does_not_crash_resolved_image_selection" {
   assert {
     condition = length(output.assessment.candidates) == 0 && output.assessment.shape_observations[0].catalog_known == false
     error_message = "Unknown GPU metadata must remain an observation, without crashing or inventing a deployable image/layout."
+  }
+}
+
+run "FP8_with_enough_memory_but_incompatible_A10_is_excluded" {
+  command = plan
+  variables {
+    profile = {
+      model = {repository="org/fp8",chat_template_available=true,pipeline_tag="text-generation"}
+      architecture = {architectures=["LlamaForCausalLM"],quantization={quant_method="fp8",weight_block_size=[128,128]},attention={layers=4,heads=8,kv_heads=2,hidden_size=64,vocab_size=100}}
+      weights = {elements_by_dtype={F8_E4M3=100}}
+      memory = {status="estimated",weight_bytes=1000000,kv_bytes=10000,runtime_allowance_bytes=1000,assumptions={safety_margin_fraction=0.2}}
+    }
+  }
+  assert {
+    condition = length(output.assessment.candidates)==0 && output.assessment.precision_compatibility["VM.GPU.A10.1"].status=="not_compatible" && output.assessment.precision_compatibility["BM.GPU.H100.8"].status=="compatible"
+    error_message = "Memory/capacity/headroom cannot bypass FP8 compatibility."
+  }
+}
+run "unknown_quantization_cannot_become_a_deployment_option" {
+  command = plan
+  variables {
+    profile = {
+      model = {repository="org/future",chat_template_available=true,pipeline_tag="text-generation"}
+      architecture = {architectures=["LlamaForCausalLM"],quantization={quant_method="future"},attention={layers=4,heads=8,kv_heads=2,hidden_size=64,vocab_size=100}}
+      weights = {elements_by_dtype={BF16=100}}
+      memory = {status="estimated",weight_bytes=1000000,kv_bytes=10000,runtime_allowance_bytes=1000,assumptions={safety_margin_fraction=0.2}}
+    }
+  }
+  assert {
+    condition = length(output.assessment.candidates)==0 && output.assessment.precision_compatibility["VM.GPU.A10.1"].status=="not_verified"
+    error_message = "Unknown kernel support must fail closed."
   }
 }

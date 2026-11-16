@@ -58,3 +58,45 @@ variable "recipe_metadata" {
   type        = any
   default     = null
 }
+
+variable "checkpoint_file" {
+  type        = string
+  default     = ""
+  description = "Optional exact checkpoint filename for an otherwise ambiguous variant (single-file formats only)."
+}
+variable "weight_budget_gb" {
+  type        = number
+  default     = 0
+  description = "Explicit native weight planning baseline in decimal GB; zero uses checkpoint evidence."
+  validation {
+    condition     = var.weight_budget_gb >= 0
+    error_message = "Weight budget must be nonnegative."
+  }
+}
+variable "planning_budget_gb" {
+  type        = number
+  default     = 0
+  description = "Explicit aggregate planning payload in decimal GB, including cache/workspace/margin but excluding per-GPU runtime; zero estimates from metadata."
+  validation {
+    condition     = var.planning_budget_gb >= 0
+    error_message = "Planning budget must be nonnegative."
+  }
+}
+variable "unknown_cache_fraction" {
+  type        = number
+  default     = 0.25
+  description = "Uncalibrated cache allowance as a fraction of weights when attention dimensions are absent; not an upper bound."
+  validation {
+    condition     = var.unknown_cache_fraction >= 0
+    error_message = "Cache allowance must be nonnegative."
+  }
+}
+variable "workspace_fraction" {
+  type        = number
+  default     = 0.10
+  description = "Uncalibrated workspace/repacking allowance as a fraction of weights for heuristic sizing; not an upper bound."
+  validation {
+    condition     = var.workspace_fraction >= 0
+    error_message = "Workspace allowance must be nonnegative."
+  }
+}

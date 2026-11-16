@@ -99,7 +99,7 @@ test("zero and unknown-only supply are hidden while positive supply with zero li
 });
 test("partial hybrid memory and planning budget have distinct labels", () => {
   const {nodes} = execute({model: {repository:"Qwen/model", context_length:4096,concurrency_per_replica:4,memory_status:"unsupported",memory_gb:{resident_weights:55.56,full_attention_kv:1.07,total_estimated:null},recipe_memory_budget_gb:71.83,partial_memory:{full_attention_layers:16,linear_attention_layers:48},planning_memory:{weight_bytes:55560000000,kv_surrogate_bytes:4290000000,safety_margin_fraction:0.2,recipe_minimum_bytes:67000000000,selected_payload_budget_bytes:71830000000,runtime_allowance_per_gpu_bytes:2147483648}}});
-  assert.match(nodes["memory-metrics"].textContent, /Resident weights 55.56 GB/);
+  assert.match(nodes["memory-metrics"].textContent, /Weight baseline \(checkpoint precision\) 55.56 GB/);
   assert.match(nodes["memory-metrics"].textContent, /Full-attention KV payload \/ replica 1.07 GB/);
   assert.match(nodes["memory-metrics"].textContent, /Planning payload budget \/ replica 71.83 GB/);
   assert.match(nodes["memory-status"].textContent, /not an estimate of actual hybrid-cache allocation/);
@@ -119,7 +119,7 @@ test("RMS exposes exactly one typed report-link output", () => {
   const outputs = readdirSync(root).filter(file => file.endsWith(".tf")).flatMap(file => [...readFileSync(new URL(file, root), "utf8").matchAll(/^output\s+"([^"]+)"/gm)].map(match => match[1]));
   assert.deepEqual(outputs, ["comparison_report_url"]);
   const schema = parse(readFileSync(new URL("schema.yaml", root), "utf8"));
-  assert.deepEqual(Object.keys(schema.outputs), ["comparison_report_url"]);
+  assert.deepEqual(Object.keys(schema.outputs).filter(key => schema.outputs[key].type === "link"), ["comparison_report_url"]);
   assert.equal(schema.outputs.comparison_report_url.type, "link");
   assert.equal(schema.primaryOutputButton, "${comparison_report_url}");
 });
@@ -206,4 +206,18 @@ test("each AD row keeps its own limits and exclusion badge and is searchable by 
   assert.match(second.children[3].textContent.replace(/\s+/g," "),/AD AD-2: 32 GPUs/);
   nodes["capacity-search"].value="AD-2";nodes["capacity-search"].events.input();
   assert.equal(nodes.capacity.children.length,1);assert.match(nodes.capacity.children[0].children[0].textContent,/AD-2/);
+});
+
+test("incompatible regional supply remains visible with an explicit dtype reason", () => {
+  const {nodes} = execute({options:{},option_count:0,regional_capacity:[{region:"region",gpu_shape:"A10",gpus_per_host:1,known_ads:1,expected_ads:1,known_reported_hosts:3,dtype_compatibility:{status:"not_compatible",required_precision:"fp8",reason:"Native FP8 kernels unavailable"},availability_domains:[{availability_domain:"AD",available_hosts:3,limits:[]}]}]});
+  assert.match(nodes.capacity.textContent,/Not compatible/);
+  assert.match(nodes.capacity.textContent,/fp8: Native FP8 kernels unavailable/);
+  assert.match(nodes.capacity.textContent,/3 hosts physically available/);
+  assert.equal(nodes.options.children.length,0);
+});
+test("generic planning scenario is numeric and explicitly heuristic without deployment options", () => {
+  const {nodes} = execute({options:{},option_count:0,model:{repository:"future/model",memory_status:"heuristic",memory_gb:{resident_weights:2495.77},component_planning:{payload_budget_bytes:3768e9,weight_source:"hub_dtype_counts",status:"heuristic_uncalibrated",cache_source:"all_layer_dense_surrogate_not_upper_bound",cache_scenario_bytes:395e9,workspace_allowance_bytes:249e9,safety_margin_fraction:0.2,formula:"payload formula",interpretation:"Planning scenario, not a guaranteed upper bound"}}});
+  assert.match(nodes["memory-metrics"].textContent,/3,768 GB|3768 GB/);
+  assert.match(nodes["memory-status"].textContent,/Heuristic planning scenario available/);
+  assert.match(nodes["memory-status"].textContent,/not a guaranteed upper bound/);
 });

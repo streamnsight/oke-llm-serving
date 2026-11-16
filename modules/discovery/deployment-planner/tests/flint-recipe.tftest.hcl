@@ -28,7 +28,7 @@ run "Flint_H100_adapts_TP_instead_of_copying_an_undersized_rendering" {
  }
 }
 
-run "NVFP4_keeps_its_checkpoint_and_exposes_config_staging_requirements" {
+run "unreviewed_NVFP4_kernels_do_not_become_deployment_options" {
  command=plan
  variables {
   regions=[{inventory={region="region-one",availability_domains=[{name="AD-1",shapes=[{shape="BM.GPU.B200.8",gpus=8,rdma_ports=0,quota_names=["gpu-count"]}]}],limits=[{name="gpu-count",description="GPUs for test instances",scope_type="AD",availability_domain="AD-1",tenancy_limit=64,resource_availability={status="observed",available=64}}]},capacity={region="region-one",availability_domains=[{name="AD-1",assessment={observed_at="test",shapes=[{shape="BM.GPU.B200.8",available_instances=1,availability_status="AVAILABLE"}]}}]}}]
@@ -44,7 +44,7 @@ run "NVFP4_keeps_its_checkpoint_and_exposes_config_staging_requirements" {
  }
 
  assert {
-  condition=output.assessment.suggestions[0].tensor_parallel_size==1 && length(output.assessment.suggestions[0].deployment_requirements)==1 && contains(output.assessment.suggestions[0].serving_configuration.recipe.args,"--hf-config-path") && output.assessment.suggestions[0].serving_configuration.model.repository=="RecursiveSI/flint-nvfp4-gguf"
+  condition=length(output.assessment.suggestions)==0 && output.assessment.precision_compatibility["BM.GPU.B200.8"].status=="not_verified"
   error_message="The NVFP4 option must retain its own model/config flags and explicit staging requirement, without claiming a ready validated launch."
  }
 }
