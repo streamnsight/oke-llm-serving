@@ -30,6 +30,13 @@ can be retrieved and replayed after a process restart. These are separate data
 lifecycles. Losing a cache must affect performance, not lose a conversation.
 See [vLLM prefix caching](https://docs.vllm.ai/en/stable/features/automatic_prefix_caching/).
 
+Additional read-only image inspection found LMCache 0.5.3 already installed in
+the current serving image, including its external MP connector module. vLLM
+reports development build `0.1.dev19754+g3a0914114`. This removes the need to
+assume a package install, but does not prove connector/runtime compatibility.
+The implementation must assess this exact image and LMCache MP protocol against
+the pinned production-stack router/controller integration before activation.
+
 ## Users and acceptance stories
 
 - Model deployer: choose an assessed recipe and deploy its required companions,
