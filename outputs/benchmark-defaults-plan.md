@@ -13,7 +13,7 @@
 
 ## Phase 3: Validate
 - [x] Run shell/client regressions and Terraform tests.
-- [ ] Validate generated RMS archives and commit changes.
+- [x] Validate generated RMS archives and commit changes.
 - [x] Record runtime validation separately from local/mocked checks.
 
 No GPU allocation, recycling, resizing or deletion is required.
@@ -44,3 +44,12 @@ covers changed inline benchmark source checksums and content limits.
 
 The emulated local x86 VM cannot execute this image's native vLLM code (illegal
 instruction); cluster CPU diagnostics supplied runtime evidence instead.
+
+Final model-delivery Terraform run: 33 passed. Both the discovery ZIP (including
+its embedded downstream roots) and standalone model template ZIP passed
+archive checks, initialization and validation with Terraform 1.9.8 and RMS
+Terraform 1.5.7. The feature was committed and integrated into the existing
+working branch; main integration remains pending full RMS benchmark validation.
+Diagnostic cluster Jobs and local containers were removed; the Docker VM was
+stopped and the original Docker context restored. RMS sources, published
+Object Storage bundles and the live benchmark pipeline were not updated.
