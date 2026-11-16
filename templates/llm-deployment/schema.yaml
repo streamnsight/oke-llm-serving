@@ -1,7 +1,7 @@
 # Copyright (c) 2020-2022 Oracle and/or its affiliates. All rights reserved.
 # Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
 title: Create an independent model DevOps project
-description: Creates a new model project, pipelines, OKE environment and artifact repositories. Select an existing cluster now; GPUs/shared controllers may be deployed separately afterward. Apply never allocates GPUs or runs workloads. Trusted namespace onboarding and runtime readiness are required before model deployment.
+description: Creates an independent model project and runs trusted namespace onboarding, model deployment and validation. Select an existing cluster with its retained GPU pool and required shared controllers already deployed. Apply waits for success and never allocates GPUs. Benchmarks remain manual.
 schemaVersion: 1.1.0
 version: '1.0'
 locale: en
@@ -89,11 +89,11 @@ variables:
     type: string
     required: false
     title: Optional existing GPU pool OCID
-    description: Leave blank to resolve the expected platform allocation when deployment runs. A selected pool is read only and must carry the oke-llm/allocation label; no pool is created or changed.
+    description: Leave blank to discover a compatible retained managed GPU pool. A selected pool is read only and must carry the oke-llm/allocation label; no pool is created or changed. Apply requires the pool and trusted onboarding pipeline to exist.
   platform_name:
     type: string
     title: Expected infrastructure platform name
-    description: Optional expected platform override. A unique matching managed pool supplies this automatically; when the pool does not exist yet, the expected name defaults to llm-platform.
+    description: Optional expected platform override. A unique compatible managed pool supplies this automatically. Apply requires the retained infrastructure and its trusted onboarding pipeline.
   runner_subnet_id:
     type: string
     required: false
@@ -141,10 +141,10 @@ outputs:
     title: Read-only cluster/network metadata and expected GPU target
   model_delivery:
     type: json
-    title: Model deploy, validate, benchmark and undeploy pipelines
+    title: Automatic model deployment and validation; manual benchmark and undeploy
   onboarding_arguments:
     type: json
-    title: Arguments for trusted platform namespace onboarding
+    title: Trusted namespace onboarding arguments applied automatically
   model_storage:
     type: json
     title: Optional model-owned staging and retained data

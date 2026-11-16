@@ -167,7 +167,7 @@ function renderOptions() {
     const steps = add(body, "div", undefined, "deployment-steps");
     deploymentStep(steps, "1. GPU pool and shared components", "Create this stack when you need a pool or shared controllers. Reuse an existing compatible platform for additional models.", row.links.launch_url, row.links.download_url, row.links.expires_at);
     const modelLinks = row.links.model_deployment || {};
-    deploymentStep(steps, "2. Model project and pipelines", "Create an independent DevOps project for this model. Select the cluster; matching pool, networking and shared components are inferred. Model execution waits for readiness and namespace onboarding.", modelLinks.launch_url, modelLinks.download_url, modelLinks.expires_at);
+    deploymentStep(steps, "2. Model project and pipelines", "Create an independent DevOps project for this model. Select the cluster; matching pool, networking and shared components are inferred. After infrastructure is ready, Apply runs namespace onboarding, deployment and validation. Benchmarking is manual.", modelLinks.launch_url, modelLinks.download_url, modelLinks.expires_at);
     const config = add(body, "section"); add(config, "h3", "Serving configuration"); badge(config, label(row.configuration_status), true);
     add(config, "p", "Runtime validation: " + label(row.runtime_validation) + ". Memory method: " + label(row.memory_method) + ".", "muted");
     facts(add(config, "dl", undefined, "facts"), [["Serving framework / version", text(serving.framework) + " / " + text(serving.version)], ["Container platform", serving.platform], ["Recipe GPU family", serving.source_hardware], ["Planned GPU family", serving.selected_hardware]]);

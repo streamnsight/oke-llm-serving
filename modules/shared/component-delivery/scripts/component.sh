@@ -207,6 +207,13 @@ mirror_chart() {
 
 case "$DELIVERY_OPERATION" in
   prepare)
+    if [[ $(jq -r '.namespace_mode // "create"' specification.json) == existing ]]; then
+      if ! kubectl get namespace "$namespace" -o json > namespace.json; then
+        message="Required existing namespace $namespace is missing or inaccessible; run its trusted platform onboarding before deployment"
+        echo "$message" >&2
+        exit 2
+      fi
+    fi
     lock_acquire
     if [[ -f runtime/preflight.sh ]]; then bash runtime/preflight.sh; fi
     dependencies_ready
@@ -217,9 +224,7 @@ case "$DELIVERY_OPERATION" in
     if [[ -s existing-owner.json ]]; then jq -e --arg owner "$owner" '.data.ownership_token==$owner' existing-owner.json >/dev/null; fi
     render_values
     mirror_chart
-    if [[ $(jq -r '.namespace_mode // "create"' specification.json) == existing ]]; then
-      kubectl get namespace "$namespace" -o json > namespace.json
-    else
+    if [[ $(jq -r '.namespace_mode // "create"' specification.json) != existing ]]; then
       kubectl create namespace "$namespace" --dry-run=client -o json | kubectl apply -f - >/dev/null
     fi
     owner_write applying

@@ -151,6 +151,14 @@ test('multi-host model PVCs require shared read access and cannot reuse CPU stag
  const rwx=fixture({config:{storage,platform:{...config.platform,node_count:2}},state:{pvc:{...pvc,spec:{accessModes:['ReadWriteMany']}}}});try{assert.equal(rwx.run('model_storage').status,0);}finally{rwx.close();}
  const scratch=fixture({config:{storage,platform:{...config.platform,model_storage:{scratch_pvc:'weights'}}},state:{pvc}});try{const r=scratch.run('model_storage');assert.notEqual(r.status,0);assert.match(r.stderr,/CPU staging scratch/);}finally{scratch.close();}
 });
+
+test('PVC access checks use the actual retained pool size even when the stable model config only needs one host',()=>{
+ const storage={...config.storage,mode:'existing_pvc',pvc_name:'weights'},pvc={metadata:{annotations:{'oke-llm/model-revision':defaults.MODEL_REVISION}},spec:{accessModes:['ReadWriteOnce']},status:{phase:'Bound'}};
+ for(const pool of [{'node-config-details':{size:2},nodes:[{}]},{'node-config-details':{size:1},nodes:[{},{}]}]){
+  const f=fixture({config:{storage,platform:{...config.platform,node_count:1}},state:{pvc}});
+  try{writeFileSync(`${f.dir}/model-pool.json`,JSON.stringify({data:pool}));const r=f.run('model_storage');assert.equal(r.status,2,r.stderr);assert.match(r.stderr,/ROX\/RWX/);}finally{f.close();}
+ }
+});
 test('shared controller readiness uses exact bound generations and read-only controller checks',()=>{
  const component={mode:'managed',namespace:'lws-system',owner_name:'owned-controller',generation:'generation',deployment_names:['lws-controller-manager']},platform={...config.platform,components:{lws:component}};
  const f=fixture({config:{platform}});try{const r=f.run('model_platform_ready');assert.equal(r.status,0,r.stderr);assert(r.state.calls.every(c=>c.tool==='kubectl'&&c.args.includes('get')));}finally{f.close();}

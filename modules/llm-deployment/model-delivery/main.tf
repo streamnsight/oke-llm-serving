@@ -72,19 +72,49 @@ locals {
       "kube-prometheus-stack" = { enabled = false }, "prometheus-adapter" = { enabled = false }, "k8s-aibom" = { enabled = false }
     }
   }
+  # The runtime contract is effective configuration, not a copy of discovery
+  # reports/live inventory. Otherwise refreshing capacity or add-ons changes
+  # DELIVERY_GENERATION and invalidates an unchanged, healthy release.
+  runtime_hosts          = max(1, tonumber(local.defaults.HOSTS_PER_REPLICA))
+  runtime_replicas       = var.autoscaling.enabled ? var.autoscaling.max_replicas : tonumber(local.defaults.REPLICAS)
+  runtime_slots_per_host = max(1, floor(var.platform.gpu_count_per_host / max(1, tonumber(local.defaults.GPUS_PER_POD))))
+  runtime_node_count     = ceil(max(local.runtime_hosts, ceil(local.runtime_replicas * local.runtime_hosts / local.runtime_slots_per_host)))
+  runtime_platform = {
+    binding_mode            = try(var.platform.binding_mode, "bound"), platform_name = var.platform.platform_name,
+    region                  = var.platform.region, cluster_id = var.platform.cluster_id, project_id = var.platform.project_id,
+    cluster_compartment_id  = var.platform.cluster_compartment_id,
+    gpu_pool_compartment_id = try(var.platform.gpu_pool_compartment_id, var.platform.cluster_compartment_id),
+    kubernetes_version      = var.platform.kubernetes_version,
+    gpu_shape               = var.platform.gpu_shape, gpu_count_per_host = var.platform.gpu_count_per_host,
+    gpu_selector            = var.platform.gpu_selector, node_count = try(var.platform.binding_mode, "bound") == "runtime" ? local.runtime_node_count : var.platform.node_count,
+    availability_domain     = try(var.model.selection.availability_domain, var.platform.availability_domain, null),
+    required_components     = sort(var.platform.required_components),
+    components              = try(var.platform.binding_mode, "bound") == "runtime" ? {} : try(var.platform.components, {}),
+    allocation              = { for key in ["gpu_pool_id", "compute_cluster_id", "allocation_identity"] : key => try(var.platform.allocation[key], null) },
+    transport               = { requires_rdma = try(var.platform.transport.requires_rdma, false), rdma_resource_name = try(var.platform.transport.rdma_resource_name, null) },
+    model_storage           = { scratch_pvc = try(var.platform.model_storage.scratch_pvc, null) }
+  }
   config = {
-    platform          = var.platform, model = var.model, serving = local.serving, namespace = local.namespace, release = local.name,
-    identity          = local.identity, ownership_token = local.owner, defaults = local.defaults,
-    storage           = merge(var.storage, { workspace_gib = local.workspace_gib, snapshot_bytes = local.snapshot_bytes, workspace_explicit = var.storage.workspace_gib != null }),
-    hf_token_secret   = var.hf_token_secret,
-    router_enabled    = local.router_enabled, autoscaling = var.autoscaling, inference_probe = var.inference_probe,
-    benchmark_backend = var.benchmark_backend, timeout_seconds = var.timeout_seconds,
-    benchmark_image   = "vllm/vllm-openai-cpu@sha256:827ef38187f9b52f2bb838695ef815ec5b65f4bf3e4c061b002b2b0a19cb0701"
+    platform = local.runtime_platform,
+    model = { selection = { platform_plan = { topology = {
+      backend  = try(local.selection.platform_plan.topology.backend, local.serving.engine.multi_node_backend, "mp"),
+      strategy = try(local.selection.platform_plan.topology.strategy, local.runtime_hosts > 1 ? "multi_node_tp_pp" : "single_node_tp")
+    } } } },
+    serving         = { recipe = { args = try(local.serving.recipe.args, []), env = try(local.serving.recipe.env, {}), companions = try(local.serving.recipe.companions, []) } },
+    namespace       = local.namespace, release = local.name,
+    identity        = local.identity, ownership_token = local.owner, defaults = local.defaults,
+    storage         = merge(var.storage, { workspace_gib = local.workspace_gib, snapshot_bytes = local.snapshot_bytes, workspace_explicit = var.storage.workspace_gib != null }),
+    hf_token_secret = var.hf_token_secret,
+    router_enabled  = local.router_enabled, autoscaling = var.autoscaling, inference_probe = var.inference_probe,
+    timeout_seconds = var.timeout_seconds,
+    benchmark_image = "vllm/vllm-openai-cpu@sha256:827ef38187f9b52f2bb838695ef815ec5b65f4bf3e4c061b002b2b0a19cb0701"
   }
   runtime_files = merge({ for asset in ["preflight.sh", "validate.sh", "retired.sh", "common.sh"] : asset => file("${path.module}/scripts/${asset}") }, { "config.json" = jsonencode(local.config) })
 }
 resource "terraform_data" "contract" {
-  input = local.config
+  # Canonical text avoids dynamic-object type changes from discovery-only
+  # attributes marking the entire delivery module as pending an update.
+  input = sha256(jsonencode(local.config))
   lifecycle {
     precondition {
       condition     = startswith(local.namespace, "${var.platform.platform_name}-model-") && length(local.namespace) <= 63

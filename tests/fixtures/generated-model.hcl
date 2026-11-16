@@ -2,6 +2,7 @@
 # Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
 # Copied into an extracted, actually published model ZIP by its package checker.
 mock_provider "oci" {
+  mock_resource "oci_devops_deployment" { defaults = { state = "SUCCEEDED" } }
   mock_data "oci_core_subnet" { defaults = { compartment_id = "network-compartment" } }
   mock_data "oci_objectstorage_namespace" { defaults = { namespace = "fixture" } }
   mock_data "oci_identity_tenancy" { defaults = { home_region_key = "ORD" } }
@@ -16,23 +17,28 @@ variables {
 override_module {
   target = module.target
   outputs = { target = {
-    binding_mode = "runtime", platform_name = "llm-platform", cluster_id = "cluster", cluster_compartment_id = "cluster-compartment",
-    cluster_type = "ENHANCED_CLUSTER", kubernetes_version = "v1.34.1", vcn_id = "vcn", runner_subnet_id = "runner", runner_nsg_ids = [],
-    cpu_shapes = ["VM.Standard.E4.Flex"], gpu_pool_compartment_id = "cluster-compartment", gpu_selector = "oke-llm/allocation=llm-platform",
-    gpu_shape = "BM.GPU.H100.8", gpu_count_per_host = 8, node_count = 1, expected_node_count = 1, availability_domain = "AD-1",
-    allocation = { gpu_pool_id = null, allocation_identity = null, compute_cluster_id = null }, metadata_ready = true, issues = [],
-    free_gpu_headroom = "unknown_other_namespace_requests_not_visible"
+    binding_mode                 = "runtime", platform_name = "llm-platform", cluster_id = "cluster", cluster_compartment_id = "cluster-compartment",
+    cluster_type                 = "ENHANCED_CLUSTER", kubernetes_version = "v1.34.1", vcn_id = "vcn", runner_subnet_id = "runner", runner_nsg_ids = [],
+    cpu_shapes                   = ["VM.Standard.E4.Flex"], gpu_pool_compartment_id = "cluster-compartment", gpu_selector = "oke-llm/allocation=llm-platform",
+    gpu_shape                    = "BM.GPU.H100.8", gpu_count_per_host = 8, node_count = 1, expected_node_count = 1, availability_domain = "AD-1",
+    allocation                   = { gpu_pool_id = "ocid1.nodepool.oc1.fixture.retained", allocation_identity = "retained-allocation", compute_cluster_id = null }, metadata_ready = true, issues = [],
+    model_onboarding_pipeline_id = "ocid1.devopsdeploypipeline.oc1.fixture.onboarding", model_onboarding_project_id = "ocid1.devopsproject.oc1.fixture.platform", model_onboarding_revision = "stable-trusted-onboarding-revision",
+    free_gpu_headroom            = "unknown_other_namespace_requests_not_visible"
   } }
 }
-run "rendered_cluster_only_stack_owns_independent_model_metadata" {
+run "rendered_cluster_only_stack_autoruns_an_independent_model_project" {
   command = apply
   assert {
-    condition = length(module.project) == 1 && output.model_project.project_id == module.project[0].resources.project_id && output.model_delivery.project_id == output.model_project.project_id && output.model_project.project_id != null && output.model_project.script_repository_id != output.model_project.result_repository_id
+    condition     = length(module.project) == 1 && output.model_project.project_id == module.project[0].resources.project_id && output.model_delivery.project_id == output.model_project.project_id && output.model_project.project_id != null && output.model_project.script_repository_id != output.model_project.result_repository_id
     error_message = "The actual configured ZIP must create its own model project/environment/repositories rather than require another stack's project IDs."
   }
   assert {
-    condition = local.platform.allocation.gpu_pool_id == null && output.model_delivery.binding_mode == "runtime" && !output.model_delivery.automatically_started && length(module.model[0].all_pipeline_ids) == 4 && output.onboarding_arguments.MODEL_PROJECT_ID == output.model_project.project_id && output.onboarding_arguments.MODEL_GPU_POOL_ID == "runtime" && module.model_storage[0].storage.pipeline_id == null
-    error_message = "Cluster-only metadata creation must work before GPU allocation, keep staging opt-in, and expose the exact independent-project onboarding boundary."
+    condition     = local.platform.allocation.gpu_pool_id == "ocid1.nodepool.oc1.fixture.retained" && output.model_delivery.binding_mode == "runtime" && output.model_delivery.automatically_started && length(module.model[0].all_pipeline_ids) == 4 && output.onboarding_arguments.MODEL_PROJECT_ID == output.model_project.project_id && output.onboarding_arguments.MODEL_GPU_POOL_ID == local.platform.allocation.gpu_pool_id && module.model_storage[0].storage.pipeline_id == null
+    error_message = "Entering only the cluster must use the inferred existing allocation and trusted onboarding boundary, start model delivery and leave weight staging opt-in."
+  }
+  assert {
+    condition     = output.model_delivery.onboarding.pipeline_id == local.platform.model_onboarding_pipeline_id && output.model_delivery.automatic_execution.onboarding.state == "SUCCEEDED" && output.model_delivery.automatic_execution.deployment.state == "SUCCEEDED" && output.model_delivery.automatic_execution.validation.state == "SUCCEEDED" && !output.model_delivery.automatic_execution.benchmark_automatically_started
+    error_message = "The generated model stack must wait for trusted onboarding, deployment and independent validation; benchmarks remain manual."
   }
 }
 run "cluster_only_autoscaling_derives_standard_metrics_endpoint" {
@@ -45,8 +51,8 @@ run "cluster_only_autoscaling_derives_standard_metrics_endpoint" {
     prometheus_url      = ""
   }
   assert {
-    condition = var.prometheus_url == "" && local.platform.allocation.gpu_pool_id == null && contains(local.required_components, "prometheus") && contains(local.required_components, "keda") && local.component_requirements.prometheus.required && local.component_requirements.keda.required && !local.component_requirements.gpu_telemetry.required && module.model[0].model_delivery.defaults.PROMETHEUS_URL == "http://llm-monitoring-kube-prom-prometheus.monitoring.svc.cluster.local:9090"
-    error_message = "An autoscaling recommendation must not require a manually supplied Prometheus URL or completed infrastructure Apply to create model pipelines."
+    condition     = var.prometheus_url == "" && local.platform.allocation.gpu_pool_id == "ocid1.nodepool.oc1.fixture.retained" && contains(local.required_components, "prometheus") && contains(local.required_components, "keda") && local.component_requirements.prometheus.required && local.component_requirements.keda.required && !local.component_requirements.gpu_telemetry.required && module.model[0].model_delivery.defaults.PROMETHEUS_URL == "http://llm-monitoring-kube-prom-prometheus.monitoring.svc.cluster.local:9090"
+    error_message = "An autoscaling recommendation derives the standard metrics endpoint while reusing the selected existing allocation and shared controllers."
   }
 }
 run "model_deployment_can_disable_monitoring_and_select_its_own_weight_delivery" {
@@ -58,7 +64,7 @@ run "model_deployment_can_disable_monitoring_and_select_its_own_weight_delivery"
     model_pvc_name      = "retained-weights"
   }
   assert {
-    condition = !local.platform.monitoring_enabled && !contains(local.required_components, "prometheus") && !contains(local.required_components, "keda") && !local.component_requirements.prometheus.required && !local.component_requirements.keda.required && !contains(keys(local.platform.addon_requirements), "gpu_telemetry") && module.model[0].model_delivery.storage == "existing_pvc" && module.model_storage[0].storage.bucket_name == null
+    condition     = !local.platform.monitoring_enabled && !contains(local.required_components, "prometheus") && !contains(local.required_components, "keda") && !local.component_requirements.prometheus.required && !local.component_requirements.keda.required && !contains(keys(local.platform.addon_requirements), "gpu_telemetry") && module.model[0].model_delivery.storage == "existing_pvc" && module.model_storage[0].storage.bucket_name == null
     error_message = "Discovery recommendations must not freeze monitoring requirements or weight delivery; model-stage choices own them and autoscaling remains off."
   }
 }

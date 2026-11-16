@@ -59,7 +59,7 @@ resource "oci_devops_deploy_pipeline" "operation" {
   for_each     = toset(["validate", "benchmark"])
   project_id   = var.platform.project_id
   display_name = "${local.identity}-${each.key}"
-  description  = "Explicit ${each.key} operation; uses the same model lease and current validated Helm generation. Never starts on Terraform apply."
+  description  = each.key == "validate" ? "Runs after workload deployment on Apply; independently rerunnable with the same model lease and Helm generation." : "Manual benchmark; uses the same model lease and current validated Helm generation. Never starts on Terraform Apply."
   deploy_pipeline_parameters {
     dynamic "items" {
       for_each = local.operation_parameters

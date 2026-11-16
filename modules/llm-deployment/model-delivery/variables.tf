@@ -4,7 +4,7 @@ variable "tenancy_ocid" { type = string }
 variable "compartment_id" { type = string }
 variable "platform" {
   type        = any
-  description = "Runtime target and independent model-project resources. GPU pool/controllers may not exist at Apply; trusted readiness and namespace authorization are checked when a pipeline runs."
+  description = "Runtime target and independent model-project resources. Apply requires retained GPU infrastructure and trusted onboarding, then waits for model deployment and validation."
 }
 variable "model" {
   type        = any

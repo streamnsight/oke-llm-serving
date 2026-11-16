@@ -18,7 +18,12 @@ lock_acquire() {
     '{apiVersion:"coordination.k8s.io/v1",kind:"Lease",metadata:{name:$name,namespace:$namespace,annotations:{"oke-llm/owner-token":$owner,"oke-llm/acquired-epoch":($now|tostring)}},spec:{holderIdentity:$holder,leaseDurationSeconds:$duration}}' > new-lease.json
   if kubectl create -f new-lease.json >/dev/null 2> lease-create-error.txt; then lock_held=true; return; fi
   # Any permissions/transport failure here fails closed, never overwrites blindly.
-  lock_read
+  if ! lock_read || [[ ! -s lease.json ]] || ! jq -e '.metadata.resourceVersion | type=="string" and length>0' lease.json >/dev/null; then
+    cat lease-create-error.txt >&2
+    printf 'Cannot acquire component Lease %s/%s: creation failed and no existing Lease with resourceVersion was observed; verify namespace and permissions.\n' \
+      "${lock_namespace:-kube-system}" "$lock_name" >&2
+    return 2
+  fi
   jq -e --arg owner "$owner" '.metadata.annotations["oke-llm/owner-token"] == $owner' lease.json >/dev/null
   # Preserve trailing newlines in the observed holder; command substitution
   # would otherwise strip them and can turn an occupied Lease into a blank ID.

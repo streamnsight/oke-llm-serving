@@ -1,6 +1,7 @@
 # Copyright (c) 2020-2022 Oracle and/or its affiliates. All rights reserved.
 # Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
 mock_provider "oci" {
+  mock_resource "oci_devops_deployment" { defaults = { state = "SUCCEEDED" } }
   mock_data "oci_objectstorage_namespace" { defaults = { namespace = "fixture" } }
   mock_data "oci_core_subnet" { defaults = { compartment_id = "network-compartment" } }
 }
@@ -13,7 +14,7 @@ variables {
     platform_name = "fixture", generation = "platform-generation", region = "eu-frankfurt-1", cluster_id = "cluster",
     cluster_compartment_id = "cluster-compartment", compartment_id = "workloads", kubernetes_version = "v1.34.1",
     project_id = "project", deploy_environment_id = "oke-environment", script_repository_id = "source", result_repository_id = "results",
-    runner_subnet_id = "subnet", runner_nsg_ids = [], allocation = { gpu_pool_id = null },
+    runner_subnet_id = "subnet", runner_nsg_ids = [], allocation = { gpu_pool_id = "gpu-pool" },
     gpu_selector = "oke-llm/allocation=fixture", gpu_shape = "BM.GPU4.8", node_count = 1, gpu_count_per_host = 8,
     transport = { requires_rdma = false }, required_components = ["lws", "prometheus"],
     monitoring_enabled = true, model_onboarding_pipeline_id = "trusted-onboarding"
@@ -32,11 +33,11 @@ variables {
     }
   }
 }
-run "cpu_debug_creates_model_only_delivery" {
+run "model_delivery_deploys_and_validates_automatically" {
   command = apply
   assert {
-    condition     = length(output.all_pipeline_ids) == 4 && output.model_delivery.automatically_started == false && !output.model_delivery.responses_conversation_persistence
-    error_message = "Create explicit deploy/validate/benchmark/undeploy pipelines without launching workloads or claiming durable conversations."
+    condition     = length(output.all_pipeline_ids) == 4 && output.model_delivery.automatically_started && !output.model_delivery.automatic_execution.benchmark_automatically_started && !output.model_delivery.responses_conversation_persistence
+    error_message = "Apply must deploy and validate while keeping benchmark manual and not claiming durable conversations."
   }
   assert {
     condition     = output.model_delivery.project_id == "project" && output.model_delivery.cluster_id == "cluster" && output.model_delivery.onboarding.pipeline_id == "trusted-onboarding"

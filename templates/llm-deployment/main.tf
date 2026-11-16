@@ -43,6 +43,7 @@ module "target" {
   count                   = local.configured ? 1 : 0
   source                  = "../../modules/llm-deployment/model-target"
   cluster_id              = var.cluster_id
+  compartment_id          = local.compartment_id
   gpu_pool_id             = try(trimspace(var.gpu_pool_id) != "" ? trimspace(var.gpu_pool_id) : null, null)
   gpu_pool_compartment_id = try(trimspace(var.gpu_pool_compartment_id) != "" ? trimspace(var.gpu_pool_compartment_id) : null, null)
   platform_name           = var.platform_name
@@ -55,7 +56,7 @@ resource "terraform_data" "binding" {
   lifecycle {
     precondition {
       condition     = local.configured
-      error_message = "Use a configured model ZIP published by discovery: inputs/model-spec.json is required. No completed infrastructure binding is needed to create model pipelines."
+      error_message = "Use a configured model ZIP published by discovery: inputs/model-spec.json is required. Apply the retained GPU infrastructure and shared components before the model stack."
     }
     precondition {
       condition     = !local.configured || var.region == null ? true : var.region == local.expected_region
@@ -84,7 +85,7 @@ locals {
     components          = {}, monitoring_enabled = local.monitoring_required,
     transport           = { requires_rdma = try(local.model.selection.requires_rdma, local.model.selection.platform_plan.topology.rdma_required, false), rdma_resource_name = var.rdma_resource_name },
     model_storage       = module.model_storage[0].storage,
-    readiness           = "metadata_only; retained GPU pool and trusted shared components are resolved/validated when a pipeline runs"
+    readiness           = "Apply resolves trusted onboarding, deploys the model, and validates runtime readiness; benchmarking remains manual"
   }) : null
 }
 module "model" {

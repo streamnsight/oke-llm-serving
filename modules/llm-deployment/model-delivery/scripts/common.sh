@@ -177,6 +177,9 @@ model_storage() {
     kubectl -n "$namespace" get pvc "$pvc" -o json > model-pvc.json
     jq -e '.status.phase=="Bound"' model-pvc.json >/dev/null || model_fail 'Existing model PVC is not Bound' || return
     nodes=$(jq -er .platform.node_count "$model_config")
+    if [[ -s model-pool.json ]]; then
+      nodes=$(jq -er --argjson minimum "$nodes" '[$minimum, (.data["node-config-details"].size // 0), (.data.nodes // [] | length)] | max' model-pool.json)
+    fi
     if (( nodes > 1 )); then
       jq -e 'any(.spec.accessModes[]; .=="ReadOnlyMany" or .=="ReadWriteMany")' model-pvc.json >/dev/null || model_fail 'A multi-host allocation requires a ROX/RWX serving PVC: Kubernetes may place model pods on different retained GPU hosts; RWO staging volumes are insufficient' || return
     fi

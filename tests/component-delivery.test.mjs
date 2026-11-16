@@ -28,12 +28,13 @@ state.calls.push({tool,args:a});
 if(tool==='kubectl') {
  const verb=a.find(x=>['get','create','replace','apply','wait','rollout','api-resources'].includes(x)),i=a.indexOf(verb),kind=a[i+1];
  if(verb==='get'&&kind==='lease') {if(state.lease)out(state.lease);else if(!a.includes('--ignore-not-found'))fail('NotFound');}
+ else if(verb==='get'&&kind==='namespace') {if(state.missingNamespace)fail('namespaces "lws-system" not found');out({apiVersion:'v1',kind:'Namespace',metadata:{name:a[i+2]}});}
  else if(verb==='get'&&kind==='configmap') {if(state.owner)out(state.owner);else if(!a.includes('--ignore-not-found'))fail('NotFound');}
  else if(verb==='get'&&kind==='crd') {const crd=(state.crds||{})[a[i+2]];if(crd)out(crd);else if(!a.includes('--ignore-not-found'))fail('NotFound');}
  else if(verb==='api-resources'){if(state.discoveryFailure)fail('Forbidden');out((state.servedKinds||['leaderworkersets.example.org']).join('\n')+'\n');}
  else if(verb==='get') out({items:state.blockers||[]});
  else if(verb==='create'&&kind==='namespace')out({apiVersion:'v1',kind:'Namespace',metadata:{name:a[i+2]}});
- else if(verb==='create') {const next=JSON.parse(body());if(next.kind==='CustomResourceDefinition'){state.crds??={};if(state.crds[next.metadata.name])fail('AlreadyExists');state.crds[next.metadata.name]=next;}else{if(state.lease)fail('AlreadyExists');state.lease=next;state.lease.metadata.resourceVersion='1';}}
+ else if(verb==='create') {const next=JSON.parse(body());if(next.kind==='CustomResourceDefinition'){state.crds??={};if(state.crds[next.metadata.name])fail('AlreadyExists');state.crds[next.metadata.name]=next;}else{if(state.leaseCreateFailure)fail('Lease creation denied: fixture namespace unavailable');if(state.lease)fail('AlreadyExists');state.lease=next;state.lease.metadata.resourceVersion='1';}}
  else if(verb==='replace') {const next=JSON.parse(body());if(state.conflict||next.metadata.resourceVersion!==state.lease.metadata.resourceVersion)fail('Conflict');next.metadata.resourceVersion=String(Number(next.metadata.resourceVersion)+1);state.lease=next;}
  else if(verb==='apply') {const next=JSON.parse(body());if(next.kind==='ConfigMap')state.owner=next;else if(next.kind==='CustomResourceDefinition'){if(state.crdConflict)fail('field conflict');state.crds[next.metadata.name]=next;}}
  else if(verb==='wait'||verb==='rollout') {if(state.notReady)fail('NotReady');}
@@ -189,6 +190,22 @@ test('existing namespace mode and fixed source hooks keep model delivery namespa
   assert(!r.state.calls.some(c=>c.tool==='helm'&&c.args.slice(0,2).join(' ')==='show crds'));
   f.set({...f.read(),releases:[{name:'lws'}]});r=f.run('finish');assert.equal(r.status,0,r.stderr);assert.equal(readFileSync(`${f.dir}/hook-validate`,'utf8'),'validate');
  }finally{f.close();}
+});
+test('missing existing namespace fails actionably before Lease writes or model preparation',()=>{
+ const f=fixture({missingNamespace:true});try{
+  writeFileSync(`${f.dir}/specification.json`,JSON.stringify({...spec,namespace_mode:'existing',lock_namespace:'lws-system',manage_crds:false}));
+  const r=f.run('prepare');assert.equal(r.status,2,r.stderr);assert.match(r.stderr,/Required existing namespace lws-system.*trusted platform onboarding/);assert.match(r.report.message,/trusted platform onboarding/);
+  assert(!r.state.calls.some(c=>c.tool==='kubectl'&&c.args.some(a=>['create','replace','apply'].includes(a))));assert(!r.state.calls.some(c=>c.tool==='helm'));
+ }finally{f.close();}
+});
+test('failed Lease creation with no observed Lease surfaces its original error and never attempts CAS replacement',()=>{
+ for(const change of [{leaseCreateFailure:true},{lease:{...lease(''),metadata:{...lease('').metadata,resourceVersion:''}}}]){
+  const f=fixture(change);try{
+   const r=f.run('prepare');assert.equal(r.status,2,r.stderr);assert.match(r.stderr,/creation failed and no existing Lease with resourceVersion was observed/);
+   assert.match(r.stderr,change.leaseCreateFailure?/Lease creation denied: fixture namespace unavailable/:/AlreadyExists/);
+   assert(!r.state.calls.some(c=>c.tool==='kubectl'&&c.args.includes('replace')));assert(!r.state.calls.some(c=>c.tool==='helm'));
+  }finally{f.close();}
+ }
 });
 test('failed preflight hook releases its lease before native Helm or any namespace creation',()=>{
  const f=fixture();try{mkdirSync(`${f.dir}/runtime`);writeFileSync(`${f.dir}/runtime/preflight.sh`,'echo "GPU allocation missing" >&2; exit 9\n');const r=f.run('prepare');assert.equal(r.status,9,r.stderr);assert.match(r.stderr,/GPU allocation missing/);assert.equal(r.report.exit_code,9);assert.equal(r.report.status,'failed');assert.equal(r.state.lease.spec.holderIdentity,'');assert(!r.state.calls.some(c=>c.tool==='helm'));}finally{f.close();}

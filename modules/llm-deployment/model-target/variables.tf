@@ -1,6 +1,11 @@
 # Copyright (c) 2020-2022 Oracle and/or its affiliates. All rights reserved.
 # Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
 variable "cluster_id" { type = string }
+variable "compartment_id" {
+  type        = string
+  default     = null
+  description = "Model-project compartment included in the scoped trusted platform lookup; supplied by the stack."
+}
 variable "gpu_pool_id" {
   type    = string
   default = null
