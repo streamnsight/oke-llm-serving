@@ -18,7 +18,6 @@ module "model_storage" {
   compartment_id         = local.compartment_id
   project_id             = module.project[0].resources.project_id
   artifact_repository_id = module.project[0].resources.script_repository_id
-  result_repository_id   = module.project[0].resources.result_repository_id
   cluster_id             = var.cluster_id
   cluster_compartment_id = module.target[0].target.cluster_compartment_id
   cluster_type           = module.target[0].target.cluster_type

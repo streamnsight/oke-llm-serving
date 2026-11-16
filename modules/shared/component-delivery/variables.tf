@@ -21,10 +21,6 @@ variable "source_repository_id" {
   type        = string
   description = "Existing immutable Generic Artifact Registry repository for scripts, specifications and values."
 }
-variable "result_repository_id" {
-  type        = string
-  description = "Existing Generic Artifact Registry repository for immutable per-deployment evidence."
-}
 variable "helm_version" {
   type    = string
   default = "v3.19.0"

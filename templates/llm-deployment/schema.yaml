@@ -1,7 +1,7 @@
 # Copyright (c) 2020-2022 Oracle and/or its affiliates. All rights reserved.
 # Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
 title: Create an independent model DevOps project
-description: Creates a new model project, pipelines, OKE environment and artifact repositories. Select an existing cluster now; GPUs/shared controllers may be deployed separately afterward. Apply never allocates GPUs or runs workloads. Trusted namespace onboarding and runtime readiness are required before model deployment.
+description: Creates an independent model project and runs trusted namespace onboarding, model deployment and validation. Select an existing cluster with its retained GPU pool and required shared controllers already deployed. Apply waits for success and never allocates GPUs. Benchmarks remain manual.
 schemaVersion: 1.1.0
 version: '1.0'
 locale: en
@@ -13,10 +13,10 @@ variableGroups:
     variables:
       - advanced_settings
   - title: Model and runtime
-    variables: [ model_name, namespace, model_id, model_revision, serving_image, tensor_parallel_size, pipeline_parallel_size, hosts_per_replica, gpus_per_pod, replicas, context_length, concurrency, hf_token_secret ]
+    variables: [ model_name, namespace, model_id, model_revision, serving_image, api_frontend, tensor_parallel_size, pipeline_parallel_size, hosts_per_replica, gpus_per_pod, replicas, context_length, concurrency, hf_token_secret ]
     visible: advanced_settings
   - title: Storage and routing
-    variables: [ storage_mode, model_pvc_name, model_path, workspace_gib, router_enabled ]
+    variables: [ storage_mode, model_pvc_name, model_path, workspace_gib, router_enabled, routing_mode, lmcache_mode, lmcache_cpu_memory_gb, lmcache_chunk_size, lmcache_mamba_cache_mode ]
     visible: advanced_settings
   - title: Optional validation, benchmarking and scaling
     variables: [ monitoring_enabled, inference_probe, benchmark_backend, autoscaling_enabled, min_replicas, max_replicas, prometheus_url, target_inflight ]
@@ -51,8 +51,15 @@ variables:
   model_name: { type: string, title: Model instance name }
   namespace: { type: string, title: Onboarded model namespace, description: Must remain under the infrastructure platform namespace prefix. }
   model_id: { type: string, title: Hugging Face repository }
-  model_revision: { type: string, title: Immutable Hugging Face commit }
+  model_revision: { type: string, title: Hugging Face commit or main, description: Defaults to the immutable discovery commit. Exactly main is a mutable override for direct_hf only; retained PVC and staged snapshots require a commit. }
   serving_image: { type: string, title: Digest-pinned serving image }
+  api_frontend:
+    type: enum
+    enum: [ python, rust ]
+    default: python
+    required: false
+    title: vLLM API frontend
+    description: Python is the compatible default, including when a recipe enables Rust. Opt into Rust after validating the model chat template, tool calling and required APIs. The pipeline frontend parameter remains editable.
   tensor_parallel_size: { type: integer, minimum: 1, title: Tensor parallel size within each host }
   pipeline_parallel_size: { type: integer, minimum: 1, title: Pipeline parallel size }
   hosts_per_replica: { type: integer, minimum: 1, title: Hosts per replica }
@@ -66,8 +73,13 @@ variables:
   model_path: { type: string, default: /models/model, title: Model path inside the mounted PVC }
   workspace_gib: { type: integer, minimum: 1, title: Local workspace GiB per serving pod }
   router_enabled: { type: boolean, default: false, title: Prefix-aware router, description: Automatically enabled for multiple replicas or an autoscaling maximum above one. }
+  routing_mode: { type: enum, enum: [ auto, direct, prefixaware, kvaware ], default: auto, title: Routing policy }
+  lmcache_mode: { type: enum, enum: [ recipe, disabled, mp, inprocess ], default: recipe, title: LMCache adapter, description: MP starts a local CPU cache process. KV-aware routing requires the in-process controller protocol. }
+  lmcache_cpu_memory_gb: { type: number, minimum: 1, title: LMCache CPU buffer GB, description: Optional override. Defaults to recipe setting or 8 GB. In-process buffers are budgeted per TP worker. }
+  lmcache_chunk_size: { type: integer, minimum: 1, title: LMCache chunk size, description: Optional override. Defaults to recipe setting or 256 tokens; validate hybrid block geometry. }
+  lmcache_mamba_cache_mode: { type: enum, enum: [ none, align ], title: Mamba cache policy, description: Optional recipe override for hybrid models. }
   inference_probe: { type: enum, enum: [ none, completions, chat ], default: none, title: Optional inference probe, description: Health and model identity are always checked. Other modalities need task-specific payloads. }
-  benchmark_backend: { type: enum, enum: [ unsupported, openai, openai-chat ], default: unsupported, title: Benchmark task adapter }
+  benchmark_backend: { type: enum, enum: [ unsupported, openai, openai-chat ], default: openai-chat, title: Benchmark task adapter }
   autoscaling_enabled: { type: boolean, default: false, title: Enable request-based autoscaling, description: Uses retained KEDA/Prometheus and cannot grow beyond complete model slots in the retained GPU allocation. }
   monitoring_enabled: { type: boolean, default: true, title: Publish model monitoring resources, description: Uses retained Prometheus and ServiceMonitor support; does not install shared components. Autoscaling still requires platform metrics when this is off. }
   min_replicas: { type: integer, default: 1, minimum: 1, title: Minimum replicas }
@@ -89,11 +101,11 @@ variables:
     type: string
     required: false
     title: Optional existing GPU pool OCID
-    description: Leave blank to resolve the expected platform allocation when deployment runs. A selected pool is read only and must carry the oke-llm/allocation label; no pool is created or changed.
+    description: Leave blank to discover a compatible retained managed GPU pool. A selected pool is read only and must carry the oke-llm/allocation label; no pool is created or changed. Apply requires the pool and trusted onboarding pipeline to exist.
   platform_name:
     type: string
     title: Expected infrastructure platform name
-    description: Optional expected platform override. A unique matching managed pool supplies this automatically; when the pool does not exist yet, the expected name defaults to llm-platform.
+    description: Optional expected platform override. A unique compatible managed pool supplies this automatically. Apply requires the retained infrastructure and its trusted onboarding pipeline.
   runner_subnet_id:
     type: string
     required: false
@@ -141,10 +153,10 @@ outputs:
     title: Read-only cluster/network metadata and expected GPU target
   model_delivery:
     type: json
-    title: Model deploy, validate, benchmark and undeploy pipelines
+    title: Automatic model deployment and validation; manual benchmark and undeploy
   onboarding_arguments:
     type: json
-    title: Arguments for trusted platform namespace onboarding
+    title: Trusted namespace onboarding arguments applied automatically
   model_storage:
     type: json
     title: Optional model-owned staging and retained data

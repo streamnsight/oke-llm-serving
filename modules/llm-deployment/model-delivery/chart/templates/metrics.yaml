@@ -11,7 +11,11 @@ metadata:
 spec:
   selector:
     matchLabels: {app.kubernetes.io/instance: {{ .Release.Name }}, app.kubernetes.io/name: oke-llm-model}
-  endpoints: [{port: http, path: /metrics, interval: 15s}]
+  endpoints:
+    - {port: http, path: /metrics, interval: 15s}
+    {{- if and .Values.lmcache .Values.lmcache.enabled (eq .Values.lmcache.mode "mp") }}
+    - {port: cache-metrics, path: /metrics, interval: 15s}
+    {{- end }}
 {{- end }}
 {{- if .Values.autoscaling.enabled }}
 ---

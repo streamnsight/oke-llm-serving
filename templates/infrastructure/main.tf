@@ -136,8 +136,8 @@ output "infrastructure_preview" {
     gpu_selector            = "oke-llm/allocation=${var.platform_name}",
     cpu_budget              = module.bootstrap.platform.cpu_budget,
     native_addons           = module.native_addons.status,
-    bootstrap               = { type = "OCI DevOps native Helm + Shell", automatically_started = false, gpu_network_support = "enable missing OKE-managed add-ons; reuse existing settings; verify actual allocatable resources", shared_controllers = module.bootstrap.platform.required_components, model_workloads = "none" },
-    runtime_readiness       = "not_checked_by_terraform", gpu_kernel_cuda_rdma_validation = "requires_live_nodes_and_later_model_tests"
+    bootstrap               = { type = "OCI DevOps native Helm + Shell", automatically_started = true, deployment = module.bootstrap.platform.automatic_deployment, gpu_network_support = "enable missing OKE-managed add-ons; reuse existing settings; verify actual allocatable resources", shared_controllers = module.bootstrap.platform.required_components, model_workloads = "none" },
+    runtime_readiness       = module.bootstrap.platform.runtime_readiness, gpu_kernel_cuda_rdma_validation = "requires_live_nodes_and_later_model_tests"
   })
 }
 output "allocation" { value = try(module.allocation[0].allocation, null) }

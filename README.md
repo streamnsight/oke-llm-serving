@@ -8,11 +8,10 @@ A model-first workflow for an existing OKE cluster: discover the model and avail
 
 ## Start with discovery
 
-```sh
-make package
-```
+[![Deploy to Oracle Cloud][magic_button]][magic_oke_llm_serving_stack]
 
-Upload `work/packages/oke-llm-discovery.zip` to OCI Resource Manager, using the ZIP root as its working directory. Enter a public Hugging Face model URL/ID, context length and concurrent sequences per replica. Empty region/shape filters scan READY subscribed regions and visible GPU shapes. Discovery allocates no GPUs. Optional monitoring, autoscaling and model distribution are deployment-stage choices: shared components in infrastructure, model monitoring/scaling and weight delivery in the model stack.
+
+Enter a public Hugging Face model URL/ID, context length and concurrent sequences per replica. Empty region/shape filters scan READY subscribed regions and visible GPU shapes. Discovery allocates no GPUs. Optional monitoring, autoscaling and model distribution are deployment-stage choices: shared components in infrastructure, model monitoring/scaling and weight delivery in the model stack.
 
 The only RMS output is **Open discovery report**, a link to a self-contained HTML page in the private discovery bucket:
 
@@ -46,18 +45,18 @@ Recipe metadata is shared across profiling, serving resolution and planning. Har
 
 1. Choose any infrastructure RMS link in discovery. Its ZIP contains editable recommendations; select an existing OKE cluster in that region. Existing CPU pools host controllers. The infrastructure owner manages GPU pools/Compute Cluster placement, shared controllers, one DevOps project, its OKE environment and artifact repositories.
 2. Run shared component pipelines as required. Prometheus defaults on; KEDA is opt-in; LWS follows topology. Reuse OKE GPU/network add-ons. Known missing native prerequisites block enhanced-cluster GPU allocation; automatic add-on configuration and GPU exporter scraping remain unfinished.
-3. Open the **model stack link already present in discovery**. Select the cluster; matching managed pool, networking and shared capabilities are inferred. Each model gets an independent DevOps project, OKE environment, artifact repositories and pipelines. Metadata creation can precede GPU/controller deployment; it does not start inference.
-4. Grant the model principals namespace-scoped access through the trusted platform onboarding pipeline. Then run model deploy, validate, benchmark or undeploy independently. GPU execution remains a separate hardware-validation step.
+3. After retained infrastructure and shared components are ready, open the **model stack link already present in discovery**. Select the cluster; the managed pool, networking and trusted onboarding pipeline are inferred. Each model gets an independent DevOps project, OKE environment, artifact repositories and pipelines.
+4. Model Apply automatically runs trusted namespace onboarding, workload deployment and independent validation, waiting for success. Benchmarking remains manual. Deploy, validate and guarded undeploy also remain independently rerunnable; the model stack never allocates or changes GPU hosts.
 
 The model release uses a repository-owned workload chart for Deployment or LWS instances and an optional pinned upstream Production Stack router dependency. Shared operators/CRDs are not installed by the model release. Multiple packed replicas default to prefix-aware routing; this is distinct from event-driven KV routing and durable conversation history.
 
-Scripts, specifications, values and execution reports use Generic Artifact Registry. Helm charts use OCIR. Object Storage holds discovery/model stack bundles and optional retained model data. No software-artifact evidence bucket is created by the model stack.
+Small scripts, specifications and values use readable inline DevOps artifacts. Required file inputs and downloadable benchmark results use Generic Artifact Registry; routine deployment, readiness and failure reports go to DevOps logs. Helm charts use OCIR. Object Storage holds discovery/model stack bundles and optional retained model data.
 
 Undeploy removes only the owned model release and its model-specific resources. It preserves namespaces, retained data, shared controllers and GPU hosts. Revoke access before destroying the model's metadata/project. Terraform destruction of pipeline definitions alone does not uninstall an imperative Helm release; use the explicit guarded undeploy flow first.
 
 ## Current validation limits
 
-The shared CPU component flow was validated live: LWS reuse, parallel Prometheus/KEDA installation, fresh readiness, and KEDA uninstall/reinstall retaining its six CRDs. Discovery HTML publication and the cluster-only model stack passed live RMS Plan/Apply; the independent model project has four ACTIVE pipelines and six ACTIVE stages. No GPU resources or automatic executions were created. Actual GPU placement, CUDA/NCCL/RDMA, inference, cache hits and performance require later GPU testing. See [the current validation record](outputs/discovery-html-validation-2026-11-14.md).
+The shared CPU component flow was validated live: LWS reuse, parallel Prometheus/KEDA installation, readiness, and KEDA uninstall/reinstall retaining its six CRDs. Model Apply now also passed live in Montreal: trusted onboarding, workload deployment and independent validation succeeded on the retained four-A10 worker. The unchanged recipe image runs with the Python frontend and an explicit direct-HF `main` override; the Pod is Ready with zero restarts and a bounded chat test returned `OK`. No GPU allocation or recycling was performed. Benchmarking, multi-node/RDMA operation, other inference modalities and cache/conversation persistence still require their own validation. See [the startup validation record](outputs/vllm-frontend-startup-plan.md).
 
 A vLLM operator is optional. LMCache does not universally need a database: local RAM/disk, remote stores and multiprocess/P-D transfer have different requirements. Recipe connector flags do not provision those services. Native Responses forwarding or `previous_response_id` support does not establish durable, shared conversation state. See [component ownership and missing capabilities](docs/model-layer-components.md).
 
@@ -76,3 +75,8 @@ Useful documentation:
 - [Serving ecosystem research](outputs/kubernetes-llm-serving-report.md)
 
 Local state, request files, execution evidence and ZIPs stay in ignored `work/` or local state files. Node/YAML is a development-test dependency and is not shipped to RMS.
+
+## References
+
+[magic_button]: https://oci-resourcemanager-plugin.plugins.oci.oraclecloud.com/latest/deploy-to-oracle-cloud.svg
+[magic_oke_model_serving_stack]: https://cloud.oracle.com/resourcemanager/stacks/create?zipUrl=https://github.com/streamnsight/oke-llm-serving/releases/latest/download/oke-llm-serving.zip

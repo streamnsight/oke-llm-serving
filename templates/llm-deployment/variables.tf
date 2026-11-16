@@ -55,12 +55,26 @@ variable "model_id" {
   default = null
 }
 variable "model_revision" {
-  type    = string
-  default = null
+  type        = string
+  default     = null
+  description = "Defaults to discovery's immutable Hugging Face commit. Exactly main is an optional mutable override for direct_hf serving only."
+  validation {
+    condition     = var.model_revision == null ? true : can(regex("^(main|[a-f0-9]{40})$", var.model_revision))
+    error_message = "model_revision must be a 40-character Hugging Face commit or exactly main. Retained PVC and staged snapshots require a commit."
+  }
 }
 variable "serving_image" {
   type    = string
   default = null
+}
+variable "api_frontend" {
+  description = "vLLM API frontend. Python supports the standard model chat templates and serving flags; opt into Rust only after validating compatibility."
+  type        = string
+  default     = "python"
+  validation {
+    condition     = contains(["python", "rust"], var.api_frontend)
+    error_message = "api_frontend must be python or rust."
+  }
 }
 variable "tensor_parallel_size" {
   type    = number
@@ -120,7 +134,7 @@ variable "inference_probe" {
 }
 variable "benchmark_backend" {
   type    = string
-  default = "unsupported"
+  default = "openai-chat"
 }
 variable "autoscaling_enabled" {
   description = "Opt this model into request-based scaling using existing KEDA/Prometheus. Installing those controllers alone does not enable this policy."
@@ -153,6 +167,27 @@ variable "model_staging_image" {
   default = null
 }
 variable "model_staging_cpu_shape" {
+  type    = string
+  default = null
+}
+
+variable "routing_mode" {
+  type    = string
+  default = "auto"
+}
+variable "lmcache_mode" {
+  type    = string
+  default = "recipe"
+}
+variable "lmcache_cpu_memory_gb" {
+  type    = number
+  default = null
+}
+variable "lmcache_chunk_size" {
+  type    = number
+  default = null
+}
+variable "lmcache_mamba_cache_mode" {
   type    = string
   default = null
 }

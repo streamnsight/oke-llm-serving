@@ -1,6 +1,7 @@
 # Copyright (c) 2020-2022 Oracle and/or its affiliates. All rights reserved.
 # Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
 mock_provider "oci" {
+  mock_resource "oci_devops_deployment" { defaults = { state = "SUCCEEDED" } }
   mock_resource "oci_artifacts_repository" { defaults = { id = "ocid1.artifactrepository.oc1.test.fixture" } }
   mock_data "oci_objectstorage_namespace" { defaults = { namespace = "fixture" } }
   mock_data "oci_core_subnet" { defaults = { compartment_id = "network-compartment", ipv6cidr_block = "", ipv6cidr_blocks = [] } }
@@ -26,16 +27,16 @@ run "default_platform_installs_monitoring_and_shared_KEDA_without_model_scaling"
     error_message = "Monitoring and shared KEDA default on; installing KEDA supplies no per-model autoscaling policy, and single-node serving does not require LWS."
   }
   assert {
-    condition     = output.platform.cpu_placement == "existing_cluster_cpu_pools" && !output.platform.cpu_budget.creates_cpu_pool && !contains(keys(output.platform.allocation), "cpu_pool_id") && !contains(keys(output.platform), "readiness_uri") && output.platform.runtime_readiness == "not_asserted_by_terraform; run deploy/validate and inspect immutable execution evidence"
-    error_message = "The v2 descriptor uses existing CPU pools and immutable Artifact Registry evidence, without claiming live readiness or creating CPU nodes."
+    condition     = output.platform.cpu_placement == "existing_cluster_cpu_pools" && !output.platform.cpu_budget.creates_cpu_pool && !contains(keys(output.platform.allocation), "cpu_pool_id") && !contains(keys(output.platform), "readiness_uri") && strcontains(output.platform.runtime_readiness, "required for Apply success") && output.platform.automatic_deployment.automatically_started && output.platform.automatic_deployment.state == "SUCCEEDED"
+    error_message = "The v2 descriptor uses existing CPU pools and waits for automatic validation, without creating CPU nodes."
   }
   assert {
-    condition     = oci_artifacts_repository.scripts.is_immutable && oci_artifacts_repository.results.is_immutable && output.platform.specification.repository_id == oci_artifacts_repository.scripts.id && output.platform.evidence.repository_id == oci_artifacts_repository.results.id && oci_generic_artifacts_content_artifact_by_path.specification.version == sha256(oci_generic_artifacts_content_artifact_by_path.specification.content) && jsondecode(oci_generic_artifacts_content_artifact_by_path.specification.content).generation == output.platform.generation
-    error_message = "Desired platform configuration and immutable run reports belong in separate Artifact Registry repositories, with content-addressed specification versions."
+    condition     = oci_artifacts_repository.scripts.is_immutable && !contains(keys(output.platform), "result_repository_id") && output.platform.specification.delivery == "inline_command_spec" && output.platform.specification.sha256 == sha256(jsonencode(local.config)) && output.platform.evidence.source == "devops_logs" && output.platform.evidence.log_id == oci_logging_log.platform.id
+    error_message = "Desired configuration is delivered inline and routine execution reports belong in DevOps logs, without a results repository."
   }
   assert {
-    condition     = length(oci_generic_artifacts_content_artifact_by_path.script) == 2 && alltrue([for script, artifact in oci_generic_artifacts_content_artifact_by_path.script : artifact.content == file("${path.module}/scripts/${script}") && artifact.version == filesha256("${path.module}/scripts/${script}")]) && alltrue([for spec in values(local.command_specs) : length(yamldecode(spec).inputArtifacts) == 3 && alltrue([for artifact in yamldecode(spec).inputArtifacts : artifact.type == "GENERIC_ARTIFACT" && artifact.registryId == oci_artifacts_repository.scripts.id]) && strcontains(yamldecode(spec).steps[0].command, "sha256sum -c -") && !strcontains(spec, "base64") && !strcontains(spec, "os object get")])
-    error_message = "Platform code and configuration must be verified file inputs from immutable Artifact Registry, not encoded scripts or Object Storage downloads."
+    condition     = alltrue([for mode, spec in module.inline_platform : spec.byte_size <= 51200 && strcontains(spec.preparation_command, "platform.sh") && strcontains(spec.preparation_command, "platform.json") && oci_devops_deploy_artifact.platform[mode].deploy_artifact_source[0].base64encoded_content == spec.content]) && alltrue([for spec in values(local.command_specs) : length(yamldecode(spec).inputArtifacts) == 0 && strcontains(yamldecode(spec).steps[0].command, "sha256sum -c -") && !strcontains(spec, "base64")])
+    error_message = "Platform code and configuration must remain readable inline heredocs with exact checksums, bounded payloads and no runtime base64 decoding."
   }
   assert {
     condition     = alltrue([for stage in oci_devops_deploy_stage.platform : stage.deploy_stage_type == "SHELL" && stage.container_config[0].network_channel[0].subnet_id == "runner"]) && alltrue([for artifact in oci_devops_deploy_artifact.platform : artifact.argument_substitution_mode == "NONE"]) && yamldecode(local.command_specs.deploy).env.variables.REGION == "$${REGION}" && yamldecode(local.command_specs.validate).env.variables.PLATFORM_MODE == "validate" && alltrue([for spec in values(local.command_specs) : strcontains(yamldecode(spec).steps[0].command, "export REGION CLUSTER_ID PLATFORM_NAME")])
@@ -50,7 +51,7 @@ run "default_platform_installs_monitoring_and_shared_KEDA_without_model_scaling"
     error_message = "Only the actual orchestration, validation, component deployment and teardown pipeline principals receive Kubernetes authorization."
   }
   assert {
-    condition     = anytrue([for rule in oci_identity_policy.bootstrap.statements : strcontains(rule, "to manage compute-containers in compartment id platform-compartment")]) && anytrue([for rule in oci_identity_policy.bootstrap.statements : strcontains(rule, "to manage compute-container-instances in compartment id platform-compartment")]) && anytrue([for rule in oci_identity_policy.bootstrap.statements : strcontains(rule, "to use virtual-network-family in compartment id network-compartment")]) && alltrue([for rule in oci_identity_policy.bootstrap.statements : !strcontains(rule, "object-family")])
+    condition     = anytrue([for rule in oci_identity_policy.bootstrap.statements : strcontains(rule, "to manage compute-containers in compartment id platform-compartment")]) && anytrue([for rule in oci_identity_policy.bootstrap.statements : strcontains(rule, "to manage compute-container-instances in compartment id platform-compartment")]) && anytrue([for rule in oci_identity_policy.bootstrap.statements : strcontains(rule, "to use virtual-network-family in compartment id network-compartment")]) && alltrue([for rule in oci_identity_policy.bootstrap.statements : !strcontains(rule, "object-family") && !strcontains(rule, "manage generic-artifacts")])
     error_message = "Shell execution needs both Container Instance permissions, scoped private-network access and no pipeline artifact-bucket policy."
   }
 }
@@ -90,7 +91,7 @@ run "external_monitoring_is_reused_without_teardown_or_chart_mirroring" {
   command = apply
   variables { config = merge(var.config, { keda_enabled = false, component_modes = { prometheus = "reuse" } }) }
   assert {
-    condition     = local.component_specs.prometheus.mode == "reuse" && keys(output.platform.component_pipeline_ids) == ["prometheus"] && length(output.platform.undeploy_pipeline_ids) == 0 && length(output.platform.chart_repositories) == 0 && length(output.bootstrap_rbac.subjects) == 4 && jsondecode(oci_generic_artifacts_content_artifact_by_path.specification.content).components.prometheus.mode == "reuse"
+    condition     = local.component_specs.prometheus.mode == "reuse" && keys(output.platform.component_pipeline_ids) == ["prometheus"] && length(output.platform.undeploy_pipeline_ids) == 0 && length(output.platform.chart_repositories) == 0 && length(output.bootstrap_rbac.subjects) == 4 && local.config.components.prometheus.mode == "reuse"
     error_message = "Reusing an existing controller gets a validation pipeline but neither native Helm ownership/mirroring nor an uninstall pipeline."
   }
 }
@@ -99,7 +100,7 @@ run "retire_keeps_only_an_explicit_teardown_pipeline" {
   command = apply
   variables { config = merge(var.config, { monitoring_enabled = false, keda_enabled = false, component_modes = { prometheus = "retire" } }) }
   assert {
-    condition     = local.component_specs.prometheus.mode == "retire" && length(output.platform.component_pipeline_ids) == 0 && keys(output.platform.undeploy_pipeline_ids) == ["prometheus"] && length(output.platform.chart_repositories) == 0 && length(output.bootstrap_rbac.subjects) == 4 && jsondecode(oci_generic_artifacts_content_artifact_by_path.specification.content).components.prometheus.pipeline_id == null
+    condition     = local.component_specs.prometheus.mode == "retire" && length(output.platform.component_pipeline_ids) == 0 && keys(output.platform.undeploy_pipeline_ids) == ["prometheus"] && length(output.platform.chart_repositories) == 0 && length(output.bootstrap_rbac.subjects) == 4 && local.config.components.prometheus.pipeline_id == null
     error_message = "Retiring a component preserves its explicit teardown path without leaving a deploy pipeline or new chart mirror."
   }
 }
@@ -138,24 +139,64 @@ run "trusted_model_onboarding_is_separate_and_binding_is_complete" {
     error_message = "Only the trusted platform principal onboards exact model principals; no model pipeline starts automatically."
   }
   assert {
-    condition     = oci_devops_deploy_stage.model_onboarding.deploy_stage_type == "SHELL" && oci_devops_deploy_artifact.model_onboarding.argument_substitution_mode == "NONE" && oci_devops_deploy_artifact.model_onboarding.deploy_artifact_source[0].deploy_artifact_source_type == "GENERIC_ARTIFACT" && oci_generic_artifacts_content_artifact_by_path.model_onboarding_command.version == sha256(local.model_onboarding_command) && length(yamldecode(local.model_onboarding_command).inputArtifacts) == 3 && yamldecode(local.model_onboarding_command).env.variables.MODEL_NAMESPACE == "$${MODEL_NAMESPACE}" && local.model_onboarding_parameters.MODEL_PIPELINE_IDS == "[]" && !strcontains(local.model_onboarding_command, "base64")
-    error_message = "Onboarding uses editable non-secret arguments and verified Generic Artifact script files, never arbitrary manifests or inline encoded code."
+    condition     = oci_devops_deploy_stage.model_onboarding.deploy_stage_type == "SHELL" && oci_devops_deploy_artifact.model_onboarding.argument_substitution_mode == "NONE" && oci_devops_deploy_artifact.model_onboarding.deploy_artifact_source[0].deploy_artifact_source_type == "INLINE" && oci_devops_deploy_artifact.model_onboarding.deploy_artifact_source[0].base64encoded_content == module.inline_onboarding.content && module.inline_onboarding.byte_size <= 51200 && length(yamldecode(local.model_onboarding_command).inputArtifacts) == 0 && yamldecode(local.model_onboarding_command).env.variables.MODEL_NAMESPACE == "$${MODEL_NAMESPACE}" && !strcontains(local.model_onboarding_command, "base64")
+    error_message = "Onboarding uses editable non-secret arguments and verified readable inline sources, with no runtime encoded code."
   }
 }
 
 run "DisaggregatedSet_selects_its_required_LWS_controller" {
   command = apply
-  variables { config = merge(var.config, { monitoring_enabled=false, keda_enabled=false, enable_lws=false, enable_disaggregated_set=true }) }
+  variables { config = merge(var.config, { monitoring_enabled = false, keda_enabled = false, enable_lws = false, enable_disaggregated_set = true }) }
   assert {
-    condition = var.config.node_count == 1 && var.config.gpu_count_per_host == 4 && output.platform.required_components == ["lws"] && local.config.enable_lws && yamldecode(local.component_specs.lws.values_yaml).enableDisaggregatedSet
+    condition     = var.config.node_count == 1 && var.config.gpu_count_per_host == 4 && output.platform.required_components == ["lws"] && local.config.enable_lws && yamldecode(local.component_specs.lws.values_yaml).enableDisaggregatedSet
     error_message = "DisaggregatedSet on one multi-GPU node still needs LWS, regardless of the plain LWS switch."
   }
 }
 run "shared_KEDA_can_be_reused_without_creating_a_second_release" {
   command = apply
-  variables { config = merge(var.config, {monitoring_enabled=false, keda_enabled=true, component_modes={keda="reuse"}}) }
+  variables { config = merge(var.config, { monitoring_enabled = false, keda_enabled = true, component_modes = { keda = "reuse" } }) }
   assert {
-    condition = output.platform.keda_enabled && keys(output.platform.component_pipeline_ids)==["keda"] && length(output.platform.undeploy_pipeline_ids)==0 && length(output.platform.chart_repositories)==0 && local.component_specs.keda.mode=="reuse"
+    condition     = output.platform.keda_enabled && keys(output.platform.component_pipeline_ids) == ["keda"] && length(output.platform.undeploy_pipeline_ids) == 0 && length(output.platform.chart_repositories) == 0 && local.component_specs.keda.mode == "reuse"
     error_message = "Existing KEDA receives a validation pipeline, not a second install, chart mirror or uninstall owner."
   }
+}
+
+run "unchanged_component_revision_does_not_rerun_for_inventory_observations" {
+  command = plan
+  variables {
+    config = merge(var.config, { target = merge(var.config.target, { oke_addons = [{ name = "NodeFeatureDiscovery", state = "ACTIVE" }], gpu_image = { id = "newly-observed-image" } }), allocation = merge(var.config.allocation, { capacity = { observed_at = "later", available_hosts = 17 }, oke_addons = [{ name = "NodeFeatureDiscovery", state = "ACTIVE" }], retained_nodes = 1, additional_nodes = 0 }) })
+  }
+  assert {
+    condition     = local.bootstrap_revision == run.default_platform_installs_monitoring_and_shared_KEDA_without_model_scaling.platform.automatic_deployment.revision
+    error_message = "Read-only capacity/add-on/image observations and retained-node counts must not rerun unchanged controllers."
+  }
+  assert {
+    condition     = !oci_devops_deployment.bootstrap.trigger_new_devops_deployment && oci_devops_deployment.bootstrap.deployment_type == "PIPELINE_DEPLOYMENT"
+    error_message = "Apply starts a native pipeline execution with success waiting, without an every-Apply trigger."
+  }
+}
+run "gpu_pool_change_requires_a_new_automatic_revision" {
+  command = plan
+  variables { config = merge(var.config, { allocation = merge(var.config.allocation, { gpu_pool_id = "replacement-gpu-pool" }) }) }
+  assert {
+    condition     = local.bootstrap_revision != run.default_platform_installs_monitoring_and_shared_KEDA_without_model_scaling.platform.automatic_deployment.revision
+    error_message = "A changed GPU allocation binding must rerun readiness against the selected pool."
+  }
+}
+run "component_change_requires_a_new_automatic_revision" {
+  command = plan
+  variables { config = merge(var.config, { enable_lws = true }) }
+  assert {
+    condition     = local.bootstrap_revision != run.default_platform_installs_monitoring_and_shared_KEDA_without_model_scaling.platform.automatic_deployment.revision
+    error_message = "Changing the selected component graph must rerun the coordinator."
+  }
+}
+run "failed_coordinator_cannot_make_apply_succeed" {
+  command = apply
+  variables { config = merge(var.config, { enable_lws = true, monitoring_enabled = false }) }
+  override_resource {
+    target = oci_devops_deployment.bootstrap
+    values = { state = "FAILED" }
+  }
+  expect_failures = [oci_devops_deployment.bootstrap]
 }

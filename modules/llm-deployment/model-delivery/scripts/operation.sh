@@ -15,12 +15,19 @@ lock_duration=$((3 * timeout + 1800))
 lock_held=false
 status=failed
 operation_cleanup() {
-  local code=$?
+  local code=$? cleanup_code=0
   trap - EXIT
-  jq -n --arg status "$status" --arg operation "$DELIVERY_OPERATION" --arg generation "$DELIVERY_GENERATION" --arg deployment "$OCI_DEPLOYMENT_ID" --arg namespace "$namespace" --arg release "$release" --argjson exit_code "$code" \
-    '{status:$status,operation:$operation,generation:$generation,deployment_id:$deployment,namespace:$namespace,release:$release,exit_code:$exit_code}' > operation-result.json
-  oci artifacts generic artifact upload-by-path --repository-id "$DELIVERY_RESULT_REPOSITORY" --artifact-path "$identity/model/$DELIVERY_GENERATION/$OCI_DEPLOYMENT_ID/$DELIVERY_OPERATION.json" --artifact-version "$(date -u +%Y%m%dT%H%M%SZ)-${RANDOM}" --content-body operation-result.json >/dev/null || code=1
-  if [[ $lock_held == true ]]; then lock_release || code=1; fi
+  if [[ $lock_held == true ]]; then lock_release || cleanup_code=1; fi
+  (( code != 0 )) || code=$cleanup_code
+  (( code == 0 )) || status=failed
+  if jq -n --arg status "$status" --arg operation "$DELIVERY_OPERATION" --arg generation "$DELIVERY_GENERATION" --arg deployment "$OCI_DEPLOYMENT_ID" --arg namespace "$namespace" --arg release "$release" --argjson exit_code "$code" \
+    '{status:$status,operation:$operation,generation:$generation,deployment_id:$deployment,namespace:$namespace,release:$release,exit_code:$exit_code}' > operation-result.json; then
+    echo 'Model operation result:' || cleanup_code=1
+    cat operation-result.json || cleanup_code=1
+  else
+    cleanup_code=1
+  fi
+  (( code != 0 )) || code=$cleanup_code
   exit "$code"
 }
 trap operation_cleanup EXIT

@@ -9,7 +9,7 @@ staging=$(mktemp -d)
 trap 'rm -rf "$staging"' EXIT
 unzip -tq "$1"
 unzip -q "$1" -d "$staging"
-for required in main.tf variables.tf schema.yaml .terraform.lock.hcl recommendations_override.tf.json inputs/model-spec.json bundle-manifest.json modules/llm-deployment/model-target/main.tf modules/llm-deployment/model-project/main.tf modules/llm-deployment/model-delivery/main.tf modules/llm-deployment/model-storage/main.tf modules/shared/component-delivery/main.tf; do
+for required in main.tf variables.tf schema.yaml .terraform.lock.hcl recommendations_override.tf.json inputs/model-spec.json bundle-manifest.json modules/llm-deployment/model-target/main.tf modules/llm-deployment/model-project/main.tf modules/llm-deployment/model-delivery/main.tf modules/llm-deployment/model-storage/main.tf modules/shared/component-delivery/main.tf modules/shared/inline-command-spec/main.tf; do
   [[ -f "$staging/$required" ]] || { echo "Missing model asset: $required" >&2; exit 1; }
 done
 [[ ! -e "$staging/inputs/platform-binding.json" ]] || { echo 'Model bundle still depends on an infrastructure Apply output.' >&2; exit 1; }
@@ -27,7 +27,7 @@ IFS=. read -r terraform_major terraform_minor _ <<< "$(terraform version -json |
 if (( terraform_major > 1 || (terraform_major == 1 && terraform_minor >= 7) )); then
   mkdir "$staging/tests"
   cp "$repo/tests/fixtures/generated-model.hcl" "$staging/tests/generated.tftest.hcl"
-  terraform -chdir="$staging" test -no-color
+  bash "$repo/scripts/test-terraform.sh" "$staging"
 else
   echo 'Mock-provider root tests require Terraform 1.7+; this version validates RMS compatibility only.'
 fi

@@ -1,0 +1,9 @@
+<!-- Copyright (c) 2020-2022 Oracle and/or its affiliates. All rights reserved. -->
+<!-- Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl. -->
+# Readable inline command specifications
+
+Pass a command specification object in `specification` and trusted UTF-8 source files in `files`. The `content` output preserves its environment, existing input artifacts and steps, and prepends one Bash step that writes those files through readable, quoted heredocs. No runtime base64 decoding, command evaluation or interpolation of file contents is used. File paths are relative and validated; a deterministic delimiter avoids accidental heredoc termination. Files retain their exact trailing-newline behavior.
+
+The output checks the complete raw UTF-8 document against 51,200 bytes, including YAML, helpers and configuration. `byte_size` measures content bytes correctly for non-ASCII text; `encoded_size` reports the longer SDK transport representation. Pass `content` directly to the Terraform provider’s `base64encoded_content` field. In oracle/oci 9.12/9.13 the provider converts that value to Go `[]byte`, and JSON serialization performs base64 encoding automatically. Applying `base64encode()` in Terraform encodes twice, inflates requests and causes refresh diffs. CLI/Python examples use a string field and require encoding at a different boundary. See [the pinned provider implementation](https://github.com/oracle/terraform-provider-oci/blob/v9.13.0/internal/service/devops/devops_deploy_artifact_resource.go#L652).
+
+Keep large runtime/chart source assets as Artifact Registry inputs and charts in OCIR. Do not remove an input artifact until its content is included in `files` or otherwise provided to the command. Settings intended for users remain pipeline parameters/environment variables.

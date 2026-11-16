@@ -32,7 +32,7 @@ The style tokens and shell come from the supplied `oci-design-system-redwood-jet
 Each confirmed option has **both** deployment ZIPs immediately:
 
 - **GPU pool and shared components:** choose an existing cluster in the indicated region, review Plan and provision retained infrastructure. Skip this when reusing a suitable platform. Existing CPU pools run controllers; GPU allocation is managed only here. The temporary skip-allocation debug control is editable in this infrastructure stack, never in discovery.
-- **Model project and pipelines:** select the cluster. The stack creates a separate project/environment/repositories/pipelines for the model and infers matching pool/networking. It can be created before GPUs/controllers exist; execution waits for trusted namespace onboarding and real readiness. Ambiguous pool/network choices have optional advanced overrides.
+- **Model project and pipelines:** select the cluster. The stack creates a separate project/environment/repositories/pipelines for the model and infers matching pool/networking. Its ZIP is available before infrastructure Apply, but model Apply requires the retained GPU pool and trusted onboarding pipeline. Apply onboards, deploys and independently validates the model, waiting for success; benchmarking remains manual. Ambiguous pool/network choices have optional advanced overrides.
 
 Neither clicking a link nor creating a model stack starts inference. Model deploy/validate/benchmark/undeploy are explicit operations. See [model target and access](model-binding.md).
 

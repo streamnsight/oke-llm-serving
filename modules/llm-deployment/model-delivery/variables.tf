@@ -4,11 +4,20 @@ variable "tenancy_ocid" { type = string }
 variable "compartment_id" { type = string }
 variable "platform" {
   type        = any
-  description = "Runtime target and independent model-project resources. GPU pool/controllers may not exist at Apply; trusted readiness and namespace authorization are checked when a pipeline runs."
+  description = "Runtime target and independent model-project resources. Apply requires retained GPU infrastructure and trusted onboarding, then waits for model deployment and validation."
 }
 variable "model" {
   type        = any
   description = "Frozen llm_model specification, including the exact selection, recipe argv/env and profile."
+}
+variable "api_frontend" {
+  type        = string
+  default     = "python"
+  description = "vLLM API frontend. Python is the default; Rust is an explicit opt-in requiring model/template compatibility validation."
+  validation {
+    condition     = contains(["python", "rust"], var.api_frontend)
+    error_message = "api_frontend must be python or rust. Rust frontend support requires explicit compatibility validation."
+  }
 }
 variable "name" {
   type     = string
@@ -89,7 +98,7 @@ variable "inference_probe" {
 }
 variable "benchmark_backend" {
   type    = string
-  default = "unsupported"
+  default = "openai-chat"
   validation {
     condition     = contains(["unsupported", "openai", "openai-chat"], var.benchmark_backend)
     error_message = "Select an explicit supported benchmark backend; multimodal/audio tasks require a task-specific dataset adapter."
@@ -102,4 +111,32 @@ variable "timeout_seconds" {
     condition     = var.timeout_seconds >= 300 && var.timeout_seconds <= 1800 && floor(var.timeout_seconds) == var.timeout_seconds
     error_message = "Native Helm timeout must be an integer between 300 and 1800 seconds."
   }
+}
+variable "routing_mode" {
+  type    = string
+  default = "auto"
+  validation {
+    condition     = contains(["auto", "direct", "prefixaware", "kvaware"], var.routing_mode)
+    error_message = "Choose auto, direct, prefixaware or kvaware routing."
+  }
+}
+variable "lmcache_mode" {
+  type    = string
+  default = "recipe"
+  validation {
+    condition     = contains(["recipe", "disabled", "mp", "inprocess"], var.lmcache_mode)
+    error_message = "Choose recipe, disabled, mp or inprocess LMCache."
+  }
+}
+variable "lmcache_cpu_memory_gb" {
+  type    = number
+  default = null
+}
+variable "lmcache_chunk_size" {
+  type    = number
+  default = null
+}
+variable "lmcache_mamba_cache_mode" {
+  type    = string
+  default = null
 }

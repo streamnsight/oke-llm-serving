@@ -6,7 +6,7 @@ set -euo pipefail
 for tool in jq curl tar sha256sum oci; do command -v "$tool" >/dev/null; done
 script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 spec=$(realpath "$script_dir/platform.json")
-: "${PLATFORM_MODE:?}" "${REGION:?}" "${CLUSTER_ID:?}" "${PLATFORM_NAME:?}" "${RESULT_REPOSITORY_ID:?}"
+: "${PLATFORM_MODE:?}" "${REGION:?}" "${CLUSTER_ID:?}" "${PLATFORM_NAME:?}"
 [[ "$PLATFORM_MODE" == deploy || "$PLATFORM_MODE" == validate ]]
 [[ "$REGION" == "$(jq -r .region "$spec")" && "$CLUSTER_ID" == "$(jq -r .cluster_id "$spec")" && "$PLATFORM_NAME" == "$(jq -r .platform_name "$spec")" ]] || {
   echo 'Platform binding overrides require a newly reviewed stack specification.' >&2; exit 2;
@@ -19,21 +19,18 @@ cp "$spec" config.json
 # UUID also works when a Shell runtime omits OCI_DEPLOYMENT_ID. No shared key.
 execution=$(od -An -N16 -tx1 /dev/urandom | tr -d ' \n')
 generation=$(jq -er .generation config.json)
-report_path="$PLATFORM_NAME/platform/$generation/$PLATFORM_MODE/$execution"
 printf '{}\n' > components.json
 printf '{}\n' > node-readiness.json
-archive() {
+finish() {
   local result=$?
   trap - EXIT
   jq -n --arg execution "$execution" --arg deployment_id "${OCI_DEPLOYMENT_ID:-}" --arg mode "$PLATFORM_MODE" --arg generation "$generation" \
     --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --argjson exit_code "$result" --slurpfile nodes node-readiness.json --slurpfile components components.json \
-    '{generation:$generation,execution:$execution,deployment_id:$deployment_id,mode:$mode,checked_at:$at,status:(if $exit_code==0 then "ready" else "failed" end),exit_code:$exit_code,node_checks:$nodes[0],components:$components[0],model_runtime_validation:"not_run",gpu_fabric_validation:"not_run"}' > report.json
-  if ! oci artifacts generic artifact upload-by-path --repository-id "$RESULT_REPOSITORY_ID" --artifact-path "$report_path/report.json" --artifact-version "$execution" --content-body report.json >/dev/null; then result=1; fi
-  echo "Platform result: repository=$RESULT_REPOSITORY_ID path=$report_path/report.json version=$execution"
-  rm -rf "$run_dir"
+    '{generation:$generation,execution:$execution,deployment_id:$deployment_id,mode:$mode,checked_at:$at,status:(if $exit_code==0 then "ready" else "failed" end),exit_code:$exit_code,node_checks:$nodes[0],components:$components[0],model_runtime_validation:"not_run",gpu_fabric_validation:"not_run"}' || { (( result != 0 )) || result=1; }
+  rm -rf "$run_dir" || { (( result != 0 )) || result=1; }
   exit "$result"
 }
-trap archive EXIT
+trap finish EXIT
 if [[ "$PLATFORM_MODE" == deploy ]]; then
   jq -c '[.components|to_entries[]|select(.value.mode!="retire")|.key]' config.json > pending.json
   printf '[]\n' > complete.json

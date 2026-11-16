@@ -103,8 +103,13 @@ resource "oci_containerengine_node_pool" "gpu" {
   name               = var.name
   kubernetes_version = data.oci_containerengine_cluster.target.kubernetes_version
   node_shape         = var.gpu_shape
-  node_metadata      = { areLegacyImdsEndpointsDisabled = "true" }
-  freeform_tags      = { "oke-llm-allocation" = terraform_data.identity.id }
+  # OKE/Compute metadata requires base64 transport; the source stays readable.
+  # This first-boot script grows the custom boot volume before OKE starts kubelet.
+  node_metadata = {
+    areLegacyImdsEndpointsDisabled = "true"
+    user_data                      = filebase64("${path.module}/cloud-init/gpu-node.sh")
+  }
+  freeform_tags = { "oke-llm-allocation" = terraform_data.identity.id }
   node_source_details {
     source_type             = "IMAGE"
     image_id                = var.gpu_image_id

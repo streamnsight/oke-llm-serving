@@ -60,9 +60,81 @@ data "oci_core_network_security_group" "runner" {
   for_each                  = toset(local.runner_nsgs)
   network_security_group_id = each.key
 }
+# The selected allocation identifies the trusted platform. Search only its
+# pool/cluster/model-project compartments, never unrelated tenancy projects.
+data "oci_devops_deploy_pipelines" "model_onboarding" {
+  for_each       = local.pool == null ? toset([]) : toset(compact([local.pool.compartment_id, local.cluster.compartment_id, var.compartment_id]))
+  compartment_id = each.key
+  display_name   = "${local.platform_name}-model-onboarding"
+  state          = "ACTIVE"
+}
+locals {
+  onboarding_pipelines = merge({}, [for compartment, result in data.oci_devops_deploy_pipelines.model_onboarding : {
+    for pipeline in flatten([for collection in result.deploy_pipeline_collection : collection.items]) : pipeline.id => pipeline
+    if pipeline.compartment_id == compartment && pipeline.display_name == "${local.platform_name}-model-onboarding" && pipeline.state == "ACTIVE"
+  }]...)
+}
+data "oci_devops_project" "platform" {
+  for_each   = toset([for pipeline in local.onboarding_pipelines : pipeline.project_id])
+  project_id = each.key
+}
+data "oci_devops_deploy_stages" "model_onboarding" {
+  for_each           = local.onboarding_pipelines
+  deploy_pipeline_id = each.key
+}
+locals {
+  onboarding_stages = { for id, result in data.oci_devops_deploy_stages.model_onboarding : id => [
+    for stage in flatten([for collection in result.deploy_stage_collection : collection.items]) : stage
+    if !contains(["DELETING", "DELETED"], stage.state)
+  ] }
+  # ListStages omits common fields in the pinned provider. Use summary identity
+  # only, then verify the full stage/pipeline binding from GetDeployStage.
+  onboarding_candidates = { for id, stages in local.onboarding_stages : id => stages[0]
+    if try(length(stages) == 1 && stages[0].state == "ACTIVE" && stages[0].deploy_stage_type == "SHELL" && trimspace(stages[0].id) != "", false)
+  }
+}
+data "oci_devops_deploy_stage" "model_onboarding" {
+  for_each        = local.onboarding_candidates
+  deploy_stage_id = each.value.id
+}
+locals {
+  onboarding_sources = { for id, stage in data.oci_devops_deploy_stage.model_onboarding : id => stage
+    if try(stage.state == "ACTIVE" && stage.deploy_stage_type == "SHELL" && stage.deploy_pipeline_id == id && trimspace(stage.command_spec_deploy_artifact_id) != "", false)
+  }
+}
+data "oci_devops_deploy_artifact" "model_onboarding" {
+  for_each           = toset([for stage in local.onboarding_sources : stage.command_spec_deploy_artifact_id])
+  deploy_artifact_id = each.key
+}
+locals {
+  onboarding_artifacts = { for id, stage in local.onboarding_sources : id => data.oci_devops_deploy_artifact.model_onboarding[stage.command_spec_deploy_artifact_id] }
+  # The OCI provider exposes decoded []byte text despite this field's name.
+  onboarding_content = { for id, artifact in local.onboarding_artifacts : id => try(artifact.deploy_artifact_source[0].base64encoded_content, "") }
+  onboarding_env     = { for id, content in local.onboarding_content : id => try(yamldecode(content).env.variables, {}) }
+  trusted_onboarding = { for id, stage in local.onboarding_sources : id => {
+    pipeline_id = id, project_id = local.onboarding_pipelines[id].project_id,
+    revision    = sha256(jsonencode({ pipeline_id = id, stage_id = stage.id, artifact_id = stage.command_spec_deploy_artifact_id, content = sha256(local.onboarding_content[id]) }))
+    } if try(
+    data.oci_devops_project.platform[local.onboarding_pipelines[id].project_id].name == local.platform_name &&
+    data.oci_devops_project.platform[local.onboarding_pipelines[id].project_id].state == "ACTIVE" &&
+    stage.project_id == local.onboarding_pipelines[id].project_id &&
+    local.onboarding_artifacts[id].project_id == local.onboarding_pipelines[id].project_id &&
+    local.onboarding_artifacts[id].state == "ACTIVE" && local.onboarding_artifacts[id].deploy_artifact_type == "COMMAND_SPEC" &&
+    local.onboarding_artifacts[id].argument_substitution_mode == "NONE" &&
+    local.onboarding_artifacts[id].deploy_artifact_source[0].deploy_artifact_source_type == "INLINE" &&
+    local.onboarding_env[id].CLUSTER_ID == var.cluster_id && local.onboarding_env[id].PLATFORM_NAME == local.platform_name &&
+    local.onboarding_env[id].PROJECT_ID == local.onboarding_pipelines[id].project_id &&
+    alltrue([for name in ["MODEL_NAMESPACE", "MODEL_PIPELINE_IDS", "MODEL_PROJECT_ID", "MODEL_GPU_POOL_ID", "MODEL_ACCESS_OPERATION"] :
+      contains(flatten([for parameters in local.onboarding_pipelines[id].deploy_pipeline_parameters : [for item in parameters.items : item.name]]), name)
+    ]), false)
+  }
+  model_onboarding = try(one(values(local.trusted_onboarding)), null)
+}
 locals {
   issues = compact([
     local.cluster.state == "ACTIVE" ? "" : "The selected cluster must be ACTIVE.",
+    local.pool == null ? "No retained GPU pool matches this model. Apply the infrastructure stack first, or select the matching managed GPU pool." : "",
+    local.pool == null ? "" : length(local.trusted_onboarding) == 0 ? "No ACTIVE trusted model-onboarding pipeline matches the selected platform and cluster. Apply the infrastructure/components stack first; its project and onboarding pipeline must be accessible in the pool, cluster or model-project compartment." : length(local.trusted_onboarding) > 1 ? "Multiple trusted model-onboarding pipelines match this platform and cluster. Remove duplicate platform deployments before automatic model deployment." : "",
     var.gpu_pool_id == null && length(local.matching_pools) > 1 ? "Multiple compatible managed GPU pools match this cluster and shape; choose a GPU pool OCID or explicit platform-name override." : "",
     can(regex("^[a-z][a-z0-9-]{0,39}$", local.platform_name)) ? "" : "The selected allocation label must be a lowercase platform DNS name.",
     local.runner_subnet == null ? "No unambiguous runner subnet: choose a subnet in the existing cluster VCN." : "",
@@ -81,6 +153,8 @@ locals {
 output "target" {
   value = {
     binding_mode                 = "runtime", platform_name = local.platform_name,
+    model_onboarding_pipeline_id = try(local.model_onboarding.pipeline_id, null), model_onboarding_project_id = try(local.model_onboarding.project_id, null),
+    model_onboarding_revision    = try(local.model_onboarding.revision, null),
     cluster_id                   = var.cluster_id, cluster_compartment_id = local.cluster.compartment_id, cluster_type = local.cluster.type,
     kubernetes_version           = local.cluster.kubernetes_version, vcn_id = local.cluster.vcn_id,
     runner_subnet_id             = local.runner_subnet, runner_nsg_ids = local.runner_nsgs,
@@ -98,7 +172,7 @@ output "target" {
     },
     metadata_ready        = length(local.issues) == 0, issues = local.issues,
     matching_gpu_pool_ids = [for pool in local.matching_pools : pool.id], pool_binding = local.selected_pool_id == null ? "deferred" : var.gpu_pool_id == null ? "inferred_unique_managed_pool" : "explicit_managed_pool",
-    gpu_readiness         = "deferred_to_pipeline; model resource creation does not require allocated or Ready GPU nodes",
+    gpu_readiness         = "pending_automatic_model_pipeline; requires_an_existing_retained_pool",
     free_gpu_headroom     = "unknown_other_namespace_requests_not_visible"
   }
 }

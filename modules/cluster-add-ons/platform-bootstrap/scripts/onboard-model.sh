@@ -9,7 +9,12 @@ for tool in jq curl sha256sum oci; do command -v "$tool" >/dev/null || { echo "M
 [[ ${MODEL_GPU_POOL_ID:-runtime} == runtime || ${MODEL_GPU_POOL_ID:-} =~ ^ocid1\.nodepool\.[A-Za-z0-9._-]+$ ]] || { echo 'MODEL_GPU_POOL_ID must be runtime or an exact OKE pool OCID' >&2; exit 2; }
 MODEL_GPU_POOL_ID=${MODEL_GPU_POOL_ID:-runtime}
 [[ "$MODEL_ACCESS_OPERATION" == grant || "$MODEL_ACCESS_OPERATION" == revoke ]] || { echo 'MODEL_ACCESS_OPERATION must be grant or revoke' >&2; exit 2; }
-jq -e 'type=="array" and length>0 and length<=16 and (unique|length)==length and all(.[];type=="string" and test("^ocid1\\.devopsdeploypipeline\\.[A-Za-z0-9._-]+$"))' <<< "$MODEL_PIPELINE_IDS" >/dev/null
+MODEL_PIPELINE_IDS=$(jq -cn --arg ids "${MODEL_PIPELINE_IDS:-}" '$ids | split(",")')
+jq -e 'type=="array" and length>0 and length<=16 and (unique|length)==length and all(.[];type=="string" and test("^ocid1\\.devopsdeploypipeline\\.[A-Za-z0-9._-]+$"))' <<< "$MODEL_PIPELINE_IDS" >/dev/null || {
+  echo 'MODEL_PIPELINE_IDS must contain 1 to 16 unique exact deployment pipeline OCIDs separated by commas, with no empty entries or whitespace' >&2
+  exit 2
+}
+export MODEL_PIPELINE_IDS
 [[ "$KUBERNETES_VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || exit 2
 script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 jq -e '.components|type=="object" and all(to_entries[];
@@ -31,14 +36,12 @@ finish() {
   trap - EXIT
   if [[ "$locked" == true ]]; then
     if kubectl get lease oke-llm-model-onboarding -n "$MODEL_NAMESPACE" -o json > "$work_dir/lease.json" && jq -e --arg holder "$execution" '.spec.holderIdentity==$holder' "$work_dir/lease.json" >/dev/null; then
-      kubectl delete lease oke-llm-model-onboarding -n "$MODEL_NAMESPACE" --wait=true >/dev/null || code=1
-    else code=1; fi
+      kubectl delete lease oke-llm-model-onboarding -n "$MODEL_NAMESPACE" --wait=true >/dev/null || { (( code != 0 )) || code=1; }
+    else (( code != 0 )) || code=1; fi
   fi
   jq -n --arg execution "$execution" --arg namespace "$MODEL_NAMESPACE" --arg project "$MODEL_PROJECT_ID" --arg action "$MODEL_ACCESS_OPERATION" --arg owner "$owner" --argjson ids "$MODEL_PIPELINE_IDS" --argjson exit_code "$code" \
-    '{operation:"model_access",action:$action,namespace:$namespace,project_id:$project,platform_owner:$owner,pipeline_ids:$ids,execution_id:$execution,status:(if $exit_code==0 then "passed" else "failed" end),exit_code:$exit_code,model_runtime_validation:"not_run"}' > "$work_dir/report.json"
-  oci artifacts generic artifact upload-by-path --repository-id "$RESULT_REPOSITORY_ID" --artifact-path "$PLATFORM_NAME/model-onboarding/$MODEL_NAMESPACE/$execution" --artifact-version "$owner" --content-body "$work_dir/report.json" >/dev/null || code=1
-  echo "Onboarding report: repository $RESULT_REPOSITORY_ID path $PLATFORM_NAME/model-onboarding/$MODEL_NAMESPACE/$execution version $owner"
-  rm -rf "$work_dir"
+    '{operation:"model_access",action:$action,namespace:$namespace,project_id:$project,platform_owner:$owner,pipeline_ids:$ids,execution_id:$execution,status:(if $exit_code==0 then "passed" else "failed" end),exit_code:$exit_code,model_runtime_validation:"not_run"}' || { (( code != 0 )) || code=1; }
+  rm -rf "$work_dir" || { (( code != 0 )) || code=1; }
   exit "$code"
 }
 trap finish EXIT

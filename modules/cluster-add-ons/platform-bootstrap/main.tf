@@ -55,21 +55,6 @@ resource "oci_artifacts_repository" "scripts" {
     }
   }
 }
-resource "oci_artifacts_repository" "results" {
-  compartment_id  = var.compartment_id
-  display_name    = "${var.name}-results"
-  description     = "Immutable execution reports, identified by component, generation and execution."
-  repository_type = "GENERIC"
-  is_immutable    = true
-  provisioner "local-exec" {
-    when    = destroy
-    command = "bash '${path.module}/scripts/cleanup-repository.sh'"
-    environment = {
-      REPOSITORY_ID  = self.id
-      COMPARTMENT_ID = self.compartment_id
-    }
-  }
-}
 resource "oci_devops_deploy_environment" "cluster" {
   project_id              = oci_devops_project.platform.id
   display_name            = "${var.name}-oke"
@@ -104,34 +89,21 @@ locals {
   command_specs = { for mode in ["deploy", "validate"] : mode => yamlencode({
     version = "0.1", component = "command", timeoutInSeconds = 3600, shell = "bash", failImmediatelyOnError = true,
     env = { variables = merge({ for key in keys(local.parameters) : key => "$${${key}}" }, {
-      PLATFORM_MODE = mode, RESULT_REPOSITORY_ID = oci_artifacts_repository.results.id,
+      PLATFORM_MODE = mode,
       OCI_CLI_AUTH  = "resource_principal", OCI_CLI_REGION = "$${REGION}"
     }) },
-    inputArtifacts = concat([for script in sort(tolist(local.scripts)) : {
-      name        = replace(script, ".", "-"), type = "GENERIC_ARTIFACT", artifactId = oci_generic_artifacts_content_artifact_by_path.script[script].artifact_id,
-      registryId  = oci_artifacts_repository.scripts.id, path = oci_generic_artifacts_content_artifact_by_path.script[script].artifact_path,
-      version     = oci_generic_artifacts_content_artifact_by_path.script[script].version, location = "./${script}"
-      }], [{ name = "platform-specification", type = "GENERIC_ARTIFACT", artifactId = oci_generic_artifacts_content_artifact_by_path.specification.artifact_id,
-      registryId  = oci_artifacts_repository.scripts.id, path = oci_generic_artifacts_content_artifact_by_path.specification.artifact_path,
-    version = oci_generic_artifacts_content_artifact_by_path.specification.version, location = "./platform.json" }]),
+    inputArtifacts = [],
     steps = [{ type = "Command", name = mode == "deploy" ? "deploy-component-graph" : "validate-platform", timeoutInSeconds = 3600, command = join("\n", concat([
-      "set -euo pipefail", "export REGION CLUSTER_ID PLATFORM_NAME PLATFORM_MODE RESULT_REPOSITORY_ID OCI_CLI_AUTH OCI_CLI_REGION OCI_DEPLOYMENT_ID OCI_PIPELINE_ID"
+      "set -euo pipefail", "export REGION CLUSTER_ID PLATFORM_NAME PLATFORM_MODE OCI_CLI_AUTH OCI_CLI_REGION OCI_DEPLOYMENT_ID OCI_PIPELINE_ID"
     ], [for script in sort(tolist(local.scripts)) : "printf '%s  %s\\n' '${filesha256("${path.module}/scripts/${script}")}' '${script}' | sha256sum -c -"], ["printf '%s  platform.json\\n' '${sha256(jsonencode(local.config))}' | sha256sum -c -", "bash ./platform.sh"])) }]
   }) }
   all_pipeline_ids = concat(module.components.all_pipeline_ids, [for pipeline in oci_devops_deploy_pipeline.platform : pipeline.id], [oci_devops_deploy_pipeline.model_onboarding.id])
 }
-resource "oci_generic_artifacts_content_artifact_by_path" "script" {
-  for_each      = local.scripts
-  repository_id = oci_artifacts_repository.scripts.id
-  artifact_path = "platform/${each.key}"
-  version       = filesha256("${path.module}/scripts/${each.key}")
-  content       = file("${path.module}/scripts/${each.key}")
-}
-resource "oci_generic_artifacts_content_artifact_by_path" "specification" {
-  repository_id = oci_artifacts_repository.scripts.id
-  artifact_path = "platform/specification.json"
-  version       = sha256(jsonencode(local.config))
-  content       = jsonencode(local.config)
+module "inline_platform" {
+  for_each      = local.command_specs
+  source        = "../../shared/inline-command-spec"
+  specification = yamldecode(each.value)
+  files         = merge({ for script in local.scripts : script => file("${path.module}/scripts/${script}") }, { "platform.json" = jsonencode(local.config) })
 }
 resource "oci_devops_deploy_pipeline" "platform" {
   for_each     = toset(["deploy", "validate"])
@@ -157,7 +129,7 @@ resource "oci_devops_deploy_artifact" "platform" {
   argument_substitution_mode = "NONE"
   deploy_artifact_source {
     deploy_artifact_source_type = "INLINE"
-    base64encoded_content       = base64encode(each.value)
+    base64encoded_content       = module.inline_platform[each.key].content
   }
 }
 resource "oci_devops_deploy_stage" "platform" {
@@ -206,7 +178,6 @@ resource "oci_identity_policy" "bootstrap" {
     "Allow dynamic-group id ${oci_identity_dynamic_group.bootstrap.id} to use virtual-network-family in compartment id ${data.oci_core_subnet.runner.compartment_id}",
     "Allow dynamic-group id ${oci_identity_dynamic_group.bootstrap.id} to read artifact-repositories in compartment id ${var.compartment_id}",
     "Allow dynamic-group id ${oci_identity_dynamic_group.bootstrap.id} to read generic-artifacts in compartment id ${var.compartment_id}",
-    "Allow dynamic-group id ${oci_identity_dynamic_group.bootstrap.id} to manage generic-artifacts in compartment id ${var.compartment_id}",
     "Allow dynamic-group id ${oci_identity_dynamic_group.bootstrap.id} to use log-content in compartment id ${var.compartment_id}"
     ], try(var.config.cluster_authorization_mode, "iam") == "iam" ? [
     "Allow dynamic-group id ${oci_identity_dynamic_group.bootstrap.id} to manage clusters in compartment id ${var.config.target.cluster_compartment_id} where all {target.cluster.id = '${var.config.cluster_id}', request.permission = 'CLUSTER_MANAGE'}"
@@ -226,12 +197,13 @@ output "platform" {
     validation_scope             = try(var.config.gpu_allocation_enabled, true) ? "platform_and_gpu_capacity" : "cpu_components_only",
     gpu_selector                 = "oke-llm/allocation=${var.name}", cpu_placement = "existing_cluster_cpu_pools", cpu_budget = local.component_budget,
     project_id                   = oci_devops_project.platform.id, bootstrap_pipeline_id = oci_devops_deploy_pipeline.platform["deploy"].id,
-    script_repository_id         = oci_artifacts_repository.scripts.id, result_repository_id = oci_artifacts_repository.results.id,
+    automatic_deployment         = { automatically_started = true, id = oci_devops_deployment.bootstrap.id, state = oci_devops_deployment.bootstrap.state, revision = local.bootstrap_revision },
+    script_repository_id         = oci_artifacts_repository.scripts.id,
     component_pipeline_ids       = module.components.component_pipeline_ids, undeploy_pipeline_ids = module.components.undeploy_pipeline_ids,
     validation_pipeline_id       = oci_devops_deploy_pipeline.platform["validate"].id,
     component_generations        = module.components.generations, chart_repositories = module.components.chart_repositories,
-    specification                = { repository_id = oci_artifacts_repository.scripts.id, path = oci_generic_artifacts_content_artifact_by_path.specification.artifact_path, version = oci_generic_artifacts_content_artifact_by_path.specification.version },
-    evidence                     = { repository_id = oci_artifacts_repository.results.id, prefix = "${var.name}/platform/${local.generation}", version = "execution UUID; no mutable latest report" },
+    specification                = { delivery = "inline_command_spec", sha256 = sha256(jsonencode(local.config)), command_spec_bytes = { for mode, spec in module.inline_platform : mode => spec.byte_size } },
+    evidence                     = { source = "devops_logs", log_group_id = oci_logging_log_group.platform.id, log_id = oci_logging_log.platform.id },
     required_components          = keys(local.component_specs), monitoring_enabled = local.monitoring_enabled, keda_enabled = local.keda_enabled,
     components                   = { for key, c in local.component_specs : key => { mode = c.mode, namespace = c.namespace, release_name = c.release_name, chart_version = c.chart.version, crd_names = c.crd_names, owner_name = module.components.owner_names[key], generation = module.components.generations[key], deployment_names = c.deployment_names } },
     prometheus_url               = try(local.component_specs.prometheus.mode != "retire" ? "http://llm-monitoring-kube-prom-prometheus.${local.component_specs.prometheus.namespace}.svc.cluster.local:9090" : null, null),
@@ -244,6 +216,6 @@ output "platform" {
       owner_label        = "oke-llm/platform-owner", owner_value = substr(sha256("${var.name}/${var.config.cluster_id}"), 0, 32),
       required_arguments = ["MODEL_NAMESPACE", "MODEL_PIPELINE_IDS", "MODEL_PROJECT_ID", "MODEL_GPU_POOL_ID"], operations = ["grant", "revoke"], automatically_started = false
     },
-    runtime_readiness = "not_asserted_by_terraform; run deploy/validate and inspect immutable execution evidence"
+    runtime_readiness = "component coordinator checks are required for Apply success; model inference and GPU fabric performance remain unvalidated"
   }
 }

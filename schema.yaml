@@ -10,6 +10,11 @@ outputs:
     title: Model and GPU discovery report
     displayText: Open discovery report
     description: Model details, workload memory, all confirmed deployment choices and regional capacity/limit evidence. Opens a separate Object Storage HTML page, including when no deployment is available.
+  description:
+    type: string
+    title: Click the link to view report
+    displayText: Click the link to view report
+    description: The link provides the full report and options to choose from. If the link is no longer available, re-run apply on the stack to update discovery.
 primaryOutputButton: ${comparison_report_url}
 variableGroups:
   - title: Model and workload

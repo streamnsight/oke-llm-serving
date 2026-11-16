@@ -15,6 +15,12 @@ locals {
   pvc_name  = "${var.name}-download"
   scripts   = toset(["stage.sh", "download.sh", "validate.jq", "job.jq"])
 }
+locals {
+  staging_repository   = try(split("@", var.staging_image)[0], "")
+  staging_first_part   = split("/", local.staging_repository)[0]
+  staging_has_registry = strcontains(local.staging_repository, "/") && (strcontains(local.staging_first_part, ".") || strcontains(local.staging_first_part, ":") || local.staging_first_part == "localhost")
+  staging_image        = var.staging_image == null ? null : (local.staging_has_registry ? var.staging_image : "docker.io/${strcontains(local.staging_repository, "/") ? "" : "library/"}${var.staging_image}")
+}
 resource "terraform_data" "requirements" {
   count = local.enabled ? 1 : 0
   lifecycle {
@@ -68,27 +74,30 @@ locals {
     scratch_gib    = var.scratch_gib, storage_class = var.storage_class, cpu_node_selector = var.cpu_node_selector, hf_token_secret_id = var.hf_token_secret_id
   }) : "{}"
   artifact_contents = local.enabled ? merge({ "model.json" = local.config }, { for s in local.scripts : s => file("${path.module}/scripts/${s}") }) : {}
-  parameters        = { STAGING_IMAGE = coalesce(var.staging_image, "unset"), JOB_DEADLINE_SECONDS = tostring(var.deadline_seconds) }
+  inline_files      = local.enabled ? { for s in local.scripts : s => file("${path.module}/scripts/${s}") } : {}
+  parameters        = { STAGING_IMAGE = coalesce(local.staging_image, "unset"), JOB_DEADLINE_SECONDS = tostring(var.deadline_seconds) }
   command_spec = local.enabled ? yamlencode({
     version = "0.1", component = "command", shell = "bash", timeoutInSeconds = 28800, failImmediatelyOnError = true,
     env = { variables = {
       STAGING_IMAGE       = "$${STAGING_IMAGE}", JOB_DEADLINE_SECONDS = "$${JOB_DEADLINE_SECONDS}",
       MODEL_STAGE_NAME    = var.name, CLUSTER_ID = var.cluster_id, KUBERNETES_VERSION = var.kubernetes_version,
-      MODEL_CONFIG_SHA256 = sha256(local.config), RESULT_REPOSITORY_ID = coalesce(var.result_repository_id, var.artifact_repository_id),
+      MODEL_CONFIG_SHA256 = sha256(local.config),
       OCI_CLI_AUTH        = "resource_principal", OCI_CLI_REGION = var.region
     } },
     inputArtifacts = [for name, artifact in oci_generic_artifacts_content_artifact_by_path.input : {
-      name       = replace(name, ".", "-"), type = "GENERIC_ARTIFACT", artifactId = artifact.artifact_id,
+      name       = replace(name, ".", "-"), type = "GENERIC_ARTIFACT",
       registryId = var.artifact_repository_id, path = artifact.artifact_path, version = artifact.version, location = "./${name}"
     }],
     steps = [{ type = "Command", name = "stage-model-on-cpu", timeoutInSeconds = 28800, command = join("\n", concat([
       "set -euo pipefail",
-      "export STAGING_IMAGE JOB_DEADLINE_SECONDS MODEL_STAGE_NAME CLUSTER_ID KUBERNETES_VERSION MODEL_CONFIG_SHA256 RESULT_REPOSITORY_ID OCI_CLI_AUTH OCI_CLI_REGION"
+      "export STAGING_IMAGE JOB_DEADLINE_SECONDS MODEL_STAGE_NAME CLUSTER_ID KUBERNETES_VERSION MODEL_CONFIG_SHA256 OCI_CLI_AUTH OCI_CLI_REGION"
     ], [for name, content in local.artifact_contents : "printf '%s  %s\\n' '${sha256(content)}' '${name}' | sha256sum -c -"], ["bash ./stage.sh"])) }]
   }) : null
 }
 resource "oci_generic_artifacts_content_artifact_by_path" "input" {
-  for_each      = local.artifact_contents
+  # A pinned manifest can reach 256 KiB and contains Apply-time bucket values;
+  # its fixed key remains plan-known while all fixed source files are inline.
+  for_each      = local.enabled ? { "model.json" = local.config } : {}
   repository_id = var.artifact_repository_id
   artifact_path = "model-storage/${var.name}/${each.key}"
   version       = sha256(each.value)
@@ -111,6 +120,12 @@ resource "oci_devops_deploy_pipeline" "stage" {
   }
   depends_on = [terraform_data.requirements]
 }
+module "inline_command" {
+  count         = local.enabled ? 1 : 0
+  source        = "../../shared/inline-command-spec"
+  specification = yamldecode(local.command_spec)
+  files         = local.inline_files
+}
 resource "oci_devops_deploy_artifact" "stage" {
   count                      = local.enabled ? 1 : 0
   project_id                 = var.project_id
@@ -118,18 +133,9 @@ resource "oci_devops_deploy_artifact" "stage" {
   deploy_artifact_type       = "COMMAND_SPEC"
   argument_substitution_mode = "NONE"
   deploy_artifact_source {
-    deploy_artifact_source_type = "GENERIC_ARTIFACT"
-    repository_id               = var.artifact_repository_id
-    deploy_artifact_path        = oci_generic_artifacts_content_artifact_by_path.command[0].artifact_path
-    deploy_artifact_version     = oci_generic_artifacts_content_artifact_by_path.command[0].version
+    deploy_artifact_source_type = "INLINE"
+    base64encoded_content       = module.inline_command[0].content
   }
-}
-resource "oci_generic_artifacts_content_artifact_by_path" "command" {
-  count         = local.enabled ? 1 : 0
-  repository_id = var.artifact_repository_id
-  artifact_path = "model-storage/${var.name}/command.yaml"
-  version       = sha256(local.command_spec)
-  content       = local.command_spec
 }
 resource "oci_devops_deploy_stage" "stage" {
   count                           = local.enabled ? 1 : 0
@@ -178,7 +184,7 @@ resource "oci_identity_policy" "runner" {
     "Allow dynamic-group id ${oci_identity_dynamic_group.runner[0].id} to manage compute-containers in compartment id ${var.compartment_id}",
     "Allow dynamic-group id ${oci_identity_dynamic_group.runner[0].id} to use virtual-network-family in compartment id ${data.oci_core_subnet.runner[0].compartment_id}",
     "Allow dynamic-group id ${oci_identity_dynamic_group.runner[0].id} to read artifact-repositories in compartment id ${var.compartment_id}",
-    "Allow dynamic-group id ${oci_identity_dynamic_group.runner[0].id} to manage generic-artifacts in compartment id ${var.compartment_id}",
+    "Allow dynamic-group id ${oci_identity_dynamic_group.runner[0].id} to read generic-artifacts in compartment id ${var.compartment_id}",
     "Allow dynamic-group id ${oci_identity_dynamic_group.runner[0].id} to use log-content in compartment id ${var.compartment_id}"
   ]
 }
@@ -219,7 +225,7 @@ locals {
   } : null
 }
 output "bootstrap_manifest" { value = local.bootstrap_manifest }
-output "command_spec" { value = local.command_spec }
+output "command_spec" { value = try(module.inline_command[0].content, null) }
 output "all_pipeline_ids" { value = [for pipeline in oci_devops_deploy_pipeline.stage : pipeline.id] }
 output "storage" {
   value = {
@@ -229,6 +235,7 @@ output "storage" {
     snapshot_sha256              = local.enabled ? local.snapshot : null, pipeline_id = try(oci_devops_deploy_pipeline.stage[0].id, null),
     namespace                    = local.enabled ? local.namespace : null, service_account = local.enabled ? var.service_account : null,
     scratch_pvc                  = local.enabled ? local.pvc_name : null,
+    staging_image                = local.enabled ? local.staging_image : null,
     runtime_status               = local.enabled ? "requires_validation" : "not_applicable",
     model_deployment_integration = "pending: model stack must materialize and verify the snapshot into a local/PVC model path before vLLM starts",
     retained                     = local.enabled

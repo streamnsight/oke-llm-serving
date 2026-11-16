@@ -12,7 +12,7 @@ timeout=$(jq -er .timeout_seconds "$model_config")
 owner_name="oke-llm-owner-$(printf '%s' "$namespace/$release" | sha256sum | cut -c1-24)"
 model_fail() { echo "$*" >&2; return 2; }
 model_inputs() {
-  local key expected platform_name platform_owner model_namespace
+  local key expected platform_name platform_owner model_namespace image_registry
   for key in TP PP HOSTS_PER_REPLICA GPUS_PER_POD REPLICAS CONTEXT_LENGTH CONCURRENCY; do
     [[ ${!key:-} =~ ^[1-9][0-9]*$ ]] || model_fail "$key must be a positive integer" || return
   done
@@ -24,14 +24,24 @@ model_inputs() {
   done
   [[ $MODEL_NAMESPACE == "$namespace" ]] || model_fail 'MODEL_NAMESPACE is an immutable onboarding boundary; create/onboard another stack to change it' || return
   [[ $MODEL_ID =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || model_fail 'MODEL_ID must be a Hugging Face repository ID' || return
-  [[ $SERVING_IMAGE =~ ^[A-Za-z0-9][A-Za-z0-9./:_-]*@sha256:[a-f0-9]{64}$ && $MODEL_REVISION =~ ^[a-f0-9]{40}$ ]] || model_fail 'Use an immutable image digest and Hugging Face commit' || return
+  [[ $SERVING_IMAGE =~ ^[A-Za-z0-9][A-Za-z0-9./:_-]*@sha256:[a-f0-9]{64}$ ]] || model_fail 'Use an immutable serving image digest' || return
+  [[ $MODEL_REVISION =~ ^[a-f0-9]{40}$ || $MODEL_REVISION == main ]] || model_fail 'MODEL_REVISION must be a 40-character Hugging Face commit or exactly main for direct_hf serving' || return
+  [[ $MODEL_REVISION != main || $(jq -er .storage.mode "$model_config") == direct_hf ]] || model_fail 'MODEL_REVISION=main is mutable and supported only with direct_hf; retained PVC and staged snapshots require an immutable commit' || return
+  image_registry=${SERVING_IMAGE%%/*}
+  [[ $SERVING_IMAGE == */* && ( $image_registry == *.* || $image_registry == *:* || $image_registry == localhost ) ]] || model_fail 'SERVING_IMAGE must include its registry, for example docker.io/vllm/vllm-openai@sha256:<digest>. Short image names cannot be resolved interactively by CRI-O; retain the selected digest' || return
+  [[ ${VLLM_USE_RUST_FRONTEND:-} == 0 || ${VLLM_USE_RUST_FRONTEND:-} == 1 ]] || model_fail 'VLLM_USE_RUST_FRONTEND must be 0 (Python default) or 1 (explicit Rust opt-in); validate model and chat-template compatibility before enabling Rust' || return
   # This adapter uses TP within each host and PP across LWS hosts. Other
   # distributed layouts require a separate explicit execution adapter.
   (( TP == GPUS_PER_POD && PP == HOSTS_PER_REPLICA )) || model_fail 'Native MP adapter requires GPUS_PER_POD=TP and HOSTS_PER_REPLICA=PP; cross-host TP/Ray require another adapter' || return
   if (( REPLICAS > 1 )); then
-    jq -e .router_enabled "$model_config" >/dev/null || model_fail 'Multiple replicas require the prefix-aware router; enable it in the model stack before increasing REPLICAS' || return
+    jq -e .router_enabled "$model_config" >/dev/null || model_fail 'Multiple replicas require a router; select prefixaware or compatible kvaware routing before increasing REPLICAS' || return
   fi
   [[ $INFERENCE_PROBE == none || $INFERENCE_PROBE == completions || $INFERENCE_PROBE == chat ]] || model_fail 'Unsupported inference probe; select none or an explicit text probe' || return
+  if jq -e '.lmcache.enabled // false' "$model_config" >/dev/null; then
+    (( HOSTS_PER_REPLICA == 1 )) || model_fail 'LMCache currently supports single-host TP only' || return
+    # The buffer and controller worker ports are fixed in the frozen profile.
+    [[ $TP == "$(jq -r .defaults.TP "$model_config")" ]] || model_fail 'Changing TP with LMCache requires a stack Apply to resize host memory and worker ports' || return
+  fi
   platform_name=$(jq -er .platform.platform_name "$model_config")
   platform_owner=$(printf '%s' "$platform_name/$cluster" | sha256sum | cut -c1-32)
   kubectl get namespace "$namespace" -o json > model-namespace.json || { model_fail "Model namespace is not accessible. Run trusted $platform_name-model-onboarding with this model project and exact pipeline IDs after infrastructure exists"; return 2; }
@@ -72,6 +82,36 @@ model_pool() {
   mv model-resolved-config.next.json model-resolved-config.json
   model_config=model-resolved-config.json
 }
+model_workspace_ceiling() {
+  [[ $(jq -r .storage.mode "$model_config") == direct_hf ]] || return 0
+  # These are the already selected Ready full-GPU nodes, not another scan.
+  # Allocatable is a scheduling ceiling; existing requests/usage remain unknown.
+  jq -n --argjson replicas "$1" --argjson hosts "$HOSTS_PER_REPLICA" --argjson gpus "$GPUS_PER_POD" --slurpfile config "$model_config" --slurpfile nodes ready-pool-nodes.json '
+    def quantity_bytes:
+      (try (if type=="number" then . elif type=="string" then
+        ([capture("^(?<number>[+]?(?:[0-9]+(?:[.][0-9]*)?|[.][0-9]+))(?<unit>[KMGTPE]i|[mkMGTPE]|[eE][+-]?[0-9]+)?$")][0]) as $q |
+        if $q==null then null else ($q.unit//"") as $u | ($q.number|tonumber) *
+          (if ($u|test("^[eE][+-]?[0-9]+$")) then pow(10;($u[1:]|tonumber))
+           elif ($u|endswith("i")) then pow(1024;(["Ki","Mi","Gi","Ti","Pi","Ei"]|index($u))+1)
+           else pow(1000;(["m","","k","M","G","T","P","E"]|index($u))-1) end)
+        end else null end) catch null) | if type=="number" and isfinite and .>=0 then . else null end;
+    ($config[0].storage.workspace_gib|tonumber) as $gib |
+    if ($gib|isfinite) and $gib>0 then ($gib*1073741824|ceil) as $workspace |
+      [$nodes[0][] | (.status.allocatable["ephemeral-storage"]//null) as $quantity | ($quantity|quantity_bytes) as $bytes |
+        {node:(.metadata.name//.spec.providerID//"unnamed"),allocatable_quantity:$quantity,allocatable_bytes:$bytes,
+         gpu_slots:(.status.allocatable["nvidia.com/gpu"]|tonumber/$gpus|floor),workspace_slots:(if $bytes==null then null else ($bytes/$workspace|floor) end)} |
+        .maximum_pod_slots=(if .workspace_slots==null then 0 else [.gpu_slots,.workspace_slots]|min end)] as $capacity |
+      {storage_mode:"direct_hf",workspace_gib:$gib,workspace_bytes:$workspace,checkpoint_download_bytes:$config[0].storage.snapshot_bytes,
+       required_hosts_per_replica:$hosts,replicas_at_ceiling:$replicas,required_pod_slots:($replicas*$hosts),
+       eligible_hosts:([$capacity[]|select(.maximum_pod_slots>0)]|length),maximum_pod_slots:([$capacity[].maximum_pod_slots]|add//0),
+       unknown_quantity_nodes:[$capacity[]|select(.allocatable_bytes==null)|.node],nodes:$capacity,
+       free_ephemeral_headroom:"unknown; existing requests and usage were not inspected",placement_validation:"upper_bound_only; Kubernetes requests and bounded rollout establish placement"} |
+      .possible=((.unknown_quantity_nodes|length)==0 and .eligible_hosts>=$hosts and .maximum_pod_slots>=.required_pod_slots)
+    else error("workspace_gib must be positive and finite") end
+  ' > model-workspace-check.json || { model_fail 'Direct Hub workspace ceiling could not be evaluated; supply a positive measured workspace_gib and check selected node allocatable ephemeral-storage'; return 2; }
+  jq . model-workspace-check.json
+  jq -e .possible model-workspace-check.json >/dev/null || model_fail "Direct Hub per-Pod workspace $(jq -r .workspace_gib model-workspace-check.json)Gi cannot fit enough selected GPU-node slots, or allocatable ephemeral-storage is missing/unrecognized. For a custom/larger boot disk, grow its root partition/filesystem (oci-growfs) and wait for kubelet to report the increased allocatable storage before retrying; boot-volume size alone is not usable workspace. Verify the full checkpoint download requirement before reducing workspace_gib. This is an allocatable upper bound, not free-capacity evidence" || return
+}
 model_geometry() {
   local nodes gpus max_replicas selector key
   model_pool
@@ -98,6 +138,7 @@ model_geometry() {
     select((.metadata.labels["nvidia.com/gpu.sharing-strategy"] // "none")=="none" and (.metadata.labels["nvidia.com/mig.strategy"] // "none")=="none" and (.metadata.labels["nvidia.com/gpu.replicas"] // "1")=="1") |
     select((.status.allocatable["nvidia.com/gpu"] // "0" | tonumber)>=$gpus)]' pool-nodes.json > ready-pool-nodes.json
   jq -e --argjson nodes "$nodes" 'length>=$nodes' ready-pool-nodes.json >/dev/null || model_fail 'Selected OCI pool lacks the expected Ready schedulable full-GPU nodes; foreign pools, MIG/shared devices and missing devices do not count' || return
+  model_workspace_ceiling "$max_replicas" || return
   if (( HOSTS_PER_REPLICA > 1 )); then
     local version minor
     version=$(jq -er .platform.kubernetes_version "$model_config")
@@ -177,6 +218,9 @@ model_storage() {
     kubectl -n "$namespace" get pvc "$pvc" -o json > model-pvc.json
     jq -e '.status.phase=="Bound"' model-pvc.json >/dev/null || model_fail 'Existing model PVC is not Bound' || return
     nodes=$(jq -er .platform.node_count "$model_config")
+    if [[ -s model-pool.json ]]; then
+      nodes=$(jq -er --argjson minimum "$nodes" '[$minimum, (.data["node-config-details"].size // 0), (.data.nodes // [] | length)] | max' model-pool.json)
+    fi
     if (( nodes > 1 )); then
       jq -e 'any(.spec.accessModes[]; .=="ReadOnlyMany" or .=="ReadWriteMany")' model-pvc.json >/dev/null || model_fail 'A multi-host allocation requires a ROX/RWX serving PVC: Kubernetes may place model pods on different retained GPU hosts; RWO staging volumes are insufficient' || return
     fi
@@ -244,7 +288,12 @@ model_validate() {
     jq -e '.choices|length>0' inference-result.json >/dev/null
   fi
   jq -n --arg model "$MODEL_ID" --arg revision "$MODEL_REVISION" --arg image "$SERVING_IMAGE" --arg probe "$probe" \
-    '{status:"ready",model:$model,model_revision:$revision,image:$image,checks:["pod_readiness","image_identity","health","model_identity"],inference_probe:($probe|if .=="none" then "not_run; choose a task-specific probe" else . end),responses_conversation_persistence:false}' > model-validation.json
+    '{status:"ready",model:$model,model_revision:$revision,model_revision_kind:(if $revision=="main" then "mutable_ref" else "immutable_commit" end),image:$image,checks:["pod_readiness","image_identity","health","model_identity"],inference_probe:($probe|if .=="none" then "not_run; choose a task-specific probe" else . end),responses_conversation_persistence:false}' > model-validation.json
+  if jq -e '.lmcache.enabled // false' "$model_config" >/dev/null; then
+    jq -e '[.items[] | select(.metadata.deletionTimestamp==null) | .spec.containers[] | select(.name=="vllm") | .command == ["bash","/lmcache/launch.sh"]] | length>0 and all(.[]; . == true)' model-pods.json >/dev/null || model_fail 'LMCache launcher is absent from a serving Pod' || return
+    jq --slurpfile config "$model_config" '. + {lmcache:($config[0].lmcache + {store_retrieve_validation:"manual_cache_benchmark_required"}),routing:$config[0].routing_mode}' model-validation.json > model-validation-cache.json
+    mv model-validation-cache.json model-validation.json
+  fi
   kill "$model_forward_pid" 2>/dev/null || true
   wait "$model_forward_pid" 2>/dev/null || true
   trap - EXIT

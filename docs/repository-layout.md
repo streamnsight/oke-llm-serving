@@ -12,14 +12,16 @@ The repository root is discovery and the single released entry ZIP. Downstream T
 | `modules/infrastructure` | Existing OKE target/image lookup and retained GPU allocation |
 | `modules/cluster-add-ons` | OKE-managed hardware add-on enablement, cluster-owned DevOps project, shared controllers, monitoring and optional autoscaling |
 | `modules/llm-deployment` | Model-owned releases/pipelines and optional weight staging |
-| `modules/shared` | Native Helm delivery, Generic Artifact inputs/results, release ownership, locking and explicit teardown |
+| `modules/shared` | Native Helm delivery, required file inputs, release ownership, locking and explicit teardown |
 
 The GPU specification catalog belongs to `modules/discovery/accelerator-inventory/data/gpus.json`; allocation also reads it. Controller chart defaults belong to `modules/cluster-add-ons/platform-bootstrap/data/components.json`. Recipe-derived serving images and argv are separate from controller dependencies. No static model/engine catalog is needed.
 
-Infrastructure owns pools, Compute Clusters, shared controllers and their delivery project/repositories. Each model owns an independent project, private OKE environment, artifact repositories, release, routes/cache/scaling instances and pipelines; cluster/pool metadata is resolved at launch/runtime. Model teardown must not delete retained infrastructure, shared APIs or data. Object Storage is for stack ZIPs and optional model data; software artifacts and execution evidence use Artifact Registry/OCIR.
+Infrastructure owns pools, Compute Clusters, shared controllers and their delivery project/repositories. Each model owns an independent project, private OKE environment, artifact repositories, release, routes/cache/scaling instances and pipelines; cluster/pool metadata is resolved at launch/runtime. Model teardown must not delete retained infrastructure, shared APIs or data. Object Storage is for stack ZIPs and optional model data; small scripts/configuration use readable inline artifacts, charts use OCIR, and required file inputs/benchmark exports use Artifact Registry. Routine status, readiness and failures use DevOps Logging.
 
 Infrastructure Apply also [enables missing OKE hardware add-ons](../modules/cluster-add-ons/oke-managed-addons/README.md), including when debug skips GPU allocation. Existing add-on settings are preserved and shared native add-ons remain enabled after stack removal. GPU allocation waits for these service prerequisites; real CUDA, GPU health and RDMA readiness still require node validation.
 
 Terraform module labels/resource names stay stable during directory reorganization. Run `terraform init` after updating source paths to refresh the local module cache; directory moves do not require a second state or reallocation of existing GPU hosts. Packaging retains the same grouped module paths and validates relocated references.
 
 `work/` contains ignored local state/report backups, private runtime evidence and built ZIPs. Node/YAML is a development-test dependency only; it is not packaged or required by RMS runtime discovery.
+
+`modules/shared/inline-command-spec` builds readable inline YAML from module-owned text files and preserves exact file bytes. Component Apply uses a stable revision and the native DevOps deployment resource to execute and await the independent component graph. Metadata destruction remains separate from explicit undeploy.

@@ -43,6 +43,7 @@ module "target" {
   count                   = local.configured ? 1 : 0
   source                  = "../../modules/llm-deployment/model-target"
   cluster_id              = var.cluster_id
+  compartment_id          = local.compartment_id
   gpu_pool_id             = try(trimspace(var.gpu_pool_id) != "" ? trimspace(var.gpu_pool_id) : null, null)
   gpu_pool_compartment_id = try(trimspace(var.gpu_pool_compartment_id) != "" ? trimspace(var.gpu_pool_compartment_id) : null, null)
   platform_name           = var.platform_name
@@ -55,7 +56,7 @@ resource "terraform_data" "binding" {
   lifecycle {
     precondition {
       condition     = local.configured
-      error_message = "Use a configured model ZIP published by discovery: inputs/model-spec.json is required. No completed infrastructure binding is needed to create model pipelines."
+      error_message = "Use a configured model ZIP published by discovery: inputs/model-spec.json is required. Apply the retained GPU infrastructure and shared components before the model stack."
     }
     precondition {
       condition     = !local.configured || var.region == null ? true : var.region == local.expected_region
@@ -84,7 +85,7 @@ locals {
     components          = {}, monitoring_enabled = local.monitoring_required,
     transport           = { requires_rdma = try(local.model.selection.requires_rdma, local.model.selection.platform_plan.topology.rdma_required, false), rdma_resource_name = var.rdma_resource_name },
     model_storage       = module.model_storage[0].storage,
-    readiness           = "metadata_only; retained GPU pool and trusted shared components are resolved/validated when a pipeline runs"
+    readiness           = "Apply resolves trusted onboarding, deploys the model, and validates runtime readiness; benchmarking remains manual"
   }) : null
 }
 module "model" {
@@ -103,13 +104,19 @@ module "model" {
     hosts_per_replica    = var.hosts_per_replica, gpus_per_pod = var.gpus_per_pod, replicas = var.replicas,
     context_length       = var.context_length, concurrency = var.concurrency
   }
-  storage           = { mode = var.storage_mode, pvc_name = var.model_pvc_name, model_path = var.model_path, workspace_gib = var.workspace_gib }
-  hf_token_secret   = var.hf_token_secret
-  router_enabled    = var.router_enabled
-  inference_probe   = var.inference_probe
-  benchmark_backend = var.benchmark_backend
-  autoscaling       = { enabled = var.autoscaling_enabled, min_replicas = var.min_replicas, max_replicas = var.max_replicas, prometheus_url = local.prometheus_url, target_inflight = var.target_inflight }
-  depends_on        = [terraform_data.binding]
+  storage                  = { mode = var.storage_mode, pvc_name = var.model_pvc_name, model_path = var.model_path, workspace_gib = var.workspace_gib }
+  hf_token_secret          = var.hf_token_secret
+  api_frontend             = var.api_frontend
+  router_enabled           = var.router_enabled
+  routing_mode             = var.routing_mode
+  lmcache_mode             = var.lmcache_mode
+  lmcache_cpu_memory_gb    = var.lmcache_cpu_memory_gb
+  lmcache_chunk_size       = var.lmcache_chunk_size
+  lmcache_mamba_cache_mode = var.lmcache_mamba_cache_mode
+  inference_probe          = var.inference_probe
+  benchmark_backend        = var.benchmark_backend
+  autoscaling              = { enabled = var.autoscaling_enabled, min_replicas = var.min_replicas, max_replicas = var.max_replicas, prometheus_url = local.prometheus_url, target_inflight = var.target_inflight }
+  depends_on               = [terraform_data.binding]
 }
 output "model_delivery" { value = try(module.model[0].model_delivery, null) }
 output "onboarding_arguments" { value = try(module.model[0].onboarding_arguments, null) }

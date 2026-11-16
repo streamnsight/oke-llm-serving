@@ -12,7 +12,6 @@ variables {
   subnet_id                     = "subnet"
   name                          = "fixture"
   source_repository_id          = "source"
-  result_repository_id          = "results"
   components = {
     lws = {
       mode        = "managed", namespace = "lws-system", release_name = "lws", ownership_token = "stable-platform-owner"
@@ -46,12 +45,12 @@ run "conditional_native_helm_delivery" {
     error_message = "Charts must use bounded, waiting native Helm stages without delete-triggered uninstall."
   }
   assert {
-    condition     = oci_devops_deploy_artifact.chart["lws"].deploy_artifact_source[0].deploy_artifact_version == "$${CHART_VERSION}" && oci_devops_deploy_artifact.values["lws"].argument_substitution_mode == "SUBSTITUTE_PLACEHOLDERS" && oci_devops_deploy_artifact.values["lws"].deploy_artifact_type == "GENERIC_FILE"
+    condition     = oci_devops_deploy_artifact.chart["lws"].deploy_artifact_source[0].deploy_artifact_version == "$${CHART_VERSION}" && oci_devops_deploy_artifact.values["lws"].argument_substitution_mode == "SUBSTITUTE_PLACEHOLDERS" && oci_devops_deploy_artifact.values["lws"].deploy_artifact_type == "GENERIC_FILE" && oci_devops_deploy_artifact.values["lws"].deploy_artifact_source[0].deploy_artifact_source_type == "INLINE" && oci_devops_deploy_artifact.values["lws"].deploy_artifact_source[0].base64encoded_content == var.components.lws.values_yaml
     error_message = "Editable chart versions and values placeholders must reach native Helm."
   }
   assert {
-    condition     = alltrue([for spec in values(local.command_specs) : strcontains(yamldecode(spec).steps[0].command, "export ") && strcontains(yamldecode(spec).steps[0].command, "sha256sum -c -") && length(yamldecode(spec).inputArtifacts) == 5]) && alltrue([for artifact in values(oci_devops_deploy_artifact.command) : artifact.deploy_artifact_source[0].deploy_artifact_source_type == "GENERIC_ARTIFACT"])
-    error_message = "Command specifications and verified file inputs must use Artifact Registry with exported editable parameters."
+    condition     = alltrue([for key, spec in local.command_specs : strcontains(yamldecode(spec).steps[0].command, "export ") && strcontains(yamldecode(spec).steps[0].command, "sha256sum -c -") && length(yamldecode(spec).inputArtifacts) == 0 && module.inline_command[key].byte_size <= 51200 && strcontains(module.inline_command[key].preparation_command, "cat > 'component.sh'") && strcontains(module.inline_command[key].preparation_command, "cat > 'specification.json'")]) && alltrue([for key, artifact in oci_devops_deploy_artifact.command : artifact.deploy_artifact_source[0].deploy_artifact_source_type == "INLINE" && artifact.deploy_artifact_source[0].base64encoded_content == module.inline_command[key].content])
+    error_message = "Readable Shell sources and compact specifications must be delivered inline, retaining exported parameters and checksum verification without Registry script/command files."
   }
   assert {
     condition     = yamldecode(local.command_specs["lws/deploy"]).env.variables.REPLICAS == "$${REPLICAS}" && yamldecode(local.command_specs["external/deploy"]).env.variables.DELIVERY_OPERATION == "reuse" && yamldecode(local.command_specs["old/undeploy"]).env.variables.DELIVERY_OPERATION == "undeploy" && yamldecode(local.command_specs["lws/deploy"]).env.variables.DELIVERY_DEPLOYMENT_ID == "$${OCI_DEPLOYMENT_ID}"
@@ -60,5 +59,31 @@ run "conditional_native_helm_delivery" {
   assert {
     condition     = alltrue(flatten([for parameters in values(local.parameters) : [for name in keys(parameters) : !startswith(name, "OCI_")]])) && alltrue([for parameters in values(local.parameters) : parameters.ENFORCE_HELM_DEPLOYMENT == "true" && parameters.RECOVER_LOCK_HOLDER == "none"])
     error_message = "OCI service-reserved controls cannot be declared as pipeline parameters. Prepare creates namespaces; retain the documented non-reserved Helm rerun argument."
+  }
+}
+run "bundled_chart_bodies_remain_file_inputs_with_digest_bound_generation" {
+  command = apply
+  variables {
+    components = { bundled = {
+      mode  = "managed", namespace = "bundled", release_name = "bundled", ownership_token = "stable-platform-owner",
+      chart = { name = "bundled", version = "1.0.0", files = { "Chart.yaml" = "apiVersion: v2\nname: bundled\nversion: 1.0.0\n", "templates/workload.yaml" = "large-chart-body-kept-outside-specification" } }
+    } }
+  }
+  assert {
+    condition     = !contains(keys(local.specifications.bundled.chart), "files") && local.specifications.bundled.chart_digests["templates/workload.yaml"] == sha256("large-chart-body-kept-outside-specification") && length(oci_generic_artifacts_content_artifact_by_path.chart_file) == 2 && !strcontains(module.inline_command["bundled/deploy"].content, "large-chart-body-kept-outside-specification") && module.inline_command["bundled/deploy"].byte_size < 51200
+    error_message = "Bundled chart source stays in file artifacts; compact inline specifications bind its digests without duplicating the bodies."
+  }
+}
+run "bundled_chart_source_change_updates_generation" {
+  command = plan
+  variables {
+    components = { bundled = {
+      mode  = "managed", namespace = "bundled", release_name = "bundled", ownership_token = "stable-platform-owner",
+      chart = { name = "bundled", version = "1.0.0", files = { "Chart.yaml" = "apiVersion: v2\nname: bundled\nversion: 1.0.0\n", "templates/workload.yaml" = "changed-chart-source" } }
+    } }
+  }
+  assert {
+    condition     = output.generations.bundled != run.bundled_chart_bodies_remain_file_inputs_with_digest_bound_generation.generations.bundled
+    error_message = "Deduplicating chart bodies must not stop a changed chart source from updating deployment generation."
   }
 }

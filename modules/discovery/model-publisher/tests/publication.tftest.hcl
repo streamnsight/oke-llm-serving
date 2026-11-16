@@ -15,8 +15,8 @@ variables {
     model          = { repository = "org/model", revision = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", context_length = 8192, concurrency = 8, checkpoint_download_bytes = 107374182400 },
     profile        = { memory = { assumptions = { context_length = 4096, concurrency = 1 } } },
     selection = {
-      region                = "eu-frankfurt-1", availability_domain = "AD-1", gpu_shape = "BM.GPU.H100.8", gpus_per_node = 8, availability = "available_at_scan",
-      tensor_parallel_size  = 4, pipeline_parallel_size = 1, replicas = 2, node_count = 1,
+      region               = "eu-frankfurt-1", availability_domain = "AD-1", gpu_shape = "BM.GPU.H100.8", gpus_per_node = 8, availability = "available_at_scan",
+      tensor_parallel_size = 4, pipeline_parallel_size = 1, replicas = 2, node_count = 1,
       platform_plan = { monitoring = { enabled = true }, autoscaling = { enabled = false }, components = {
         prometheus = { required = true }, keda = { required = false }, gpu_telemetry = { required = true }
       } },
@@ -114,5 +114,26 @@ run "model_options_have_distinct_archive_paths_and_shared_expiry" {
   assert {
     condition     = output.deployment.selection_id == "other-ad" && output.deployment.published_at == var.publication.published_at && output.deployment.expires_at == "2026-11-15T10:00:00Z" && archive_file.model[0].output_path == "${path.root}/.generated/model-${substr(sha256(jsonencode(var.model_spec)), 0, 20)}.zip" && length(output.deployment.launch_object_name) == 37
     error_message = "Same-model options need independent archive paths, filename run IDs and the common discovery PAR expiry."
+  }
+}
+
+run "cache_profile_defaults_remain_editable_in_rms" {
+  command = plan
+  variables {
+    model_spec = {
+      schema_version = "1.0", kind = "llm_model", selection_id = "cache-profile",
+      model          = { repository = "another-org/attention-model", revision = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" },
+      selection = {
+        region = "eu-frankfurt-1", gpu_shape = "BM.GPU.H100.8", node_count = 1, availability = "available_at_scan", tensor_parallel_size = 1, pipeline_parallel_size = 1, replicas = 1,
+        serving_configuration = {
+          engine             = { image = "vllm/vllm-openai@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" },
+          deployment_profile = { lmcache = { mode = "mp", cpu_memory_gb = 12, chunk_size = 128 }, routing = { mode = "prefixaware" } }
+        }
+      }
+    }
+  }
+  assert {
+    condition     = local.defaults.lmcache_mode == "mp" && local.defaults.lmcache_cpu_memory_gb == 12 && local.defaults.lmcache_chunk_size == 128 && local.defaults.routing_mode == "prefixaware" && yamldecode(local.files["schema.yaml"]).variables.lmcache_mode.default == "mp" && jsondecode(local.files["recommendations_override.tf.json"]).variable.lmcache_mode.default == "mp" && contains(keys(local.files), "modules/llm-deployment/model-delivery/chart/files/lmcache-launch.sh")
+    error_message = "Recipe cache recommendations and readable runtime assets must survive publication, without model-specific branches or hidden tfvars."
   }
 }

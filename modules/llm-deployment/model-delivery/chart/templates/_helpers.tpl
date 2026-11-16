@@ -33,7 +33,11 @@ containers:
   - name: vllm
     image: {{ required "A digest-pinned serving image is required" $root.Values.image | quote }}
     imagePullPolicy: IfNotPresent
+    {{- if and $root.Values.lmcache $root.Values.lmcache.enabled }}
+    command: ["bash", "/lmcache/launch.sh"]
+    {{- else }}
     command: ["vllm", "serve"]
+    {{- end }}
     args:
       - {{ $root.Values.modelPath | default $root.Values.model | quote }}
       {{- range $root.Values.recipeArgs }}
@@ -73,6 +77,16 @@ containers:
       - name: {{ $key }}
         value: {{ $value | quote }}
       {{- end }}
+      {{- if and $root.Values.lmcache $root.Values.lmcache.enabled }}
+      - {name: LMCACHE_ADAPTER, value: {{ $root.Values.lmcache.mode | quote }}}
+      - {name: LMCACHE_CPU_MEMORY_GB, value: {{ $root.Values.lmcache.cpu_memory_gb | toString | quote }}}
+      {{- if $root.Values.lmcache.controller }}
+      - name: LMCACHE_LMCACHE_INSTANCE_ID
+        valueFrom: {fieldRef: {fieldPath: metadata.name}}
+      - name: LMCACHE_P2P_HOST
+        valueFrom: {fieldRef: {fieldPath: status.podIP}}
+      {{- end }}
+      {{- end }}
       - name: HF_HOME
         value: /cache/huggingface
       {{- if $root.Values.hfTokenSecret }}
@@ -85,6 +99,10 @@ containers:
     ports:
       - name: http
         containerPort: 8000
+      {{- if and $root.Values.lmcache $root.Values.lmcache.enabled (eq $root.Values.lmcache.mode "mp") }}
+      - name: cache-metrics
+        containerPort: 9090
+      {{- end }}
     {{- if not $worker }}
     startupProbe:
       httpGet: {path: /health, port: http}
@@ -111,12 +129,19 @@ containers:
         {{ $root.Values.rdmaResource }}: 1
         {{- end }}
     volumeMounts:
+      {{- if and $root.Values.lmcache $root.Values.lmcache.enabled }}
+      - {name: lmcache, mountPath: /lmcache, readOnly: true}
+      {{- end }}
       - {name: shm, mountPath: /dev/shm}
       - {name: cache, mountPath: /cache}
       {{- if $root.Values.pvcName }}
       - {name: model, mountPath: /models, readOnly: true}
       {{- end }}
 volumes:
+  {{- if and $root.Values.lmcache $root.Values.lmcache.enabled }}
+  - name: lmcache
+    configMap: {name: {{ $root.Release.Name }}-lmcache}
+  {{- end }}
   - name: shm
     emptyDir: {medium: Memory, sizeLimit: {{ $root.Values.shm | quote }}}
   - name: cache
