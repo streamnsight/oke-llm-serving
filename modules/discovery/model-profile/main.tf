@@ -88,15 +88,15 @@ locals {
   experts                   = try(local.text.num_local_experts, local.text.num_experts, null)
   moe                       = contains(["mixtral", "qwen2_moe", "qwen3_moe"], local.model_type) || try(local.experts > 1, false)
   conventional              = contains(["llama", "mistral", "mixtral", "qwen2", "qwen2_moe", "qwen3", "qwen3_moe"], local.model_type)
-  dtype_bytes               = { F64 = 8, F32 = 4, F16 = 2, BF16 = 2 }
+  dtype_bytes               = { F64 = 8, F32 = 4, F16 = 2, BF16 = 2, F8_E4M3 = 1, F8_E5M2 = 1, I64 = 8, U64 = 8, I32 = 4, U32 = 4, I16 = 2, U16 = 2, I8 = 1, U8 = 1, BOOL = 1 }
   parameters                = try(local.info.safetensors.parameters, {})
-  counts_valid              = try(length(local.parameters) > 0 && alltrue([for dtype, count in local.parameters : contains(keys(local.dtype_bytes), dtype) && count >= 0 && floor(count) == count]) && sum(values(local.parameters)) == local.info.safetensors.total, false)
+  counts_valid              = try(length(local.parameters) > 0 && alltrue([for dtype, count in local.parameters : contains(keys(local.dtype_bytes), dtype) && count >= 0 && floor(count) == count]) && sum(values(local.parameters)) > 0 && sum(values(local.parameters)) == local.info.safetensors.total, false)
   weight_bytes              = local.counts_valid ? sum([for dtype, count in local.parameters : count * lookup(local.dtype_bytes, dtype, 0)]) : null
-  resident_weight_bytes     = local.counts_valid ? max(local.weight_bytes, sum(values(local.parameters)) * (var.kv_dtype == "float32" ? 4 : 2)) : null
-  layers                    = try(local.text.num_hidden_layers, 0)
-  heads                     = try(local.text.num_attention_heads, 0)
+  resident_weight_bytes     = local.counts_valid ? local.weight_bytes : null
+  layers                    = try(local.text.num_hidden_layers, local.text.n_layer, local.text.num_layers, 0)
+  heads                     = try(local.text.num_attention_heads, local.text.n_head, 0)
   kv_heads                  = try(local.text.num_key_value_heads, local.heads)
-  head_dim                  = try(local.text.head_dim, local.text.hidden_size / local.heads, 0)
+  head_dim                  = try(local.text.head_dim, try(local.text.hidden_size, local.text.n_embd) / local.heads, 0)
   dimensions_valid          = try(alltrue([for n in [local.layers, local.heads, local.kv_heads, local.head_dim] : n > 0 && floor(n) == n]) && local.kv_heads <= local.heads && local.heads % local.kv_heads == 0, false)
   max_context               = try(local.text.max_position_embeddings, null)
   quantization              = try(local.config.quantization_config, local.text.quantization_config, null)
@@ -105,9 +105,9 @@ locals {
   checkpoint_download_bytes = try(length(local.checkpoint_file_sizes) > 0 && alltrue([for size in local.checkpoint_file_sizes : size > 0]) ? sum(local.checkpoint_file_sizes) : null, null)
   has_index                 = contains([for file in try(local.info.siblings, []) : file.rfilename], "model.safetensors.index.json")
   canonical                 = local.has_index || (length(local.root_checkpoints) == 1 && contains(local.root_checkpoints, "model.safetensors"))
-  weights_supported         = local.counts_valid && local.canonical && local.quantization == null
+  weights_supported         = local.counts_valid && local.canonical
   # Partial text KV payload is useful even when hybrid/vision allocations are unknown.
-  qwen_hybrid = try(local.model_type == "qwen3_5_text" && local.dimensions_valid && length(local.text.layer_types) == local.layers && alltrue([
+  qwen_hybrid = try(local.dimensions_valid && contains(try(local.text.layer_types, []), "linear_attention") && length(local.text.layer_types) == local.layers && alltrue([
     for type in local.text.layer_types : contains(["full_attention", "linear_attention"], type)
   ]) && try(var.context_length <= local.max_context, true), false)
   full_attention_layers   = local.qwen_hybrid ? length([for type in local.text.layer_types : type if type == "full_attention"]) : null
@@ -119,7 +119,8 @@ locals {
     local.counts_valid ? "" : "Hub safetensors counts are missing, inconsistent or use unsupported dtypes.",
     local.canonical ? "" : "No unambiguous canonical safetensors checkpoint is declared.",
     local.dimensions_valid ? "" : "Missing or unsupported attention dimensions.",
-    local.quantization == null ? "" : "Quantized checkpoints need engine-specific resident-memory estimates.",
+    local.quantization == null ? "" : "Quantized resident allocations use a native-storage baseline plus an uncalibrated planning allowance.",
+    alltrue([for dtype in keys(local.parameters) : startswith(dtype, "F") || dtype == "BF16"]) ? "" : "Integer/packed storage elements are not logical parameters; resident layout remains heuristic.",
     anytrue([for key in ["text_config", "vision_config", "auto_map"] : contains(keys(local.config), key)]) ? (local.qwen_hybrid && contains(keys(local.config), "vision_config") ? "Vision workspace depends on media dimensions and batch; those inputs have not been profiled." : "Composite, multimodal or custom-code architecture requires a dedicated estimator.") : "",
     try(var.context_length > local.max_context, false) ? "Requested context exceeds the declared maximum." : "",
   ])
@@ -135,7 +136,7 @@ output "profile" {
   description = "Metadata-based profile; check memory.status before interpreting numeric estimates."
   value = {
     schema_version    = "1.0"
-    estimator_version = "terraform-metadata-0.2.0"
+    estimator_version = "terraform-metadata-0.3.0"
     model = {
       repository              = local.repository
       requested_revision      = var.revision
@@ -151,15 +152,16 @@ output "profile" {
       chat_template_available = try(length(jsondecode(data.http.fallback_tokenizer[0].response_body).chat_template) > 0, false) || try(length(local.metadata_chat_template) > 0, false) || try(length(jsondecode(data.http.tokenizer[0].response_body).chat_template) > 0, false) || contains([for file in try(local.info.siblings, []) : file.rfilename], "chat_template.jinja")
     }
     architecture = {
-      model_type              = local.model_type
-      kind                    = local.qwen_hybrid ? (local.moe ? "hybrid_moe" : "hybrid_dense") : local.moe ? "moe" : local.conventional ? "dense" : "unknown"
-      experts                 = local.experts
-      experts_per_token       = try(local.text.num_experts_per_tok, null)
-      architectures           = try(local.config.architectures, [])
-      declared_context_length = local.max_context
-      quantization            = local.quantization
-      source                  = "SHA-pinned config.json"
-      confidence              = "declared_metadata"
+      model_type                  = local.model_type
+      kind                        = local.qwen_hybrid ? (local.moe ? "hybrid_moe" : "hybrid_dense") : local.moe ? "moe" : local.conventional ? "dense" : "unknown"
+      experts                     = local.experts
+      experts_per_token           = try(local.text.num_experts_per_tok, null)
+      architectures               = try(local.config.architectures, [])
+      declared_context_length     = local.max_context
+      quantization                = local.quantization
+      checkpoint_variant_selected = var.checkpoint_file != ""
+      source                      = "SHA-pinned config.json"
+      confidence                  = "declared_metadata"
       attention = {
         layers      = local.layers, heads = local.heads, kv_heads = local.kv_heads, head_dim = local.head_dim
         hidden_size = try(local.text.hidden_size, null), vocab_size = try(local.text.vocab_size, null)
@@ -174,7 +176,7 @@ output "profile" {
     }
     weights = {
       checkpoint_formats        = sort(distinct(flatten([for f in try(local.info.siblings, []) : [for extension in ["safetensors", "gguf", "bin", "pt", "pth"] : extension if endswith(lower(f.rfilename), ".${extension}")]])))
-      selected_checkpoint       = local.has_index ? "model.safetensors.index.json" : local.canonical ? "model.safetensors" : null
+      selected_checkpoint       = local.selected_checkpoint
       checkpoint_download_bytes = try(coalesce(local.checkpoint_download_bytes, one([for f in local.info.siblings : try(f.size, f.lfs.size) if endswith(f.rfilename, ".gguf")])), null)
       # A staging allowlist, not executable repository code. LFS object IDs are
       # content SHA256s; ordinary Git blob IDs are deliberately not called SHA256.
@@ -182,18 +184,20 @@ output "profile" {
         path   = f.rfilename, size_bytes = try(f.size, f.lfs.size, null),
         sha256 = try(can(regex("^[a-f0-9]{64}$", f.lfs.sha256)) ? f.lfs.sha256 : null, null)
       } if !strcontains(f.rfilename, "/") && (endswith(f.rfilename, ".safetensors") || endswith(f.rfilename, ".json") || contains(["tokenizer.model", "tokenizer.tiktoken", "merges.txt", "vocab.txt", "chat_template.jinja"], f.rfilename))]
-      storage_source    = "Hub-published root safetensors file sizes; storage only, never resident GPU memory"
-      tensor_data_bytes = local.weight_bytes
-      tensor_elements   = try(local.info.safetensors.total, null)
-      elements_by_dtype = local.parameters
-      source            = "Hub-published safetensors counts by dtype; not independently verified headers"
-      confidence        = "declared_metadata"
+      storage_source          = "Hub-published root safetensors file sizes; storage only, never resident GPU memory"
+      tensor_data_bytes       = var.checkpoint_file == "" ? local.weight_bytes : null
+      tensor_elements         = var.checkpoint_file == "" ? try(local.info.safetensors.total, null) : null
+      logical_parameter_count = var.checkpoint_file == "" && local.counts_valid && alltrue([for dtype in keys(local.parameters) : startswith(dtype, "F") || dtype == "BF16"]) ? local.info.safetensors.total : null
+      elements_by_dtype       = var.checkpoint_file == "" ? local.parameters : {}
+      source                  = "Hub-published safetensors counts by dtype; not independently verified headers"
+      confidence              = "declared_metadata"
     }
     memory = {
-      status        = local.supported ? "estimated" : "unsupported"
+      status        = local.supported ? "estimated" : local.planning_payload != null ? "heuristic" : "unsupported"
       reasons       = local.reasons
-      weight_bytes  = local.weights_supported ? local.resident_weight_bytes : null
-      weight_status = local.weights_supported ? "estimated_from_hub_counts" : "unknown"
+      weight_bytes  = local.planning_weights
+      weight_status = local.native_weight_bytes != null ? "estimated_from_hub_counts" : local.planning_weights != null ? "planning_baseline_from_storage_or_input" : "unknown"
+      planning      = local.planning
       partial = {
         full_attention_layers   = local.full_attention_layers, linear_attention_layers = local.linear_attention_layers,
         full_attention_kv_bytes = local.partial_full_kv_bytes,
@@ -211,7 +215,7 @@ output "profile" {
         concurrency            = var.concurrency
         live_cached_tokens     = var.context_length * var.concurrency
         kv_dtype               = var.kv_dtype
-        weight_dtype           = var.kv_dtype
+        weight_dtype           = "checkpoint_native"
         runtime_allowance_gib  = var.runtime_gib
         safety_margin_fraction = var.margin
         prefix_sharing         = false
@@ -220,7 +224,7 @@ output "profile" {
       }
     }
     warnings = [
-      "The serving recipe uses the requested floating compute/KV dtype. Resident weights reserve the greater of checkpoint bytes and dtype-converted element bytes.",
+      "Weight baseline preserves checkpoint precision independently of KV dtype. Engine expansion/repacking is not established by stored bytes.",
       "Hub-published parameter counts are trusted metadata, not independently read tensor headers.",
       "All expert weights and full-context KV for all layers are counted; sliding-window savings are not assumed.",
       "Runtime allowance and margin are assumptions, not measured overhead or a performance guarantee.",

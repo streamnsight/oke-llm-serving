@@ -14,6 +14,8 @@ primaryOutputButton: ${comparison_report_url}
 variableGroups:
   - title: Model and workload
     variables: [model, revision, context_length, concurrency]
+  - title: Memory planning assumptions
+    variables: [checkpoint_file, weight_budget_gb, planning_budget_gb, unknown_cache_fraction, workspace_fraction]
   - title: Capacity observation
     variables: [observation_id, compartment_id, regions, shape_names]
   - title: Infrastructure launch bundles
@@ -22,6 +24,37 @@ variableGroups:
     visible: false
     variables: [tenancy_ocid, compartment_ocid, region]
 variables:
+
+  checkpoint_file:
+    type: string
+    default: ""
+    title: Optional single checkpoint filename
+    description: Select one single-file checkpoint variant when automatic selection is ambiguous.
+  weight_budget_gb:
+    type: number
+    default: 0
+    minimum: 0
+    title: Explicit weight baseline (decimal GB)
+    description: Zero uses checkpoint evidence; excludes cache and workspace.
+  planning_budget_gb:
+    type: number
+    default: 0
+    minimum: 0
+    title: Explicit aggregate payload budget (decimal GB)
+    description: Zero estimates from metadata; includes cache, workspace and margin, excludes per-GPU runtime.
+  unknown_cache_fraction:
+    type: number
+    default: 0.25
+    minimum: 0
+    title: Cache allowance when dimensions are missing
+    description: Fraction of weight baseline; uncalibrated planning assumption, not an upper bound.
+  workspace_fraction:
+    type: number
+    default: 0.10
+    minimum: 0
+    title: Workspace allowance for heuristic sizing
+    description: Fraction of weight baseline; uncalibrated allowance for unknown runtime allocations.
+
   compartment_ocid:
     type: string
     visible: false

@@ -33,12 +33,17 @@ locals {
   regional_results   = local.oci_discovery.regions
 }
 module "model_profile" {
-  source          = "./modules/discovery/model-profile"
-  model           = local.effective_model
-  revision        = local.effective_revision
-  context_length  = var.context_length
-  concurrency     = var.concurrency
-  recipe_metadata = local.recipe_metadata_snapshot
+  source                 = "./modules/discovery/model-profile"
+  model                  = local.effective_model
+  revision               = local.effective_revision
+  context_length         = var.context_length
+  concurrency            = var.concurrency
+  recipe_metadata        = local.recipe_metadata_snapshot
+  checkpoint_file        = var.checkpoint_file
+  weight_budget_gb       = var.weight_budget_gb
+  planning_budget_gb     = var.planning_budget_gb
+  unknown_cache_fraction = var.unknown_cache_fraction
+  workspace_fraction     = var.workspace_fraction
 }
 module "serving_resolution" {
   source              = "./modules/discovery/serving-resolution"

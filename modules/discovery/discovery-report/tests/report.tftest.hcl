@@ -199,3 +199,16 @@ run "zero_limit_and_fractional_zero_headroom_remain_visible" {
     error_message = "Zero is observed evidence; fractional zero must take precedence over the integer available field and remain visible for limit-increase alternatives."
   }
 }
+
+run "regional_capacity_preserves_incompatible_dtype_evidence" {
+  command = plan
+  variables {
+    options = {}
+    publications = {}
+    assessment = {precision_compatibility={"GPU.8"={status="not_compatible",required_precision="fp8",reason="Native FP8 kernels unavailable"}}}
+  }
+  assert {
+    condition = output.summary.option_count == 0 && output.summary.regional_capacity[0].available_hosts == 20 && output.summary.regional_capacity[0].dtype_compatibility.status == "not_compatible"
+    error_message = "Incompatible dtype cannot erase physical capacity or fabricate a deployment option."
+  }
+}

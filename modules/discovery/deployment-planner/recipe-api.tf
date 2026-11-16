@@ -62,11 +62,12 @@ data "http" "recipe_image" {
 locals {
   recipe_images = merge(local.resolved_recipe_images, { for image, response in data.http.recipe_image : image => { for platform in ["amd64", "arm64"] : "linux/${platform}" => "vllm/vllm-openai@${one([for i in try(jsondecode(response.response_body).images, []) : i.digest if i.os == "linux" && i.architecture == platform])}" if length([for i in try(jsondecode(response.response_body).images, []) : i if i.os == "linux" && i.architecture == platform && can(regex("^sha256:[a-f0-9]{64}$", i.digest))]) == 1 } })
   # Recipe guidelines are a heuristic budget, not a per-rank allocation proof.
-  heuristic_weights = try(local.api_variant_metadata.precision == "bf16" && local.profile.weights.tensor_data_bytes > 0 ? max(local.profile.weights.tensor_data_bytes, local.profile.weights.tensor_elements * (local.profile.memory.assumptions.kv_dtype == "float32" ? 4 : 2)) : null, null)
+  heuristic_weights = try(local.api_variant_metadata.precision == "bf16" && local.profile.weights.tensor_data_bytes > 0 ? local.profile.weights.tensor_data_bytes : null, null)
   heuristic_kv = try(local.heuristic_weights > 0 && alltrue([for n in [local.a.layers, local.a.kv_heads, local.a.head_dim] : n > 0]) ?
   2 * local.a.layers * local.a.kv_heads * local.a.head_dim * (local.profile.memory.assumptions.kv_dtype == "float32" ? 4 : 2) * local.profile.memory.assumptions.context_length * local.profile.memory.assumptions.concurrency : null, null)
   heuristic_payload = try((local.heuristic_weights + local.heuristic_kv) * (1 + try(local.profile.memory.assumptions.safety_margin_fraction, 0.2)), null)
-  api_budget        = try(max(local.api_variant_metadata.vram_minimum_gb * 1e9, coalesce(local.payload_estimate, 0), coalesce(local.heuristic_payload, 0)), null)
+  api_budgets       = [for value in [try(local.api_variant_metadata.vram_minimum_gb * 1e9, null), local.payload_estimate, local.heuristic_payload] : value if try(value > 0, false)]
+  api_budget        = length(local.api_budgets) > 0 ? max(local.api_budgets...) : null
   memory_budget_breakdown = {
     weight_bytes                    = local.heuristic_weights, kv_surrogate_bytes = local.heuristic_kv,
     safety_margin_fraction          = try(local.profile.memory.assumptions.safety_margin_fraction, 0.2),
@@ -80,7 +81,7 @@ locals {
     rendering  = local.valid_renderings[row.hardware]
     image      = local.recipe_images[local.valid_renderings[row.hardware].docker_image][row.platform]
     tp_options = [for tp in [1, 2, 4, 8] : tp if try(local.api_budget > 0 && try(local.profile.memory.assumptions.context_length <= local.api.model.context_length, true) && row.gpu.gpus == row.shape.gpus && tp <= row.shape.gpus && local.a.heads % tp == 0 && (local.a.kv_heads % tp == 0 || tp % local.a.kv_heads == 0) && local.api_budget / tp + local.profile.memory.runtime_allowance_bytes <= row.gpu.memory_bytes_per_gpu * 0.9, false)]
-  }) if can(local.valid_renderings[row.hardware]) && can(local.recipe_images[local.valid_renderings[row.hardware].docker_image][row.platform])]
+  }) if try(local.precision_checks[row.shape.shape].status == "compatible", false) && (!local.fp8_required || try(lower(local.api_variant_metadata.precision) == "fp8" && contains(local.api_variant_metadata.supported_hardware, row.hardware), false)) && can(local.valid_renderings[row.hardware]) && can(local.recipe_images[local.valid_renderings[row.hardware].docker_image][row.platform])]
   packed_suggestion_rows = [for row in local.suggestion_rows : merge(row, {
     replicas_per_node = floor(row.shape.gpus / row.tp_options[0])
     node_count        = ceil(var.replicas / floor(row.shape.gpus / row.tp_options[0]))

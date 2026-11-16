@@ -2,8 +2,9 @@
 # Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
 terraform { required_version = ">= 1.5.0" }
 locals {
-  model_budget_bytes = try(coalesce(try(var.profile.memory.recommended_aggregate_bytes, null), try(var.assessment.recipe_options.memory_budget_bytes, null)), null)
-  model_budget_basis = try(var.profile.memory.recommended_aggregate_bytes > 0, false) ? "analytical_aggregate_estimate" : local.model_budget_bytes != null ? "heuristic_recipe_budget" : "unknown"
+  model_budgets      = [for value in [try(var.profile.memory.planning.payload_budget_bytes, null), try(var.profile.memory.recommended_aggregate_bytes, null), try(var.assessment.recipe_options.memory_budget_bytes, null)] : value if try(value > 0, false)]
+  model_budget_bytes = length(local.model_budgets) > 0 ? max(local.model_budgets...) : null
+  model_budget_basis = try(var.profile.memory.planning.payload_budget_bytes > 0, false) ? "component_planning_scenario" : try(var.profile.memory.recommended_aggregate_bytes > 0, false) ? "analytical_aggregate_estimate" : local.model_budget_bytes != null ? "heuristic_recipe_budget" : "unknown"
   inventory_rows = flatten([for region in var.regions : [for ad in try(region.inventory.availability_domains, []) : [for shape in ad.shapes : {
     region          = region.inventory.region, ad = ad.name, shape = shape.shape, gpus = shape.gpus,
     gpu_description = try(shape.gpu_description, null), memory_bytes_per_gpu = try(shape.gpu_memory_bytes_per_gpu, null)
@@ -47,7 +48,7 @@ locals {
     observed_at     = length(ad.rows) == 1 ? ad.rows[0].observed_at : null
   } }
   minimum_model_hosts = { for key, shape in local.shape_contexts : key => try(
-    local.model_budget_bytes > 0 ? ceil(local.model_budget_bytes / (one(shape.gpu_counts) * shape.memory_bytes_per_gpu * 0.9)) : null, null
+    local.model_budget_bytes > 0 && shape.memory_bytes_per_gpu * 0.9 > try(var.profile.memory.runtime_allowance_bytes, 0) ? ceil(local.model_budget_bytes / (one(shape.gpu_counts) * (shape.memory_bytes_per_gpu * 0.9 - try(var.profile.memory.runtime_allowance_bytes, 0)))) : null, null
   ) }
   ad_limits = { for key, ad in local.ad_observations : key => distinct(flatten([
     for row in local.inventory_rows : row.limits if jsonencode([row.region, row.shape]) == ad.shape_key && row.ad == ad.availability_domain
@@ -77,6 +78,7 @@ locals {
   }) }
   regional_counts = { for key, shape in local.shape_contexts : key => {
     region                  = shape.region, gpu_shape = shape.shape,
+    dtype_compatibility     = try(var.assessment.precision_compatibility[shape.shape], { status = "not_verified", reason = "No dtype compatibility assessment is available.", required_precision = "unknown" }),
     memory_gb_per_gpu       = try(shape.memory_bytes_per_gpu / 1e9, null),
     minimum_model_hosts     = local.minimum_model_hosts[key], model_sizing_basis = local.model_budget_basis,
     limit_increase_possible = anytrue([for ad in values(local.ad_details) : length(ad.limit_increase_requests) > 0 if ad.shape_key == key]),
@@ -169,7 +171,7 @@ locals {
       huggingface_url         = try(var.profile.model.url, null), library = try(var.profile.model.library, null), license = try(var.profile.model.license, null),
       gated                   = try(var.profile.model.gated, null), created_at = try(var.profile.model.created_at, null), last_modified = try(var.profile.model.last_modified, null),
       checkpoint_formats      = try(var.profile.weights.checkpoint_formats, []), selected_checkpoint = try(var.profile.weights.selected_checkpoint, null),
-      parameter_count         = try(var.profile.weights.tensor_elements, null), parameters_by_dtype = try(var.profile.weights.elements_by_dtype, {}),
+      parameter_count         = try(var.profile.weights.logical_parameter_count, var.profile.weights.tensor_elements, null), parameters_by_dtype = try(var.profile.weights.elements_by_dtype, {}),
       weights_source          = try(var.profile.weights.source, null),
       declared_pipeline       = try(var.profile.model.pipeline_tag, null),
       context_length          = try(var.profile.memory.assumptions.context_length, null),
@@ -178,6 +180,7 @@ locals {
       memory_gb               = { for name, bytes in local.memory_bytes : name => bytes == null ? null : bytes / 1e9 },
       safety_margin_fraction  = try(var.profile.memory.assumptions.safety_margin_fraction, null)
       memory_assumptions      = try(var.profile.memory.assumptions, {}), recipe_memory_budget_gb = try(var.assessment.recipe_options.memory_budget_bytes / 1e9, null)
+      component_planning      = try(var.profile.memory.planning, {}),
       partial_memory          = try(var.profile.memory.partial, {}), planning_memory = try(var.assessment.recipe_options.memory_budget_breakdown, {})
     },
     recommended_option_id = try(var.assessment.recommended_selection_id, null),

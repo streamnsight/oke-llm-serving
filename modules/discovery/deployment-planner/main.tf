@@ -55,13 +55,14 @@ locals {
     # TP stays inside one host; PP spans hosts. Extra embedding allowance is conservative.
     rank_bytes = local.memory_supported ? ceil((
       local.profile.memory.weight_bytes / tp * min(local.a.layers, ceil(local.a.layers / pp) + (pp > 1 ? 1 : 0)) / local.a.layers +
-      (tp * pp == 1 ? 0 : 2 * local.a.vocab_size * local.a.hidden_size * max([for dtype in keys(local.profile.weights.elements_by_dtype) : lookup({ F64 = 8, F32 = 4, F16 = 2, BF16 = 2 }, dtype, 8)]...) * (lookup(local.profile.memory.assumptions, "kv_dtype", "bfloat16") == "float32" ? 2 : 1)) +
+      (tp * pp == 1 ? 0 : 2 * local.a.vocab_size * local.a.hidden_size * max([for dtype in keys(local.profile.weights.elements_by_dtype) : lookup({ F64 = 8, F32 = 4, F16 = 2, BF16 = 2 }, dtype, 8)]...)) +
       local.profile.memory.kv_bytes * min(local.a.layers, ceil(local.a.layers / pp) + (pp > 1 ? 1 : 0)) / local.a.layers * max(1, ceil(local.a.kv_heads / tp)) / local.a.kv_heads +
       local.profile.memory.runtime_allowance_bytes
     ) * (1 + local.profile.memory.assumptions.safety_margin_fraction)) : null
     reasons = compact([
       try(local.profile.model.pipeline_tag == "text-generation" && local.profile.model.chat_template_available, false) ? "" : "The initial serving recipe requires text generation and a declared chat template.",
       local.memory_supported ? "" : "Memory estimator or layout dimensions unsupported.",
+      try(local.precision_checks[row.shape.shape].status == "compatible", false) && engine.framework == "vllm" && (!local.fp8_required && local.quant_method == "none" || try(contains(engine.quantization_methods, local.required_precision), false)) ? "" : "Model dtype/quantization or engine kernel compatibility is not confirmed.",
       !local.resolution_present || try(engine.available_images["linux/${row.gpu.cpu_architecture}"] != null, engine.platform == "linux/${row.gpu.cpu_architecture}", false) ? "" : "No assessed image for this GPU node CPU platform.",
       try(row.gpu.gpus == row.shape.gpus, false) ? "" : "GPU catalog missing or GPU count disagrees with OCI.",
       try(contains(engine.gpu_compute_capabilities, row.gpu.compute_capability), false) ? "" : "Engine/GPU architecture is not covered by the catalog.",
@@ -110,6 +111,7 @@ locals {
 output "assessment" {
   value = {
     schema_version                 = "1.0"
+    precision_compatibility        = local.precision_checks
     candidates                     = local.ranked_candidates
     status                         = length(local.suggestions) > 0 ? "suggestions_available" : length(local.candidates) > 0 ? "candidates_found" : length(local.sizing_options) > 0 ? "expert_options_available" : "requires_validation"
     recommended_selection_id       = try(local.ranked_suggestions[0].id, local.ranked_candidates[0].id, null)

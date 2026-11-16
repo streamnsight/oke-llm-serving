@@ -24,7 +24,10 @@ The only RMS output is **Open discovery report**, a link to a self-contained HTM
 
 Recommendations prioritize hardware fit (VRAM and sharding), RDMA capability and quantity-confirmed growth headroom. GPU count is a later tie-breaker, with no throughput/cost prediction. Technical serving details appear below deployment actions; the capacity table shows only positive supply, including regions needing limit increases.
 
-Capacity is an observation, not a reservation. Counts for alternative shapes and repeated quota ceilings must not be added together. Unsupported memory remains unknown. GB and GiB are labeled distinctly.
+Capacity is an observation, not a reservation. Counts for alternative shapes and repeated quota ceilings must not be added together. Model sizing remains available independently of engine and hardware compatibility. Native checkpoint bytes provide a weight baseline; unfamiliar architectures receive an explicitly heuristic cache/workspace planning scenario. Missing metadata requires checkpoint selection or an explicit budget. Deployment options exclude incompatible or unverified dtype/kernel combinations; regional capacity can retain these GPUs with compatibility labels. GB and GiB are labeled distinctly.
+
+Memory assumptions are editable in the discovery schema: `checkpoint_file` selects an ambiguous single-file variant, `weight_budget_gb` overrides the weight baseline, and `planning_budget_gb` supplies a complete payload budget when metadata is insufficient (decimal GB; zero selects automatic estimation). `unknown_cache_fraction` defaults to 0.25 of weights when attention dimensions are absent; `workspace_fraction` defaults to 0.10 for heuristic sizing. These allowances are uncalibrated scenarios, not guaranteed upper bounds. The payload includes the existing safety margin; GPU screening separately reserves runtime overhead per device and 10% device headroom. All MoE experts remain resident under the default no-offload assumption.
+
 
 The page uses the supplied Redwood styling and embeds its JSON, styles and scripts. RMS opens it separately through an expiring read PAR; there are no additional JSON outputs. It is published even with zero viable options, showing regional capacity, entitlement and potential limit-increase reviews.
 

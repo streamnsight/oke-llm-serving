@@ -56,8 +56,8 @@ run "context_over_maximum" {
   command = plan
   variables { context_length = 8192 }
   assert {
-    condition     = output.profile.memory.status == "unsupported" && output.profile.memory.recommended_aggregate_bytes == null
-    error_message = "Context extension must not be assumed."
+    condition     = output.profile.memory.status == "heuristic" && output.profile.memory.planning.context_within_declared_maximum == false && output.profile.memory.recommended_aggregate_bytes == null
+    error_message = "Keep planning numbers but explicitly reject an assumed context extension."
   }
 }
 
@@ -86,8 +86,8 @@ run "unknown_dtype" {
     }
   }
   assert {
-    condition     = output.profile.memory.status == "unsupported" && output.profile.weights.tensor_data_bytes == null
-    error_message = "Packed/integer tensor types require dedicated estimators."
+    condition     = output.profile.memory.status == "heuristic" && output.profile.weights.tensor_data_bytes == 24 && output.profile.weights.logical_parameter_count == null
+    error_message = "Packed/integer storage bytes are known independently of logical parameters and resident layout."
   }
 }
 
@@ -113,12 +113,12 @@ run "extract_card_version_evidence" {
     error_message = "Version extraction must preserve explicit expressions and evidence without inventing minimum versions."
   }
 }
-run "float32_resident_conversion_is_reserved" {
+run "kv_precision_does_not_convert_weights" {
   command = plan
   variables { kv_dtype = "float32" }
   assert {
-    condition     = output.profile.weights.tensor_data_bytes == 12 && output.profile.memory.weight_bytes == 24 && output.profile.memory.kv_bytes == 25600
-    error_message = "Serving float32 must reserve converted weights and KV, without altering measured checkpoint byte metadata."
+    condition     = output.profile.weights.tensor_data_bytes == 12 && output.profile.memory.weight_bytes == 12 && output.profile.memory.kv_bytes == 25600
+    error_message = "Changing KV precision must change only KV, preserving native checkpoint weights."
   }
 }
 run "storage_bytes_do_not_fabricate_quantized_GPU_memory" {
