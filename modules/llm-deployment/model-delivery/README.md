@@ -41,7 +41,8 @@ with one replica. `direct` rejects scale-out and a contradictory `router_enabled
 `lmcache_mode=recipe` reads the optional frozen
 `selection.serving_configuration.deployment_profile.lmcache` object (falling back
 to the top-level serving configuration when that is the selected source). No
-profile means disabled, preserving existing bundles. For example:
+profile falls back to a recognized native LMCache connector in the recipe;
+otherwise it is disabled, preserving existing bundles. For example:
 
 ```json
 {

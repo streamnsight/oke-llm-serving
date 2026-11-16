@@ -31,6 +31,7 @@ if [[ $LMCACHE_ADAPTER == mp ]]; then
     --chunk-size "$LMCACHE_CHUNK_SIZE" --eviction-policy LRU &
   children+=("$!")
   # Fail before loading model weights if the companion never binds its socket.
+  set +e
   python3 - "${children[0]}" <<'PY'
 import os, socket, sys, time
 for _ in range(120):
@@ -45,6 +46,19 @@ for _ in range(120):
 else:
     raise SystemExit('LMCache server did not bind 127.0.0.1:5555 within 120 seconds')
 PY
+  startup_code=$?
+  set -e
+  if (( startup_code != 0 )); then
+    if ! kill -0 "${children[0]}" 2>/dev/null; then
+      set +e
+      wait "${children[0]}"
+      startup_code=$?
+      set -e
+      (( startup_code != 0 )) || startup_code=1
+    fi
+    printf 'LMCache startup failed (status %s)\n' "$startup_code" >&2
+    exit "$startup_code"
+  fi
 fi
 vllm serve "$@" &
 children+=("$!")

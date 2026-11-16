@@ -4,7 +4,7 @@ locals {
   # Deployment profiles extend the frozen upstream recipe without rewriting it.
   recipe_cache = try(local.serving.deployment_profile.lmcache, {})
   lmcache = {
-    mode             = var.lmcache_mode == "recipe" ? try(local.recipe_cache.mode, "disabled") : var.lmcache_mode
+    mode             = var.lmcache_mode == "recipe" ? try(local.recipe_cache.mode, lookup({ LMCacheMPConnector = "mp", LMCacheConnectorV1 = "inprocess" }, try(local.recipe_kv.kv_connector, ""), "disabled")) : var.lmcache_mode
     cpu_memory_gb    = coalesce(var.lmcache_cpu_memory_gb, try(local.recipe_cache.cpu_memory_gb, null), 8)
     chunk_size       = coalesce(var.lmcache_chunk_size, try(local.recipe_cache.chunk_size, null), 256)
     mamba_cache_mode = coalesce(var.lmcache_mamba_cache_mode, try(local.recipe_cache.mamba_cache_mode, null), "none")
@@ -48,6 +48,10 @@ locals {
 resource "terraform_data" "cache_contract" {
   input = { cache = local.lmcache, routing = local.routing_mode }
   lifecycle {
+    precondition {
+      condition     = var.lmcache_mode != "disabled" || !contains(["LMCacheMPConnector", "LMCacheConnectorV1"], try(local.recipe_kv.kv_connector, ""))
+      error_message = "The recipe itself enables LMCache. Remove its KV-transfer setting or select a complete alternate recipe before disabling the adapter."
+    }
     precondition {
       condition     = !local.lmcache_enabled || length(local.recipe_kv_flags) == 0 || local.recipe_kv_compatible
       error_message = "Recipe KV transfer settings do not match this adapter. MP requires the external LMCache MP connector at localhost:5555 with kv_both; inprocess requires the native LMCacheConnectorV1. Conflicting or duplicate flags are not overwritten."

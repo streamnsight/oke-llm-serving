@@ -338,3 +338,21 @@ run "foreign_recipe_cache_endpoint_is_not_silently_overridden" {
   variables { model = jsondecode("{\"schema_version\": \"1.0\", \"kind\": \"llm_model\", \"selection_id\": \"native-cache\", \"model\": {\"repository\": \"org/generic-attention\", \"revision\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"checkpoint_download_bytes\": 21474836480}, \"profile\": {\"memory\": {\"assumptions\": {\"context_length\": 4096, \"concurrency\": 4}}}, \"selection\": {\"tensor_parallel_size\": 1, \"pipeline_parallel_size\": 1, \"replicas\": 1, \"serving_configuration\": {\"model\": {\"repository\": \"org/generic-attention\", \"resolved_revision\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}, \"engine\": {\"framework\": \"vllm\", \"image\": \"vllm/vllm-openai@sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee\"}, \"recipe\": {\"args\": [\"--enable-prefix-caching\", \"--kv-transfer-config={\\\"kv_connector\\\": \\\"LMCacheMPConnector\\\", \\\"kv_role\\\": \\\"kv_both\\\", \\\"kv_connector_module_path\\\": \\\"lmcache.integration.vllm.lmcache_mp_connector\\\", \\\"kv_connector_extra_config\\\": {\\\"lmcache.mp.host\\\": \\\"foreign.example\\\", \\\"lmcache.mp.port\\\": 5555}}\"], \"env\": {}}, \"deployment_profile\": {\"lmcache\": {\"mode\": \"mp\"}, \"routing\": {\"mode\": \"prefixaware\"}}}}}") }
   expect_failures = [terraform_data.cache_contract]
 }
+
+run "native_lmcache_recipe_is_detected_without_a_model_specific_profile" {
+  command = plan
+  variables { model = jsondecode("{\"schema_version\": \"1.0\", \"kind\": \"llm_model\", \"selection_id\": \"native-cache\", \"model\": {\"repository\": \"org/generic-attention\", \"revision\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"checkpoint_download_bytes\": 21474836480}, \"profile\": {\"memory\": {\"assumptions\": {\"context_length\": 4096, \"concurrency\": 4}}}, \"selection\": {\"tensor_parallel_size\": 1, \"pipeline_parallel_size\": 1, \"replicas\": 1, \"serving_configuration\": {\"model\": {\"repository\": \"org/generic-attention\", \"resolved_revision\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}, \"engine\": {\"framework\": \"vllm\", \"image\": \"vllm/vllm-openai@sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee\"}, \"recipe\": {\"args\": [\"--enable-prefix-caching\", \"--kv-transfer-config={\\\"kv_connector\\\": \\\"LMCacheMPConnector\\\", \\\"kv_role\\\": \\\"kv_both\\\", \\\"kv_connector_module_path\\\": \\\"lmcache.integration.vllm.lmcache_mp_connector\\\", \\\"kv_connector_extra_config\\\": {\\\"lmcache.mp.host\\\": \\\"127.0.0.1\\\", \\\"lmcache.mp.port\\\": 5555}}\"], \"env\": {}}}}}") }
+  assert {
+    condition     = local.lmcache.mode == "mp" && local.lmcache_enabled && local.recipe_kv_compatible
+    error_message = "Recognized native recipe connectors should select the generic adapter without model-specific conditions."
+  }
+}
+
+run "disabled_does_not_silently_leave_recipe_lmcache_running" {
+  command = plan
+  variables {
+    model        = jsondecode("{\"schema_version\": \"1.0\", \"kind\": \"llm_model\", \"selection_id\": \"native-cache\", \"model\": {\"repository\": \"org/generic-attention\", \"revision\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"checkpoint_download_bytes\": 21474836480}, \"profile\": {\"memory\": {\"assumptions\": {\"context_length\": 4096, \"concurrency\": 4}}}, \"selection\": {\"tensor_parallel_size\": 1, \"pipeline_parallel_size\": 1, \"replicas\": 1, \"serving_configuration\": {\"model\": {\"repository\": \"org/generic-attention\", \"resolved_revision\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}, \"engine\": {\"framework\": \"vllm\", \"image\": \"vllm/vllm-openai@sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee\"}, \"recipe\": {\"args\": [\"--enable-prefix-caching\", \"--kv-transfer-config={\\\"kv_connector\\\": \\\"LMCacheMPConnector\\\", \\\"kv_role\\\": \\\"kv_both\\\", \\\"kv_connector_module_path\\\": \\\"lmcache.integration.vllm.lmcache_mp_connector\\\", \\\"kv_connector_extra_config\\\": {\\\"lmcache.mp.host\\\": \\\"127.0.0.1\\\", \\\"lmcache.mp.port\\\": 5555}}\"], \"env\": {}}}}}")
+    lmcache_mode = "disabled"
+  }
+  expect_failures = [terraform_data.cache_contract]
+}

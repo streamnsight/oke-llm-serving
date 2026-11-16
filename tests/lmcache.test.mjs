@@ -11,7 +11,7 @@ const modulePath=resolve(import.meta.dirname,'../modules/llm-deployment/model-de
 const launcher=`${modulePath}/chart/files/lmcache-launch.sh`;
 function runtime(mode,cacheCode=7,modelCode=9){
  const dir=mkdtempSync(`${tmpdir()}/lmcache-launch-`);
- writeFileSync(`${dir}/python3`,'#!/bin/bash\ncat >/dev/null\nexit "${IMPORT_CODE:-0}"\n',{mode:0o755});
+ writeFileSync(`${dir}/python3`,'#!/bin/bash\ncat >/dev/null\nif [[ ${STARTUP_FAIL:-0} == 1 && $2 =~ ^[0-9]+$ ]]; then sleep 0.4; exit 1; fi\nexit "${IMPORT_CODE:-0}"\n',{mode:0o755});
  writeFileSync(`${dir}/lmcache`,'#!/bin/bash\nprintf "%s\\n" "$@" > "$CAPTURE/cache"\ntrap \'echo stopped >> "$CAPTURE/cache"; exit 0\' TERM\nif [[ $CACHE_CODE == hold ]]; then while :; do sleep 0.1; done; else sleep 0.2; exit "$CACHE_CODE"; fi\n',{mode:0o755});
  writeFileSync(`${dir}/vllm`,'#!/bin/bash\nprintf "%s\\n" "$@" > "$CAPTURE/model"\ntrap \'echo stopped >> "$CAPTURE/model"; exit 0\' TERM\nif [[ $MODEL_CODE == hold ]]; then while :; do sleep 0.1; done; else exit "$MODEL_CODE"; fi\n',{mode:0o755});
  return {dir,run(extra={}){return spawnSync('bash',[launcher,'org/model','--kv-transfer-config','{"literal":"$value"}'],{encoding:'utf8',timeout:5000,env:{...process.env,PATH:`${dir}:${process.env.PATH}`,CAPTURE:dir,LMCACHE_ADAPTER:mode,LMCACHE_CPU_MEMORY_GB:'8',LMCACHE_CHUNK_SIZE:'256',CACHE_CODE:String(cacheCode),MODEL_CODE:String(modelCode),...extra}});},close(){rmSync(dir,{recursive:true,force:true});}};
@@ -43,4 +43,8 @@ test('pinned router renders reachable controller reply and heartbeat service por
  const docs=render(v),service=docs.find(d=>d.kind==='Service'&&d.metadata.name.endsWith('-router-service')),router=docs.find(d=>d.kind==='Deployment'&&d.metadata.name.endsWith('-deployment-router'));
  assert(service.spec.ports.some(p=>p.port===9000));assert(service.spec.ports.some(p=>p.port===9001&&p.targetPort===9001));assert(service.spec.ports.some(p=>p.port===9002&&p.targetPort===9002));assert(router.spec.template.spec.containers[0].args.includes('kvaware'));assert(!docs.some(d=>d.kind==='CustomResourceDefinition'));assert.equal(docs.filter(d=>d.kind==='Deployment').length,2);
  v.router.enabled=false;v.lmcache.enabled=false;assert.equal(render(v).filter(d=>d.kind==='Deployment').length,1);
+});
+
+test('cache startup failure preserves the server exit status before inference starts',()=>{
+ const f=runtime('mp',17,'hold');try{const r=f.run({STARTUP_FAIL:'1'});assert.equal(r.status,17,r.stderr);assert.throws(()=>readFileSync(`${f.dir}/model`));assert.match(r.stderr,/LMCache startup failed \(status 17\)/);}finally{f.close();}
 });

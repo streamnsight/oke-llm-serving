@@ -444,7 +444,7 @@ recommendations editable in RMS. There are no model-name branches or fixed hybri
 block sizes in the adapters. Unsupported MP/KV-controller and multi-host layouts
 are rejected, not advertised as compatible.
 
-Model delivery Terraform tests: 43 passed; serving resolution: 15 passed;
+Model delivery Terraform tests: 45 passed; serving resolution: 15 passed;
 deployment planning: 54 passed; model publisher: 8 passed. Focused launcher/chart
 checks exercise failure propagation, literal argument handling, worker identity,
 no extra GPU requests and actual pinned-router controller Service ports.
@@ -460,4 +460,12 @@ check skipped). Cache metrics are exposed through the existing model Service and
 ServiceMonitor. Existing compatible recipe KV-transfer settings are retained
 once, with conflicting endpoints rejected. One intermediate Terraform run read
 chart files while they were being edited and failed its source-hash consistency
-check; the complete rerun against unchanged source passed all 43 checks.
+check; the complete rerun against unchanged source passed all checks against the unchanged source.
+
+Final safeguards also detect supported native recipe connectors without a custom
+model profile, reject disabling an adapter while leaving its recipe connector
+active, and preserve a cache-server failure status during startup before loading
+weights. Seven final cache launcher/chart checks passed, alongside the existing
+benchmark regressions and the explicit cache-readiness check. Final delivery
+Terraform suite: 45 passed. Candidate discovery/model-template archives passed
+Terraform 1.5.7; final archives are rebuilt from the final committed source.
