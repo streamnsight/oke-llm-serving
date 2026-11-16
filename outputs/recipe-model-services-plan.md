@@ -2,7 +2,8 @@
 <!-- Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl. -->
 # Recipe-driven caching, routing and conversation state
 
-Status: proposed design for review; implementation has not started.
+Status: LMCache-first implementation sequence requested; implementation has not started.
+History implementation remains a separate follow-on decision.
 Evidence date: 2026-11-16. Scope: extend the existing model deployment stack,
 reusing its independent model lifecycle, trusted onboarding and native Helm delivery.
 
@@ -48,16 +49,22 @@ workloads without deleting its history or shared platform services.
 ## Full scope and first delivery
 
 The full design covers native prefix reuse, bounded host-memory offload, optional
-disk and shared cache tiers, prefix/load-aware routing, durable conversation APIs,
+disk and shared cache tiers, selectable prefix-aware/KV-aware routing, durable conversation APIs,
 retention/deletion, observability, correctness tests, and lifecycle/recovery.
 
 Recommended first delivery includes native prefix caching, one assessed LMCache
-CPU-tier adapter, the existing router, and optional durable history through an
+CPU-tier adapter, the existing router with explicit prefix-aware and KV-aware
+choices, and optional durable history through an
 upstream gateway plus PostgreSQL. Include both model-owned PostgreSQL on a
 retained PVC for a self-contained deployment and an existing external PostgreSQL
 binding for production. The former is single-instance and not database HA.
 Do not describe its PVC as a backup; require a verified backup/restore path before
 calling the history deployment production-ready.
+
+Delivery order: implement and validate LMCache first on one replica, then add
+and validate routing selection across multiple replicas, then implement history.
+A smaller model is suitable for routing tests if multiple replicas fit retained
+GPU capacity. Do not assume TP=4 provides four independent routing targets.
 
 Defer shared cross-replica cache storage, disk tiers, KV-event scheduling,
 prefill/decode disaggregation, RAG/vector stores, automatic summarization,
@@ -87,6 +94,59 @@ explicit trusted application boundary; independent-user access requires verified
 principal-scoped authorization in the selected release or an enforcing adapter.
 Disable gateway-owned tools, arbitrary outbound tool execution, files and vector
 stores in the initial profile. No silent fallback to an in-memory history store.
+
+## Production-stack, llm-d and conversation history
+
+Production-stack and llm-d are distinct inference stacks. This repository uses
+production-stack's Helm router; it does not install llm-d. Adopting llm-d is not
+necessary to add the requested router options or durable history.
+
+The [llm-d stateful Responses guide](https://llm-d.ai/docs/well-lit-paths/foundations/serve-responses-api)
+adds vLLM Agentic API and PostgreSQL in front of the llm-d router. Its inference
+requests still carry replayed context. That is the same architectural separation
+recommended here: durable state belongs to the API layer and database; inference
+routing selects a model replica. Reuse the upstream stateful API integration
+rather than implement history in the router. Evaluate pinned releases and the
+ownership/migration requirements described above.
+
+## Routing selection after LMCache
+
+Expose `routing_mode = auto | direct | prefixaware | kvaware` in the assessed
+profile, model Terraform declarations, RMS schema and effective outputs.
+
+| Mode | Behavior and dependencies |
+| --- | --- |
+| auto | Direct for one replica; prefix-aware for multiple replicas/autoscaling maximum above one. Preserve the existing default. |
+| direct | Single-replica path; reject if fixed replicas or autoscaling maximum exceeds one. |
+| prefixaware | Explicit router, including with one replica; estimates locality from prompt prefixes. |
+| kvaware | Explicit router plus compatible LMCache controller/index and reporting workers; uses reported cache locations. |
+
+Keep the old `router_enabled` input backward-compatible; reject contradictory
+explicit choices instead of silently overriding them. Choosing either router
+mode starts the router even with one replica. One replica can validate wiring,
+streaming and health, but cannot demonstrate backend selection.
+
+Production-stack's existing KV-aware integration queries the LMCache controller;
+it is not the same implementation as adding a vLLM KV-event subscriber. The
+[pinned chart's reference configuration](https://github.com/vllm-project/production-stack/blob/405a2fa79992754d31f754c31b1eabb7183a540e/tutorials/assets/values-17-kv-aware.yaml)
+wires controller ports, worker reporting and the router. Test this exact router
+against the selected LMCache connector/server protocol; an old reference image
+is not a compatible default for Qwen3.8 just because its Helm values render.
+
+KV-aware selection must provision all required model-owned components, generate
+unique worker/replica instance identities, register reachable leader endpoints,
+and remove stale registrations on rollout or failure. Do not publish unready
+workers or TP ranks as independent serving replicas. Verify controller readiness
+and worker registration before declaring Apply successful. Detect stale cache
+information and expose misses, controller errors and fallback separately.
+Distinguish the controller reporting no cache holder (normal cache miss) from an
+unreachable/unhealthy controller. Use only a documented, tested runtime fallback
+policy; never silently claim KV-aware placement while operating as prefix-only.
+
+The LMCache controller here is a namespaced runtime service, not a new
+cluster-wide Kubernetes operator. Keep it model-owned unless a separately
+reviewed shared platform service is explicitly selected. Disk/shared KV storage
+and additional routing policies remain later work.
 
 ## Target topology and ownership
 
@@ -140,7 +200,7 @@ deployment_profile:
     tier: lmcache_cpu     # or gpu_only; disk/shared tiers follow later
     adapter: assessed-profile-id
   routing:
-    mode: auto            # direct for one replica, prefixaware for scale-out
+    mode: auto            # auto, direct, prefixaware, or kvaware
   history:
     mode: responses_postgres  # or disabled
     database: model_owned     # or external_secret
@@ -240,7 +300,8 @@ claim independent-user isolation without negative authorization tests.
 
 - [x] Audit repository and live deployment without changing workloads.
 - [x] Compare upstream cache/router/stateful API approaches.
-- [ ] Approve first-delivery scope and history storage/access defaults.
+- [x] Establish immediate order: LMCache first, prefix/KV routing selection next.
+- [ ] Confirm history storage/access defaults before implementing history.
 - [ ] Record serving/LMCache/gateway/router/PostgreSQL image and chart digests,
   release source commits, GPU/CPU architecture and current model revision.
 - [ ] Test native prefix reuse and LMCache on the exact TP=4 Qwen image. Use
@@ -278,10 +339,16 @@ Exit: a generated model ZIP carries a complete, reproducible service plan.
 Exit: demonstrable correct prefix reuse and host-tier retrieve on the selected
 profile, including cache restart/eviction. No newly allocated or recycled GPUs.
 
-### Phase 3: Expose and validate existing routing
+### Phase 3: Implement selectable prefix-aware and KV-aware routing
 
-- [ ] Keep `auto` direct for one replica and prefix-aware for multiple replicas
-  or an autoscaling maximum above one. Add clear effective-mode outputs.
+- [ ] Add `auto`, `direct`, `prefixaware` and `kvaware` choices through the
+  recipe/profile, Terraform, RMS schema, pipeline configuration and outputs.
+  Keep `auto` direct for one replica and prefix-aware for scale-out.
+- [ ] For KV-aware mode deploy the compatible LMCache controller and configure
+  worker reports, unique instance identities, reachable leader endpoints and
+  router lookup ports. Add readiness/registration checks and cleanup.
+- [ ] Test a controller-reported miss separately from controller failure and
+  stale registrations, and verify the advertised fallback behavior.
 - [ ] Keep leader-only model selectors and exclude workers/other model releases.
 - [ ] Verify discovery, draining, failed-backend removal, SSE forwarding and
   latency/load behavior. Preserve caller routing headers through the gateway.
@@ -340,7 +407,9 @@ queries confirmed current replica count, serving arguments, direct Service and
 runtime GPU KV usage. No cache-effectiveness experiment, recipe integration,
 gateway/database deployment or GPU mutation was performed for this plan.
 
-Approval requested before implementation: first delivery as described above,
-with native/CPU-tier caching promoted only for tested profiles, existing routing
-reused, and optional PostgreSQL-backed history inside an explicit trusted
-application boundary until principal-scoped ownership is proven.
+Immediate priority confirmed by the user: LMCache integration first, then
+selectable prefix-aware/KV-aware routing. Native/CPU-tier caching is promoted
+only for tested profiles. History remains follow-on scope, reusing an upstream
+API gateway/database integration inside an explicit trusted application boundary
+until principal-scoped ownership is proven. No application feature is implemented
+by this planning update.
