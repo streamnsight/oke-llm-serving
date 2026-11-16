@@ -48,6 +48,8 @@ Keep arithmetic and ordinary metadata reads in native Terraform where practical.
 - [ ] Use labels such as metadata-derived, structural estimate and heuristic; distinguish known payload lower bounds from planning ranges. Ranges are scenarios, not statistical confidence intervals or guaranteed bounds.
 - [ ] Produce approximate GPU/host quantities from the selected planning scenario, reserving runtime per device. Explicitly label aggregate arithmetic as a lower-bound screening step; it does not prove sharding or per-rank fit.
 - [ ] Independently evaluate engine support, precision/kernel support, CPU platform, per-device constraints, TP/PP/EP topology, capacity and quantity-specific entitlement. Keep reasons distinct: insufficient memory, unsupported precision, unverified layout and unavailable capacity.
+- [ ] During GPU screening, check the selected model loading dtype/quantization and required kernels against each GPU and the selected engine/image. Deployment options require confirmed compatibility; exclude incompatible and unverified combinations even when memory, physical capacity and entitlement are sufficient. Do not silently convert precision to make an option eligible.
+- [ ] Regional GPU capacity may retain discovered GPUs that cannot support the selected model dtype. Mark these rows `Not compatible` and explain the unsupported dtype/kernel requirement; label unresolved compatibility `Not verified`. These are capacity observations, not deployment options. Keep capacity and entitlement counts factual and independent of compatibility.
 - [ ] A heuristic memory estimate may support a hardware shortlist with positive capacity and entitlement, but cannot by itself promote a row into an executable deployment choice. Preserve existing trusted onboarding and downstream validation gates.
 - [ ] Treat MoE expert residency, embeddings/vision towers and replicated tensors correctly when evidence exists. Never divide aggregate bytes by GPU count and present the quotient as validated per-rank memory.
 - [ ] Show the requested context/concurrency prominently and optionally compare a smaller-context scenario without silently replacing the request. Keep one user-facing report link.
@@ -59,6 +61,7 @@ Keep arithmetic and ordinary metadata reads in native Terraform where practical.
 - [ ] Fixtures must include the exact failing Qwen revision, prior dense hybrid model, ordinary dense GQA, MQA, MoE, FP8 mixed precision, packed 4-bit, GGUF selected variant, latent attention, recurrent-only, multimodal, unknown architecture, missing config/counts, ambiguous variants and inaccessible metadata. Distinguish metadata replay from runtime validation.
 - [ ] Verify invariants: adding context/concurrency cannot reduce the same scenario's memory; unknown architecture preserves known weight bytes; KV dtype cannot silently change weight precision; partial metadata cannot masquerade as a complete checkpoint; unsupported hardware cannot suppress model sizing.
 - [ ] Verify the report remains useful with zero compatible hardware, zero capacity, absent recipe and all-heuristic cache sizing. Validate existing ordinary-model results or document intentional numeric changes.
+- [ ] Add regression cases where a GPU has enough memory, positive capacity and entitlement but fails the model dtype/kernel check: it is absent from deployment options and remains explicitly incompatible if shown in regional capacity. Verify unknown compatibility cannot become a deployment option and that all-incompatible hardware still preserves model memory estimates.
 
 ## Phase 4: validation, calibration and release
 
@@ -70,6 +73,8 @@ Keep arithmetic and ordinary metadata reads in native Terraform where practical.
 ## Acceptance criteria
 
 The failing FP8 model produces its roughly 2.496 TB stored-weight baseline and a numerical planning scenario with the 262,144 x 4 workload, regardless of engine/hardware availability. An unfamiliar architecture with identical evidence also produces a scenario without a code change. Unknown dtypes retain checkpoint-size fallback; missing dimensions retain weight sizing. Insufficient or inaccessible evidence yields a precise missing-input request. No heuristic result claims proven runtime fit or confirmed deployability.
+
+Deployment options contain only GPUs with confirmed support for the selected loading dtype/quantization and engine kernels. Regional capacity can show incompatible GPUs, explicitly flagged with the compatibility reason; unknown compatibility is labeled separately and cannot pass the deployment gate.
 
 This turn produced a design plan only; implementation and runtime validation remain unchecked.
 
