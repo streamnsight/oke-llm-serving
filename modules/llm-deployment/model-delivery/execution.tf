@@ -4,8 +4,10 @@ locals {
   onboarding_pipeline_id = try(coalesce(var.platform.model_onboarding_pipeline_id, ""), "")
   execution_pool_id      = try(coalesce(var.platform.allocation.gpu_pool_id, ""), "")
   onboarding_arguments = {
-    MODEL_NAMESPACE        = local.namespace, MODEL_PROJECT_ID = var.platform.project_id,
-    MODEL_GPU_POOL_ID      = local.execution_pool_id, MODEL_PIPELINE_IDS = jsonencode(sort(local.all_pipeline_ids)),
+    MODEL_NAMESPACE = local.namespace, MODEL_PROJECT_ID = var.platform.project_id,
+    # Managed Shell writes pipeline parameter values through a shell assignment.
+    # Preserve JSON's quotes through exactly that layer; the script receives JSON.
+    MODEL_GPU_POOL_ID      = local.execution_pool_id, MODEL_PIPELINE_IDS = replace(jsonencode(sort(local.all_pipeline_ids)), "\"", "\\\""),
     MODEL_ACCESS_OPERATION = "grant"
   }
   execution_arguments = merge(local.defaults, { CHART_VERSION = local.chart_version })

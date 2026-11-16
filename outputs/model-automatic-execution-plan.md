@@ -20,10 +20,16 @@ Success means model Apply runs trusted onboarding, workload deployment and indep
 
 ## Phase 3 — verify and deliver
 
-- [ ] Pass focused runtime and Terraform lifecycle regressions, including failure propagation and unchanged revisions.
-- [ ] Validate the configured generated model ZIP and RMS Terraform compatibility; rebuild discovery with both embedded templates.
+- [x] Pass focused runtime and Terraform lifecycle regressions, including failure propagation and unchanged revisions.
+- [x] Validate the configured generated model ZIP and RMS Terraform compatibility; rebuild discovery with both embedded templates.
 - [ ] Preserve current RMS settings, review a Plan for no GPU infrastructure mutations, then Apply the authorized execution chain.
 - [ ] Confirm actual onboarding/workload/validation outcome, and use a refreshed Plan to check idempotency.
 - [ ] Commit the usable feature branch and record live limits accurately.
 
 Routine readiness/failure summaries stay in DevOps Logging. Existing ownership, lease and namespace authorization boundaries remain enforced. An inference probe disabled by configuration does not prove token-generation performance.
+
+## Live findings
+
+The first RMS Plan exposed incomplete ListStages fields in the pinned provider. Reading full stage details fixed target discovery; seventeen target regressions and Terraform 1.5.7 validation pass. The reviewed next Plan contained no GPU infrastructure mutations and started only onboarding/deploy/validate.
+
+The first automatic Apply reached trusted onboarding but failed before namespace creation: Managed Shell removed JSON quote characters from MODEL_PIPELINE_IDS. The stored API argument was valid JSON; real Bash assignment reproduced the exact jq column 107 error. Escape once at that parameter boundary; do not weaken JSON/ownership validation or alter the trusted script. Workload and benchmark did not run during that failure.

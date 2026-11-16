@@ -2,7 +2,7 @@
 # Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
 output "namespace" { value = local.namespace }
 output "all_pipeline_ids" { value = local.all_pipeline_ids }
-output "onboarding_arguments" { value = { MODEL_NAMESPACE = local.namespace, MODEL_PROJECT_ID = var.platform.project_id, MODEL_GPU_POOL_ID = try(coalesce(var.platform.allocation.gpu_pool_id, "runtime"), "runtime"), MODEL_PIPELINE_IDS = jsonencode(local.all_pipeline_ids) } }
+output "onboarding_arguments" { value = local.onboarding_arguments }
 output "model_delivery" {
   value = {
     schema_version        = "1.0", name = local.name, namespace = local.namespace, identity = local.identity,
@@ -11,7 +11,7 @@ output "model_delivery" {
     validate_pipeline_id  = oci_devops_deploy_pipeline.operation["validate"].id,
     benchmark_pipeline_id = oci_devops_deploy_pipeline.operation["benchmark"].id,
     undeploy_pipeline_id  = module.delivery.undeploy_pipeline_ids.workload,
-    onboarding            = { pipeline_name = "${var.platform.platform_name}-model-onboarding", pipeline_id = try(var.platform.model_onboarding_pipeline_id, null), arguments = { MODEL_NAMESPACE = local.namespace, MODEL_PROJECT_ID = var.platform.project_id, MODEL_GPU_POOL_ID = try(coalesce(var.platform.allocation.gpu_pool_id, "runtime"), "runtime"), MODEL_PIPELINE_IDS = jsonencode(local.all_pipeline_ids) } },
+    onboarding            = { pipeline_name = "${var.platform.platform_name}-model-onboarding", pipeline_id = try(var.platform.model_onboarding_pipeline_id, null), arguments = local.onboarding_arguments },
     binding_mode          = try(var.platform.binding_mode, "frozen"), expected_platform_name = var.platform.platform_name,
     gpu_readiness         = "runtime_validation_required; no GPU pool is created or modified by this model stack",
     free_gpu_headroom     = "unknown_other_namespace_requests_not_visible",
