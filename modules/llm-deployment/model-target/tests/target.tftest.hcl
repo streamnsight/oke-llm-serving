@@ -25,8 +25,15 @@ mock_provider "oci" {
   mock_data "oci_devops_project" { defaults = { name = "existing-platform", state = "ACTIVE" } }
   mock_data "oci_devops_deploy_stages" {
     defaults = { deploy_stage_collection = [{ items = [{
-      id = "onboarding-stage", deploy_pipeline_id = "onboarding", project_id = "platform-project", state = "ACTIVE", deploy_stage_type = "SHELL", display_name = "authorize-exact-model-pipelines", command_spec_deploy_artifact_id = "onboarding-artifact"
+      id = "onboarding-stage", deploy_pipeline_id = "", project_id = "platform-project", state = "ACTIVE", deploy_stage_type = "SHELL", display_name = "", command_spec_deploy_artifact_id = "onboarding-artifact"
     }] }] }
+  }
+  # Real ListStages response leaves display_name/deploy_pipeline_id empty in
+  # the provider. Detail supplies them; its cosmetic name may be edited.
+  mock_data "oci_devops_deploy_stage" {
+    defaults = {
+      id = "onboarding-stage", deploy_pipeline_id = "onboarding", project_id = "platform-project", state = "ACTIVE", deploy_stage_type = "SHELL", display_name = "renamed onboarding stage", command_spec_deploy_artifact_id = "onboarding-artifact"
+    }
   }
   mock_data "oci_devops_deploy_artifact" {
     defaults = {
@@ -350,6 +357,12 @@ run "duplicate_trusted_onboarding_pipelines_are_not_chosen_arbitrarily" {
       id = "duplicate-stage", deploy_pipeline_id = "onboarding-duplicate", project_id = "platform-project", state = "ACTIVE", deploy_stage_type = "SHELL", display_name = "authorize-exact-model-pipelines", command_spec_deploy_artifact_id = "onboarding-artifact"
     }] }] }
   }
+  override_data {
+    target = data.oci_devops_deploy_stage.model_onboarding["onboarding-duplicate"]
+    values = {
+      id = "duplicate-stage", deploy_pipeline_id = "onboarding-duplicate", project_id = "platform-project", state = "ACTIVE", deploy_stage_type = "SHELL", display_name = "independently named onboarding", command_spec_deploy_artifact_id = "onboarding-artifact"
+    }
+  }
   assert {
     condition     = !output.target.metadata_ready && output.target.model_onboarding_pipeline_id == null && anytrue([for issue in output.target.issues : strcontains(issue, "Multiple trusted model-onboarding")])
     error_message = "Multiple equally bound pipelines must fail closed instead of granting against an arbitrary infrastructure project."
@@ -379,5 +392,29 @@ run "a_file_backed_or_missing_inline_source_is_not_a_trusted_binding" {
   assert {
     condition     = !output.target.metadata_ready && output.target.model_onboarding_pipeline_id == null && anytrue([for issue in output.target.issues : strcontains(issue, "No ACTIVE trusted")])
     error_message = "An uninspectable command spec must fail with the infrastructure prerequisite issue instead of guessing a trusted target."
+  }
+}
+run "incomplete_stage_summary_uses_verified_detail_without_name_coupling" {
+  command = plan
+  variables { gpu_pool_id = "retained-pool" }
+  override_data {
+    target = data.oci_devops_deploy_stages.model_onboarding["onboarding"]
+    values = { deploy_stage_collection = [{ items = [{ id = "onboarding-stage", state = "ACTIVE", deploy_stage_type = "SHELL", display_name = "", deploy_pipeline_id = "", command_spec_deploy_artifact_id = null }] }] }
+  }
+  assert {
+    condition     = output.target.metadata_ready && output.target.model_onboarding_pipeline_id == "onboarding" && data.oci_devops_deploy_stage.model_onboarding["onboarding"].deploy_stage_id == "onboarding-stage"
+    error_message = "A sole active shell summary identifies its detail read; missing list fields and cosmetic stage renames must not hide a correctly bound trusted operation."
+  }
+}
+run "stage_detail_must_belong_to_the_selected_pipeline" {
+  command = plan
+  variables { gpu_pool_id = "retained-pool" }
+  override_data {
+    target = data.oci_devops_deploy_stage.model_onboarding["onboarding"]
+    values = { id = "onboarding-stage", state = "ACTIVE", deploy_stage_type = "SHELL", project_id = "platform-project", deploy_pipeline_id = "foreign-pipeline", command_spec_deploy_artifact_id = "onboarding-artifact" }
+  }
+  assert {
+    condition     = !output.target.metadata_ready && output.target.model_onboarding_pipeline_id == null && length(data.oci_devops_deploy_artifact.model_onboarding) == 0
+    error_message = "The full stage's pipeline binding remains mandatory before reading/trusting its command spec."
   }
 }

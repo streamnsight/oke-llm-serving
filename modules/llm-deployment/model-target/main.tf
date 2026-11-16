@@ -87,8 +87,19 @@ locals {
     for stage in flatten([for collection in result.deploy_stage_collection : collection.items]) : stage
     if !contains(["DELETING", "DELETED"], stage.state)
   ] }
-  onboarding_sources = { for id, stages in local.onboarding_stages : id => stages[0]
-    if try(length(stages) == 1 && stages[0].state == "ACTIVE" && stages[0].deploy_stage_type == "SHELL" && stages[0].display_name == "authorize-exact-model-pipelines" && stages[0].deploy_pipeline_id == id && trimspace(stages[0].command_spec_deploy_artifact_id) != "", false)
+  # ListStages omits common fields in the pinned provider. Use summary identity
+  # only, then verify the full stage/pipeline binding from GetDeployStage.
+  onboarding_candidates = { for id, stages in local.onboarding_stages : id => stages[0]
+    if try(length(stages) == 1 && stages[0].state == "ACTIVE" && stages[0].deploy_stage_type == "SHELL" && trimspace(stages[0].id) != "", false)
+  }
+}
+data "oci_devops_deploy_stage" "model_onboarding" {
+  for_each        = local.onboarding_candidates
+  deploy_stage_id = each.value.id
+}
+locals {
+  onboarding_sources = { for id, stage in data.oci_devops_deploy_stage.model_onboarding : id => stage
+    if try(stage.state == "ACTIVE" && stage.deploy_stage_type == "SHELL" && stage.deploy_pipeline_id == id && trimspace(stage.command_spec_deploy_artifact_id) != "", false)
   }
 }
 data "oci_devops_deploy_artifact" "model_onboarding" {
