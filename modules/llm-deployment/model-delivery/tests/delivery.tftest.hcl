@@ -232,3 +232,109 @@ run "routine_validation_has_no_artifact_report_binding" {
     error_message = "Routine validation uses DevOps logs; only downloadable benchmark exports require a result repository."
   }
 }
+
+run "lmcache_mp_is_local_and_budgeted" {
+  command = plan
+  variables {
+    lmcache_mode          = "mp"
+    lmcache_cpu_memory_gb = 8
+    routing_mode          = "prefixaware"
+  }
+  assert {
+    condition     = local.lmcache_enabled && local.values.memory == "28Gi" && local.values.lmcache.mode == "mp" && local.routing_mode == "prefixaware" && contains(local.values.recipeArgs, "--kv-transfer-config")
+    error_message = "MP cache must be rendered with its host-RAM budget and explicit routing mode."
+  }
+  assert {
+    condition     = jsondecode(local.cache_args[2]).kv_connector_extra_config["lmcache.mp.host"] == "127.0.0.1" && jsondecode(local.cache_args[2]).kv_connector == "LMCacheMPConnector"
+    error_message = "MP workers must use the explicitly selected external connector and local cache process."
+  }
+}
+run "kvaware_controller_protocol" {
+  command = plan
+  variables {
+    lmcache_mode = "inprocess"
+    routing_mode = "kvaware"
+  }
+  assert {
+    condition     = local.values["vllm-stack"].routerSpec.routingLogic == "kvaware" && local.values["vllm-stack"].routerSpec.lmcacheControllerReplyPort == 9001 && length(local.values["vllm-stack"].routerSpec.extraPorts) == 2 && local.cache_env.LMCACHE_LMCACHE_WORKER_PORTS == "8001,8002" && local.values.memory == "36Gi"
+    error_message = "KV-aware routing must wire controller reply/heartbeat ports, worker reporting and per-rank host RAM."
+  }
+}
+run "mp_cannot_claim_legacy_controller_routing" {
+  command = plan
+  variables {
+    lmcache_mode = "mp"
+    routing_mode = "kvaware"
+  }
+  expect_failures = [terraform_data.cache_contract]
+}
+run "direct_rejects_scaleout" {
+  command = plan
+  variables { routing_mode = "direct" }
+  expect_failures = [terraform_data.cache_contract]
+}
+run "direct_single_replica" {
+  command = plan
+  variables {
+    routing_mode = "direct"
+    overrides    = { replicas = 1 }
+  }
+  assert {
+    condition     = !local.router_enabled && local.routing_mode == "direct"
+    error_message = "Explicit direct mode must preserve the one-replica path."
+  }
+}
+run "lmcache_rejects_unbounded_buffer" {
+  command = plan
+  variables {
+    lmcache_mode          = "mp"
+    lmcache_cpu_memory_gb = 0
+  }
+  expect_failures = [terraform_data.cache_contract]
+}
+run "lmcache_rejects_unassessed_multihost" {
+  command = plan
+  variables {
+    lmcache_mode = "mp"
+    overrides    = { hosts_per_replica = 2, pipeline_parallel_size = 2 }
+  }
+  expect_failures = [terraform_data.cache_contract]
+}
+run "recipe_deployment_profile_selects_cache_and_routing" {
+  command = plan
+  variables {
+    model = {
+      schema_version = "1.0", kind = "llm_model", selection_id = "profile",
+      model          = { repository = "org/model", revision = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", checkpoint_download_bytes = 21474836480 },
+      profile        = { memory = { assumptions = { context_length = 4096, concurrency = 8 } } },
+      selection = {
+        tensor_parallel_size = 2, pipeline_parallel_size = 1, replicas = 1,
+        serving_configuration = {
+          model              = { repository = "org/model", resolved_revision = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" },
+          engine             = { framework = "vllm", image = "vllm/vllm-openai@sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee" },
+          recipe             = { args = ["--enable-prefix-caching"], env = {} },
+          deployment_profile = { lmcache = { mode = "mp", cpu_memory_gb = 12, chunk_size = 128, mamba_cache_mode = "align" }, routing = { mode = "prefixaware" } }
+        }
+      }
+    }
+  }
+  assert {
+    condition     = local.lmcache.mode == "mp" && local.lmcache.cpu_memory_gb == 12 && local.lmcache.chunk_size == 128 && local.router_enabled && contains(local.cache_args, "align") && length([for arg in local.values.recipeArgs : arg if arg == "--enable-prefix-caching"]) == 1
+    error_message = "Frozen recipe deployment recommendations must reach the workload without manual installs or tfvars."
+  }
+}
+
+run "existing_recipe_cache_arguments_are_preserved_once" {
+  command = plan
+  variables { model = jsondecode("{\"schema_version\": \"1.0\", \"kind\": \"llm_model\", \"selection_id\": \"native-cache\", \"model\": {\"repository\": \"org/generic-attention\", \"revision\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"checkpoint_download_bytes\": 21474836480}, \"profile\": {\"memory\": {\"assumptions\": {\"context_length\": 4096, \"concurrency\": 4}}}, \"selection\": {\"tensor_parallel_size\": 1, \"pipeline_parallel_size\": 1, \"replicas\": 1, \"serving_configuration\": {\"model\": {\"repository\": \"org/generic-attention\", \"resolved_revision\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}, \"engine\": {\"framework\": \"vllm\", \"image\": \"vllm/vllm-openai@sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee\"}, \"recipe\": {\"args\": [\"--enable-prefix-caching\", \"--kv-transfer-config={\\\"kv_connector\\\": \\\"LMCacheMPConnector\\\", \\\"kv_role\\\": \\\"kv_both\\\", \\\"kv_connector_module_path\\\": \\\"lmcache.integration.vllm.lmcache_mp_connector\\\", \\\"kv_connector_extra_config\\\": {\\\"lmcache.mp.host\\\": \\\"127.0.0.1\\\", \\\"lmcache.mp.port\\\": 5555}}\"], \"env\": {}}, \"deployment_profile\": {\"lmcache\": {\"mode\": \"mp\"}, \"routing\": {\"mode\": \"prefixaware\"}}}}}") }
+  assert {
+    condition     = local.recipe_kv_compatible && length(local.recipe_kv_flags) == 1 && !contains(local.cache_args, "--kv-transfer-config") && length([for arg in local.values.recipeArgs : arg if arg == "--enable-prefix-caching"]) == 1
+    error_message = "Compatible native recipe cache settings must be preserved rather than duplicated or overwritten."
+  }
+}
+
+run "foreign_recipe_cache_endpoint_is_not_silently_overridden" {
+  command = plan
+  variables { model = jsondecode("{\"schema_version\": \"1.0\", \"kind\": \"llm_model\", \"selection_id\": \"native-cache\", \"model\": {\"repository\": \"org/generic-attention\", \"revision\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"checkpoint_download_bytes\": 21474836480}, \"profile\": {\"memory\": {\"assumptions\": {\"context_length\": 4096, \"concurrency\": 4}}}, \"selection\": {\"tensor_parallel_size\": 1, \"pipeline_parallel_size\": 1, \"replicas\": 1, \"serving_configuration\": {\"model\": {\"repository\": \"org/generic-attention\", \"resolved_revision\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}, \"engine\": {\"framework\": \"vllm\", \"image\": \"vllm/vllm-openai@sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee\"}, \"recipe\": {\"args\": [\"--enable-prefix-caching\", \"--kv-transfer-config={\\\"kv_connector\\\": \\\"LMCacheMPConnector\\\", \\\"kv_role\\\": \\\"kv_both\\\", \\\"kv_connector_module_path\\\": \\\"lmcache.integration.vllm.lmcache_mp_connector\\\", \\\"kv_connector_extra_config\\\": {\\\"lmcache.mp.host\\\": \\\"foreign.example\\\", \\\"lmcache.mp.port\\\": 5555}}\"], \"env\": {}}, \"deployment_profile\": {\"lmcache\": {\"mode\": \"mp\"}, \"routing\": {\"mode\": \"prefixaware\"}}}}}") }
+  expect_failures = [terraform_data.cache_contract]
+}

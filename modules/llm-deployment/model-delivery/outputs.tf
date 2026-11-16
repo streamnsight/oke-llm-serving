@@ -18,7 +18,8 @@ output "model_delivery" {
     chart_repositories    = module.delivery.chart_repositories,
     endpoint              = local.router_enabled ? "http://${local.name}-router-service.${local.namespace}.svc:80" : "http://${local.name}.${local.namespace}.svc:8000",
     port_forward          = "kubectl -n ${local.namespace} port-forward service/${local.router_enabled ? "${local.name}-router-service" : local.name} 8000:${local.router_enabled ? 80 : 8000}",
-    routing               = local.router_enabled ? "prefixaware; approximate prefix locality, no KV-event integration" : "direct ClusterIP",
+    routing               = local.routing_mode,
+    lmcache               = merge(local.lmcache, { enabled = local.lmcache_enabled, validation = "runtime_store_retrieve_required" }),
     defaults              = local.defaults, workspace_gib_per_pod = local.workspace_gib,
     storage               = var.storage.mode, automatically_started = true,
     automatic_execution = {

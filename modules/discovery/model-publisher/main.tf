@@ -17,31 +17,37 @@ locals {
   template_files = local.enabled ? {
     for relative in setunion(fileset(var.template_dir, "*.tf"), toset(["schema.yaml", ".terraform.lock.hcl"])) : relative => replace(file("${var.template_dir}/${relative}"), "../../modules/", "./modules/")
   } : {}
-  schema         = yamldecode(local.enabled ? local.template_files["schema.yaml"] : "variables: {}")
-  selected       = try(var.model_spec.selection, {})
-  repository     = try(coalesce(try(var.model_spec.model.repository, null), try(var.model_spec.profile.model.repository, null)), "unselected/model")
-  region         = try(coalesce(local.selected.region, "unselected"), "unselected")
-  shape          = try(coalesce(local.selected.gpu_shape, "unselected"), "unselected")
-  model_folder   = replace(replace(local.repository, "/", "--"), "/[^A-Za-z0-9_.-]/", "-")
-  model_name     = "m-${substr(replace(lower(local.repository), "/[^a-z0-9-]/", "-"), 0, 13)}-${substr(sha256(local.repository), 0, 6)}"
-  snapshot_bytes = try(coalesce(try(var.model_spec.model.checkpoint_download_bytes, null), try(var.model_spec.profile.weights.checkpoint_download_bytes, null)), null)
+  schema          = yamldecode(local.enabled ? local.template_files["schema.yaml"] : "variables: {}")
+  selected        = try(var.model_spec.selection, {})
+  repository      = try(coalesce(try(var.model_spec.model.repository, null), try(var.model_spec.profile.model.repository, null)), "unselected/model")
+  region          = try(coalesce(local.selected.region, "unselected"), "unselected")
+  shape           = try(coalesce(local.selected.gpu_shape, "unselected"), "unselected")
+  model_folder    = replace(replace(local.repository, "/", "--"), "/[^A-Za-z0-9_.-]/", "-")
+  model_name      = "m-${substr(replace(lower(local.repository), "/[^a-z0-9-]/", "-"), 0, 13)}-${substr(sha256(local.repository), 0, 6)}"
+  snapshot_bytes  = try(coalesce(try(var.model_spec.model.checkpoint_download_bytes, null), try(var.model_spec.profile.weights.checkpoint_download_bytes, null)), null)
+  service_profile = try(local.selected.serving_configuration.deployment_profile, var.model_spec.serving_configuration.deployment_profile, {})
   recommendation = {
-    model_name           = local.model_name,
-    model_id             = local.repository, model_revision = try(coalesce(try(var.model_spec.model.revision, null), try(var.model_spec.profile.model.resolved_revision, null)), ""),
-    serving_image        = try(coalesce(try(local.selected.serving_configuration.engine.image, null), try(local.selected.engine.image, null), try(var.model_spec.serving_configuration.engine.image, null)), ""),
-    tensor_parallel_size = try(local.selected.tensor_parallel_size, 1), pipeline_parallel_size = try(local.selected.pipeline_parallel_size, 1),
-    hosts_per_replica    = try(local.selected.hosts_per_replica, local.selected.pipeline_parallel_size, 1),
-    gpus_per_pod         = try(local.selected.gpus_per_pod, local.selected.tensor_parallel_size, 1), replicas = try(local.selected.replicas, 1),
-    context_length       = try(coalesce(try(var.model_spec.model.context_length, null), try(var.model_spec.profile.memory.assumptions.context_length, null)), 4096),
-    concurrency          = try(coalesce(try(var.model_spec.model.concurrency, null), try(var.model_spec.profile.memory.assumptions.concurrency, null)), 1)
-    monitoring_enabled   = try(local.selected.platform_plan.monitoring.enabled, true)
-    workspace_gib        = local.snapshot_bytes == null ? 64 : max(20, ceil(local.snapshot_bytes * 2 / pow(1024, 3))),
-    router_enabled       = try(local.selected.replicas > 1, false) || try(local.selected.platform_plan.autoscaling.enabled, false),
-    autoscaling_enabled  = try(local.selected.platform_plan.autoscaling.enabled, false),
-    min_replicas         = try(local.selected.requested_minimum_replicas, local.selected.replicas, 1),
-    max_replicas         = try(local.selected.replicas, 1)
+    model_name               = local.model_name,
+    model_id                 = local.repository, model_revision = try(coalesce(try(var.model_spec.model.revision, null), try(var.model_spec.profile.model.resolved_revision, null)), ""),
+    serving_image            = try(coalesce(try(local.selected.serving_configuration.engine.image, null), try(local.selected.engine.image, null), try(var.model_spec.serving_configuration.engine.image, null)), ""),
+    tensor_parallel_size     = try(local.selected.tensor_parallel_size, 1), pipeline_parallel_size = try(local.selected.pipeline_parallel_size, 1),
+    hosts_per_replica        = try(local.selected.hosts_per_replica, local.selected.pipeline_parallel_size, 1),
+    gpus_per_pod             = try(local.selected.gpus_per_pod, local.selected.tensor_parallel_size, 1), replicas = try(local.selected.replicas, 1),
+    context_length           = try(coalesce(try(var.model_spec.model.context_length, null), try(var.model_spec.profile.memory.assumptions.context_length, null)), 4096),
+    concurrency              = try(coalesce(try(var.model_spec.model.concurrency, null), try(var.model_spec.profile.memory.assumptions.concurrency, null)), 1)
+    monitoring_enabled       = try(local.selected.platform_plan.monitoring.enabled, true)
+    workspace_gib            = local.snapshot_bytes == null ? 64 : max(20, ceil(local.snapshot_bytes * 2 / pow(1024, 3))),
+    router_enabled           = try(local.selected.replicas > 1, false) || try(local.selected.platform_plan.autoscaling.enabled, false),
+    lmcache_mode             = try(local.service_profile.lmcache.mode, "recipe"),
+    lmcache_cpu_memory_gb    = try(local.service_profile.lmcache.cpu_memory_gb, null),
+    lmcache_chunk_size       = try(local.service_profile.lmcache.chunk_size, null),
+    lmcache_mamba_cache_mode = try(local.service_profile.lmcache.mamba_cache_mode, null),
+    routing_mode             = try(local.service_profile.routing.mode, "auto"),
+    autoscaling_enabled      = try(local.selected.platform_plan.autoscaling.enabled, false),
+    min_replicas             = try(local.selected.requested_minimum_replicas, local.selected.replicas, 1),
+    max_replicas             = try(local.selected.replicas, 1)
   }
-  defaults      = { for key, value in local.recommendation : key => value if contains(keys(local.schema.variables), key) && (key != "workspace_gib" || local.snapshot_bytes != null) }
+  defaults      = { for key, value in local.recommendation : key => value if value != null && contains(keys(local.schema.variables), key) && (key != "workspace_gib" || local.snapshot_bytes != null) }
   template_hash = sha256(jsonencode({ template = local.template_files, modules = local.module_files }))
   header        = "# Copyright (c) 2020-2022 Oracle and/or its affiliates. All rights reserved.\n# Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.\n"
   published_at  = try(var.publication.published_at, "")

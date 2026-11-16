@@ -14,7 +14,7 @@ endpoint=/v1/completions
 vllm bench serve --backend "$BENCHMARK_BACKEND" --base-url "$BASE_URL" --endpoint "$endpoint" \
   --model "$MODEL_ID" --served-model-name "$MODEL_ID" --tokenizer /tmp/tokenizer \
   --dataset-name random --seed 0 --random-input-len "$BENCHMARK_INPUT_TOKENS" --random-output-len "$BENCHMARK_OUTPUT_TOKENS" \
-  --random-range-ratio 0 --random-prefix-len 0 --ignore-eos --num-prompts "$BENCHMARK_REQUESTS" \
+  --random-range-ratio 0 --random-prefix-len "${BENCHMARK_PREFIX_TOKENS:-0}" --ignore-eos --num-prompts "$BENCHMARK_REQUESTS" \
   --max-concurrency "$CONCURRENCY" --request-rate inf --num-warmups 1 --disable-tqdm \
   --save-result --save-detailed --percentile-metrics ttft,tpot,itl,e2el --metric-percentiles 50,90,95,99 \
   --result-dir "$result_dir" --result-filename result.json

@@ -170,3 +170,24 @@ variable "model_staging_cpu_shape" {
   type    = string
   default = null
 }
+
+variable "routing_mode" {
+  type    = string
+  default = "auto"
+}
+variable "lmcache_mode" {
+  type    = string
+  default = "recipe"
+}
+variable "lmcache_cpu_memory_gb" {
+  type    = number
+  default = null
+}
+variable "lmcache_chunk_size" {
+  type    = number
+  default = null
+}
+variable "lmcache_mamba_cache_mode" {
+  type    = string
+  default = null
+}

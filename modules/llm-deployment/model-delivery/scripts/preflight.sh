@@ -20,9 +20,11 @@ model_platform_ready
 model_storage
 # Recipes may refer to a companion without provisioning it. Refuse that
 # incomplete runtime instead of claiming that argv alone creates a KV backend.
-if jq -e '(.serving.recipe.companions // [])|length>0' "$model_config" >/dev/null; then
-  model_fail 'Recipe declares companion services. This adapter does not provision LMCache MP servers/disaggregated services; select a complete assessed adapter/configuration first'
-fi
+jq -e '
+  (.serving.recipe.companions // []) as $companions |
+  ($companions|length)==0 or
+  (.lmcache.mode=="mp" and all($companions[]; type=="object" and .adapter=="lmcache_mp" and (keys==["adapter"])))
+' "$model_config" >/dev/null || model_fail 'Unprovisioned recipe companion: only the explicit lmcache_mp adapter is implemented; select a complete compatible model profile'
 # Pin every byte of the optional upstream router dependency. The parent chart
 # owns only namespaced model/router objects, never its bundled controllers.
 mkdir -p chart/charts

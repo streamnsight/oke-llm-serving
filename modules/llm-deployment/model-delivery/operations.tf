@@ -15,7 +15,7 @@ locals {
   operation_input_files = { for path in ["common.sh", "config.json"] : path => local.runtime_files[path] }
   operation_parameters = merge(local.defaults, {
     CHART_VERSION     = local.chart_version, RECOVER_LOCK_HOLDER = "none",
-    BENCHMARK_BACKEND = var.benchmark_backend, BENCHMARK_REQUESTS = "64", BENCHMARK_INPUT_TOKENS = "256", BENCHMARK_OUTPUT_TOKENS = "64"
+    BENCHMARK_BACKEND = var.benchmark_backend, BENCHMARK_REQUESTS = "64", BENCHMARK_INPUT_TOKENS = "256", BENCHMARK_OUTPUT_TOKENS = "64", BENCHMARK_PREFIX_TOKENS = "0"
   })
   operation_specs = { for operation in ["validate", "benchmark"] : operation => yamlencode({
     version = "0.1", component = "command", shell = "bash", timeoutInSeconds = 3600, failImmediatelyOnError = true,

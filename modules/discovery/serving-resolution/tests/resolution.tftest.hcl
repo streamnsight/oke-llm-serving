@@ -210,3 +210,18 @@ run "all_recommended_and_alternative_images_are_registry_qualified" {
     error_message = "Qualifying image names must not alter source engine versions or Docker Hub metadata HTTP repository paths."
   }
 }
+
+run "generic_recipe_service_profile_is_frozen" {
+  command = plan
+  override_data {
+    target = data.http.recipe[0]
+    values = {
+      status_code = 200
+      response_body = "meta:\n  default_hardware: gb200\n  hardware: {gb200: verified}\nmodel:\n  model_id: RecursiveSI/flint\n  min_vllm_version: nightly\nvariants:\n  default: {precision: bf16}\nfeatures:\n  reasoning: {args: [--reasoning-parser, glm47]}\ndeployment_profile:\n  lmcache: {mode: mp, cpu_memory_gb: 8, chunk_size: 128}\n  routing: {mode: prefixaware}\n"
+    }
+  }
+  assert {
+    condition = output.resolution.deployment_profile.lmcache.mode == "mp" && output.resolution.deployment_profile.lmcache.chunk_size == 128 && output.resolution.deployment_profile.routing.mode == "prefixaware"
+    error_message = "Service profiles must be carried from structured recipes for any model, independent of architecture names."
+  }
+}

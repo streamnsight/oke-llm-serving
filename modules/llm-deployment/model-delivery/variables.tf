@@ -112,3 +112,31 @@ variable "timeout_seconds" {
     error_message = "Native Helm timeout must be an integer between 300 and 1800 seconds."
   }
 }
+variable "routing_mode" {
+  type    = string
+  default = "auto"
+  validation {
+    condition     = contains(["auto", "direct", "prefixaware", "kvaware"], var.routing_mode)
+    error_message = "Choose auto, direct, prefixaware or kvaware routing."
+  }
+}
+variable "lmcache_mode" {
+  type    = string
+  default = "recipe"
+  validation {
+    condition     = contains(["recipe", "disabled", "mp", "inprocess"], var.lmcache_mode)
+    error_message = "Choose recipe, disabled, mp or inprocess LMCache."
+  }
+}
+variable "lmcache_cpu_memory_gb" {
+  type    = number
+  default = null
+}
+variable "lmcache_chunk_size" {
+  type    = number
+  default = null
+}
+variable "lmcache_mamba_cache_mode" {
+  type    = string
+  default = null
+}

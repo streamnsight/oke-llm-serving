@@ -336,3 +336,15 @@ run "regional_known_supply_ignores_zero_and_missing_ADs" {
     error_message = "An available AD remains selectable with a known-host lower bound when other ADs have zero or missing capacity. Unknown data must not enter sum() as null or become a claimed complete total."
   }
 }
+
+run "rendered_service_profile_reaches_selection" {
+ command=plan
+ override_data {
+  target=data.http.recipe_rendering["hardware=h100&variant=default&strategy=single_node_tp"]
+  values={status_code=200,response_body="{\"hf_id\": \"Qwen/Qwen3.8-27B\", \"hardware\": \"h100\", \"strategy\": \"single_node_tp\", \"variant\": \"default\", \"node_count\": 1, \"deploy_type\": \"single_node\", \"env\": {\"VLLM_USE_RUST_FRONTEND\": \"1\"}, \"docker_image\": \"vllm/vllm-openai:qwen38\", \"command\": \"vllm serve Qwen/Qwen3.8-27B \\\\\\n  --tensor-parallel-size 1 \\\\\\n  --enable-auto-tool-choice \\\\\\n  --tool-call-parser qwen3_coder \\\\\\n  --reasoning-parser qwen3 \\\\\\n  --mm-encoder-tp-mode data\", \"argv\": [\"vllm\", \"serve\", \"Qwen/Qwen3.8-27B\", \"--tensor-parallel-size\", \"1\", \"--enable-auto-tool-choice\", \"--tool-call-parser\", \"qwen3_coder\", \"--reasoning-parser\", \"qwen3\", \"--mm-encoder-tp-mode\", \"data\"], \"docker_command\": \"docker run --gpus all \\\\\\n  --privileged --ipc=host -p 8000:8000 \\\\\\n  -v ~/.cache/huggingface:/root/.cache/huggingface \\\\\\n  -e VLLM_USE_RUST_FRONTEND=1 \\\\\\n  vllm/vllm-openai:qwen38 Qwen/Qwen3.8-27B \\\\\\n  --tensor-parallel-size 1 \\\\\\n  --enable-auto-tool-choice \\\\\\n  --tool-call-parser qwen3_coder \\\\\\n  --reasoning-parser qwen3 \\\\\\n  --mm-encoder-tp-mode data\", \"docker_argv\": [\"docker\", \"run\", \"--gpus\", \"all\", \"--privileged\", \"--ipc=host\", \"-p\", \"8000:8000\", \"-v\", \"~/.cache/huggingface:/root/.cache/huggingface\", \"-e\", \"VLLM_USE_RUST_FRONTEND=1\", \"vllm/vllm-openai:qwen38\", \"Qwen/Qwen3.8-27B\", \"--tensor-parallel-size\", \"1\", \"--enable-auto-tool-choice\", \"--tool-call-parser\", \"qwen3_coder\", \"--reasoning-parser\", \"qwen3\", \"--mm-encoder-tp-mode\", \"data\"], \"selection\": {\"hardware\": \"h100\", \"variant\": \"default\", \"strategy\": \"single_node_tp\", \"nodes\": 1, \"features\": [\"tool_calling\", \"reasoning\", \"encoder_parallel\"], \"modes\": {\"spec_decoding\": \"mtp\"}, \"advanced\": [], \"frontend\": \"rust\", \"kv_offload\": null, \"pd\": null, \"preset\": null, \"point\": null, \"adjusted\": []}, \"page_url\": \"https://recipes.vllm.ai/Qwen/Qwen3.8-27B?hardware=h100&variant=default&strategy=single_node_tp\", \"markdown_url\": \"https://recipes.vllm.ai/Qwen/Qwen3.8-27B.md?hardware=h100&variant=default&strategy=single_node_tp\", \"deployment_profile\": {\"lmcache\": {\"mode\": \"mp\", \"cpu_memory_gb\": 8, \"chunk_size\": 128}, \"routing\": {\"mode\": \"prefixaware\"}}}"}
+ }
+ assert {
+  condition=output.assessment.suggestions[0].serving_configuration.deployment_profile.lmcache.mode=="mp" && output.assessment.suggestions[0].serving_configuration.deployment_profile.routing.mode=="prefixaware"
+  error_message="Frozen model selections must preserve generic cache/routing profiles from recipe rendering."
+ }
+}

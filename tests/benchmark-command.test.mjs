@@ -12,7 +12,7 @@ test('official CPU benchmark receives pinned tokenizer and editable bounded nati
  try{
   writeFileSync(`${dir}/hf`,'#!/bin/bash\nprintf "%s\\n" "$@" > "$CAPTURE/hf-args"\n',{mode:0o755});
   writeFileSync(`${dir}/vllm`,'#!/bin/bash\nprintf "%s\\n" "$@" > "$CAPTURE/vllm-args"\nprintf \'{"completed":20,"errors":[]}\\n\' > "$BENCHMARK_RESULT_DIR/result.json"\n',{mode:0o755});
-  const env={...process.env,PATH:`${dir}:${process.env.PATH}`,CAPTURE:dir,MODEL_ID:'org/model',MODEL_REVISION:'a'.repeat(40),BASE_URL:'http://model',CONCURRENCY:'4',BENCHMARK_BACKEND:'openai-chat',BENCHMARK_REQUESTS:'20',BENCHMARK_INPUT_TOKENS:'1024',BENCHMARK_OUTPUT_TOKENS:'128',BENCHMARK_RESULT_DIR:`${dir}/result`};
+  const env={...process.env,PATH:`${dir}:${process.env.PATH}`,CAPTURE:dir,MODEL_ID:'org/model',MODEL_REVISION:'a'.repeat(40),BASE_URL:'http://model',CONCURRENCY:'4',BENCHMARK_BACKEND:'openai-chat',BENCHMARK_REQUESTS:'20',BENCHMARK_INPUT_TOKENS:'1024',BENCHMARK_OUTPUT_TOKENS:'128',BENCHMARK_PREFIX_TOKENS:'768',BENCHMARK_RESULT_DIR:`${dir}/result`};
   const output=execFileSync('bash',[script],{env,encoding:'utf8'}),args=readFileSync(`${dir}/vllm-args`,'utf8').trim().split('\n');
   const hfArgs=readFileSync(`${dir}/hf-args`,'utf8').trim().split('\n');
   const patterns=[];
@@ -22,7 +22,7 @@ test('official CPU benchmark receives pinned tokenizer and editable bounded nati
   }
   assert(patterns.includes('tokenizer.json'));assert(patterns.includes('tokenizer_config.json'));assert(patterns.includes('config.json'));
   assert.deepEqual(args.slice(0,2),['bench','serve']);
-  for(const[flag,value]of[['--backend','openai-chat'],['--max-concurrency','4'],['--num-prompts','20'],['--random-input-len','1024'],['--random-output-len','128'],['--served-model-name','org/model']])assert.equal(args[args.indexOf(flag)+1],value);
+  for(const[flag,value]of[['--backend','openai-chat'],['--max-concurrency','4'],['--num-prompts','20'],['--random-input-len','1024'],['--random-output-len','128'],['--served-model-name','org/model'],['--random-prefix-len','768']])assert.equal(args[args.indexOf(flag)+1],value);
   assert(args.includes('--save-detailed'));assert(!args.includes('--extra-body'),'Do not force text-model thinking/chat-template flags onto arbitrary recipes');assert.match(readFileSync(`${dir}/hf-args`,'utf8'),new RegExp(env.MODEL_REVISION));assert.match(output,/BENCHMARK_RESULT_BEGIN\n\{"completed":20/);
  }finally{rmSync(dir,{recursive:true,force:true});}
 });

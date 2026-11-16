@@ -34,9 +34,14 @@ model_inputs() {
   # distributed layouts require a separate explicit execution adapter.
   (( TP == GPUS_PER_POD && PP == HOSTS_PER_REPLICA )) || model_fail 'Native MP adapter requires GPUS_PER_POD=TP and HOSTS_PER_REPLICA=PP; cross-host TP/Ray require another adapter' || return
   if (( REPLICAS > 1 )); then
-    jq -e .router_enabled "$model_config" >/dev/null || model_fail 'Multiple replicas require the prefix-aware router; enable it in the model stack before increasing REPLICAS' || return
+    jq -e .router_enabled "$model_config" >/dev/null || model_fail 'Multiple replicas require a router; select prefixaware or compatible kvaware routing before increasing REPLICAS' || return
   fi
   [[ $INFERENCE_PROBE == none || $INFERENCE_PROBE == completions || $INFERENCE_PROBE == chat ]] || model_fail 'Unsupported inference probe; select none or an explicit text probe' || return
+  if jq -e '.lmcache.enabled // false' "$model_config" >/dev/null; then
+    (( HOSTS_PER_REPLICA == 1 )) || model_fail 'LMCache currently supports single-host TP only' || return
+    # The buffer and controller worker ports are fixed in the frozen profile.
+    [[ $TP == "$(jq -r .defaults.TP "$model_config")" ]] || model_fail 'Changing TP with LMCache requires a stack Apply to resize host memory and worker ports' || return
+  fi
   platform_name=$(jq -er .platform.platform_name "$model_config")
   platform_owner=$(printf '%s' "$platform_name/$cluster" | sha256sum | cut -c1-32)
   kubectl get namespace "$namespace" -o json > model-namespace.json || { model_fail "Model namespace is not accessible. Run trusted $platform_name-model-onboarding with this model project and exact pipeline IDs after infrastructure exists"; return 2; }
@@ -284,6 +289,11 @@ model_validate() {
   fi
   jq -n --arg model "$MODEL_ID" --arg revision "$MODEL_REVISION" --arg image "$SERVING_IMAGE" --arg probe "$probe" \
     '{status:"ready",model:$model,model_revision:$revision,model_revision_kind:(if $revision=="main" then "mutable_ref" else "immutable_commit" end),image:$image,checks:["pod_readiness","image_identity","health","model_identity"],inference_probe:($probe|if .=="none" then "not_run; choose a task-specific probe" else . end),responses_conversation_persistence:false}' > model-validation.json
+  if jq -e '.lmcache.enabled // false' "$model_config" >/dev/null; then
+    jq -e '[.items[] | select(.metadata.deletionTimestamp==null) | .spec.containers[] | select(.name=="vllm") | .command == ["bash","/lmcache/launch.sh"]] | length>0 and all(.[]; . == true)' model-pods.json >/dev/null || model_fail 'LMCache launcher is absent from a serving Pod' || return
+    jq --slurpfile config "$model_config" '. + {lmcache:($config[0].lmcache + {store_retrieve_validation:"manual_cache_benchmark_required"}),routing:$config[0].routing_mode}' model-validation.json > model-validation-cache.json
+    mv model-validation-cache.json model-validation.json
+  fi
   kill "$model_forward_pid" 2>/dev/null || true
   wait "$model_forward_pid" 2>/dev/null || true
   trap - EXIT

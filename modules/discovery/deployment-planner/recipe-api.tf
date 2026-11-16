@@ -102,8 +102,9 @@ locals {
     entitled_instances         = row.entitled_instances
     capacity_observed_at       = row.capacity_observed_at
     serving_configuration = {
-      status = "suggested_requires_validation", model = local.profile.model
-      engine = merge(var.serving_resolution.engine, { id = "recipe-${row.hardware}", image = row.image, platform = row.platform, available_images = local.recipe_images[row.rendering.docker_image], image_tag = row.rendering.docker_image, version = "recipe-${split(":", row.rendering.docker_image)[1]}", channel = "recipe", image_source_association = "recipe_image_digest_runtime_not_verified" })
+      deployment_profile = try(row.rendering.deployment_profile, var.serving_resolution.deployment_profile, {})
+      status             = "suggested_requires_validation", model = local.profile.model
+      engine             = merge(var.serving_resolution.engine, { id = "recipe-${row.hardware}", image = row.image, platform = row.platform, available_images = local.recipe_images[row.rendering.docker_image], image_tag = row.rendering.docker_image, version = "recipe-${split(":", row.rendering.docker_image)[1]}", channel = "recipe", image_source_association = "recipe_image_digest_runtime_not_verified" })
       recipe = merge(var.serving_resolution.recipe, {
         args         = [for i, arg in slice(row.rendering.argv, 3, length(row.rendering.argv)) : arg if !contains(local.recipe_managed_flags, split("=", arg)[0]) && !try(contains(local.recipe_managed_flags, slice(row.rendering.argv, 3, length(row.rendering.argv))[i - 1]), false)]
         env          = row.rendering.env, selected_features = row.rendering.selection.features, selected_hardware = row.hardware

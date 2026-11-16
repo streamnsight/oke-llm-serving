@@ -32,3 +32,77 @@ For multiple replicas, the same release includes the upstream production-stack r
 Sources: [LWS vLLM deployment](https://docs.vllm.ai/en/stable/deployment/frameworks/lws/), [production-stack chart](https://github.com/vllm-project/production-stack/tree/405a2fa79992754d31f754c31b1eabb7183a540e/helm), [vLLM benchmark CLI](https://docs.vllm.ai/en/stable/cli/bench/serve/), [OKE IAM and Kubernetes RBAC](https://docs.oracle.com/en-us/iaas/Content/ContEng/Concepts/contengaboutaccesscontrol.htm).
 
 Validation and benchmark command specs reuse the deployment’s existing immutable `runtime/common.sh` and `runtime/config.json` inputs, with checksum verification. Smaller operation scripts remain readable inline. The complete raw command document is capped at 51,200 UTF-8 bytes and passed directly to the provider, whose SDK handles base64 transport encoding.
+
+LMCache and routing are selected through `lmcache_mode` and `routing_mode` in the
+model stack. `routing_mode=auto` preserves direct access for one replica and
+prefix-aware routing for scale-out. Explicit `prefixaware` starts the router even
+with one replica. `direct` rejects scale-out and a contradictory `router_enabled`.
+
+`lmcache_mode=recipe` reads the optional frozen
+`selection.serving_configuration.deployment_profile.lmcache` object (falling back
+to the top-level serving configuration when that is the selected source). No
+profile means disabled, preserving existing bundles. For example:
+
+```json
+{
+  "lmcache": {"mode":"mp","cpu_memory_gb":8,"chunk_size":256,"mamba_cache_mode":"align"},
+  "routing": {"mode":"prefixaware"}
+}
+```
+
+This object belongs under `serving_configuration.deployment_profile`; it extends
+rather than rewrites the upstream recipe. `lmcache_mode=mp|inprocess|disabled`
+and the optional `lmcache_cpu_memory_gb`, `lmcache_chunk_size` and
+`lmcache_mamba_cache_mode` stack inputs override those recommendations. Routing
+can be overridden with an explicit `direct|prefixaware|kvaware` selection. An
+`auto` setting honors the frozen routing recommendation when present. Reject
+unsupported profile values, conflicting raw cache flags/environment and unknown
+companions before executing Helm. A declared `{"adapter":"lmcache_mp"}`
+companion is fulfilled by the MP launcher; other companion contracts remain
+unsupported.
+
+The MP adapter starts `lmcache server` beside vLLM **inside the same container**,
+sharing CUDA devices and IPC without another GPU request or host daemon. It
+binds its request port to loopback and uses the external
+`lmcache.integration.vllm.lmcache_mp_connector`. Startup refuses a missing or
+incompatible connector; either process exiting stops the container. Each Pod
+owns a disposable CPU cache, so replacement loses cache contents. There is no
+disk/shared cache, cache persistence or conversation history in this adapter.
+No runtime package installation or serving-image substitution is performed.
+
+Use `lmcache_mode=inprocess` with `routing_mode=kvaware` for the pinned
+production-stack router's controller protocol. The router starts its controller;
+workers report unique Pod identities and Pod IPs. Pull, reply and heartbeat
+ports are exposed through the router Service. This protocol is different from
+the MP coordinator: `mp + kvaware` is rejected, not silently downgraded. Verify
+the exact serving/router/LMCache protocol versions before enabling in-process
+controller routing for a new recipe. A modern hybrid model's MP support does
+not establish in-process support.
+
+Both adapters currently require single-host TP. The cache budget is added to
+the existing worker memory request/limit, once per Pod for MP and per TP rank for
+in-process, plus process overhead. Changing TP on a manual pipeline execution
+is rejected when caching is enabled; Apply must regenerate budgets and worker
+ports. Scheduling still establishes available host RAM. For hybrid models,
+select the assessed Mamba policy and validate negotiated block/chunk geometry;
+the example above is a configuration shape, not a TP=4 correctness result.
+
+Apply validates worker readiness and installed launcher configuration. Its result
+explicitly labels cache store/retrieve evidence as requiring a manual cache
+benchmark. A cache test must use repeated prefixes longer than the negotiated
+block size and verify external store/retrieve counters and output correctness;
+a generic random-prompt benchmark or `/health` response is insufficient. Routing
+needs multiple actual replicas to establish backend selection. No GPU pool is
+allocated, resized or recycled by these changes.
+
+The existing manual benchmark pipeline accepts `BENCHMARK_PREFIX_TOKENS` (default
+0) to generate requests sharing a prefix. Prefix + random input + output lengths
+and template allowance must fit the context window. Choose a shared prefix above
+the runtime's negotiated chunk/block size, then inspect native prefix and LMCache
+store/retrieve counters separately. Repeated requests served from the GPU prefix
+cache do not establish host-tier retrieval. This option does not clear live caches
+or change the serving model automatically.
+
+MP cache Prometheus metrics are exposed on the model Service's `cache-metrics`
+port 9090 and scraped by the existing ServiceMonitor when monitoring is enabled.
+Disabled caches keep the existing serving command, resources and Service ports.

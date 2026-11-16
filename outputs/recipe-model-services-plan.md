@@ -2,7 +2,7 @@
 <!-- Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl. -->
 # Recipe-driven caching, routing and conversation state
 
-Status: LMCache-first implementation sequence requested; implementation has not started.
+Status: initial generic LMCache/routing implementation completed locally; runtime store/retrieve and multi-replica validation pending.
 History implementation remains a separate follow-on decision.
 Evidence date: 2026-11-16. Scope: extend the existing model deployment stack,
 reusing its independent model lifecycle, trusted onboarding and native Helm delivery.
@@ -420,3 +420,44 @@ only for tested profiles. History remains follow-on scope, reusing an upstream
 API gateway/database integration inside an explicit trusted application boundary
 until principal-scoped ownership is proven. No application feature is implemented
 by this planning update.
+
+
+## Implementation ledger: LMCache and routing
+
+- [x] Add recipe/profile resolution and RMS/Terraform routing/cache inputs.
+- [x] Render MP launcher, in-process controller reporting, memory budgets and router ports.
+- [x] Validate launcher lifecycle, manifest behavior and rejection of incompatible combinations.
+- [ ] Run Terraform regression and generated RMS archive checks.
+- [ ] Record exact runtime compatibility and remaining multi-replica validation.
+
+Initial MP adapter is single-host TP, one disposable host tier per serving Pod.
+The pinned router KV-aware protocol uses the in-process adapter. Selecting KV-aware
+with MP is rejected explicitly rather than pretending the two controller protocols
+are interchangeable. Full cache store/retrieve performance requires a manual
+cache benchmark; health checks do not assert cache hits.
+
+
+Implementation evidence (2026-11-16): generic fixtures cover ordinary attention
+profiles and optional recurrent-cache policy, preserve existing native prefix
+flags, propagate profiles through discovery and publication, and keep profile
+recommendations editable in RMS. There are no model-name branches or fixed hybrid
+block sizes in the adapters. Unsupported MP/KV-controller and multi-host layouts
+are rejected, not advertised as compatible.
+
+Model delivery Terraform tests: 43 passed; serving resolution: 15 passed;
+deployment planning: 54 passed; model publisher: 8 passed. Focused launcher/chart
+checks exercise failure propagation, literal argument handling, worker identity,
+no extra GPU requests and actual pinned-router controller Service ports.
+The live image's LMCache server CLI accepted the implemented MP flags. Subsequent
+cluster reads returned Bad Gateway through the configured connection, so no new
+live model rollout, store/retrieve result or multi-replica placement is claimed.
+No GPU resource was allocated, resized, recycled or deleted.
+
+Final focused executable validation: 44 combined model/client/launcher/chart
+checks passed, plus the new cache-readiness regression passed separately. The
+pinned router chart was supplied for real Helm rendering (no optional router
+check skipped). Cache metrics are exposed through the existing model Service and
+ServiceMonitor. Existing compatible recipe KV-transfer settings are retained
+once, with conflicting endpoints rejected. One intermediate Terraform run read
+chart files while they were being edited and failed its source-hash consistency
+check; the complete rerun against unchanged source passed all 43 checks.

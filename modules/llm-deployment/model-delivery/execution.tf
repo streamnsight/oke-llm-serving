@@ -25,7 +25,7 @@ locals {
     # Terraform delivery changes (including native stage/source encoding) must
     # execute the corrected pipeline even if model flags remain identical.
     delivery_code = merge(
-      { for asset in ["main.tf", "operations.tf", "execution.tf"] : "model/${asset}" => filesha256("${path.module}/${asset}") },
+      { for asset in ["main.tf", "operations.tf", "execution.tf", "cache.tf"] : "model/${asset}" => filesha256("${path.module}/${asset}") },
       { for asset in fileset("${path.module}/../../shared/component-delivery", "*.tf") : "delivery/${asset}" => filesha256("${path.module}/../../shared/component-delivery/${asset}") },
       { for asset in fileset("${path.module}/../../shared/inline-command-spec", "*.tf") : "inline/${asset}" => filesha256("${path.module}/../../shared/inline-command-spec/${asset}") }
     )

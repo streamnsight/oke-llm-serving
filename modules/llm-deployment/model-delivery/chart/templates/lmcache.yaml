@@ -1,0 +1,12 @@
+# Copyright (c) 2020-2022 Oracle and/or its affiliates. All rights reserved.
+# Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
+{{- if and .Values.lmcache .Values.lmcache.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-lmcache
+  labels: {{- include "model.labels" . | nindent 4 }}
+data:
+  launch.sh: |
+{{ .Files.Get "files/lmcache-launch.sh" | indent 4 }}
+{{- end }}

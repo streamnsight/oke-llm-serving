@@ -224,6 +224,7 @@ output "resolution" {
       hardware           = try(local.recipe.meta.hardware, {}), selected_hardware = local.hardware, compatible_strategies = try(local.recipe.compatible_strategies, []), strategy_overrides = try(local.recipe.strategy_overrides, {}),
       available_features = keys(try(local.recipe.features, {})), selected_features = sort(tolist(var.recipe_features)), args = local.args, env = local.env, issues = local.recipe_issues, feature_options = try(local.recipe.features, {}),
     variant_metadata = local.variant, install_requirements = try(local.recipe.model.install, {}) }
+    deployment_profile      = try(local.recipe.deployment_profile, local.metadata.deployment_profile, {})
     engine                  = local.recommended_engine, engine_candidates = local.engine_candidates, engine_issues = local.engine_issues
     engine_selection_reason = local.use_nightly ? "Nightly requested or stable architecture/minimum coverage missing; digest frozen, runtime validation pending." : local.minimum == "nightly" ? "Recipe says nightly, but a stable tag declares the architecture; prefer stable, validate recipe flags at runtime." : "Latest or explicitly selected stable tag meets source architecture/minimum checks."
     warnings                = ["Source registration is evidence, not an image/GPU runtime test.", "Recipe hardware/strategy evidence does not establish compatibility for other GPUs.", "Image digest pins the selected platform; confirm the target OKE image/node CPU architecture."]

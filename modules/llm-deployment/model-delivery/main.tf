@@ -44,7 +44,7 @@ locals {
   snapshot_bytes = try(coalesce(var.model.model.checkpoint_download_bytes, try(local.profile.weights.total_file_bytes, null)), null)
   workspace_gib  = coalesce(var.storage.workspace_gib, local.snapshot_bytes == null ? 64 : ceil(local.snapshot_bytes * 1.15 / pow(1024, 3)) + 8)
   selector       = { (split("=", var.platform.gpu_selector)[0]) = split("=", var.platform.gpu_selector)[1] }
-  router_enabled = var.router_enabled || tonumber(local.defaults.REPLICAS) > 1 || (var.autoscaling.enabled && var.autoscaling.max_replicas > 1)
+  router_enabled = local.routing_mode != "direct"
   chart_sources  = { for asset in fileset("${path.module}/chart", "**") : asset => file("${path.module}/chart/${asset}") }
   chart_version  = "0.1.0-src-${substr(sha256(jsonencode({ files = local.chart_sources, router_sha256 = "6d03d2f28c34a7a2d05da62d3df44e349d662424e947f240b343a97f24f99c3c" })), 0, 12)}"
   chart_files = merge(local.chart_sources, {
@@ -56,21 +56,29 @@ locals {
     identity       = local.identity, model = "$${MODEL_ID}", revision = "$${MODEL_REVISION}", image = "$${SERVING_IMAGE}",
     tensorParallel = "$${TP}", pipelineParallel = "$${PP}", hosts = "$${HOSTS_PER_REPLICA}", gpusPerPod = "$${GPUS_PER_POD}",
     replicas       = "$${REPLICAS}", contextLength = "$${CONTEXT_LENGTH}", concurrency = "$${CONCURRENCY}",
-    recipeArgs     = try(local.serving.recipe.args, []), recipeEnv = merge(try(local.serving.recipe.env, {}), { VLLM_USE_RUST_FRONTEND = "$${VLLM_USE_RUST_FRONTEND}" }),
-    nodeSelector   = local.selector, cpu = "2", memory = "16Gi", shm = "8Gi", workspace = "${local.workspace_gib}Gi",
+    recipeArgs     = concat(try(local.serving.recipe.args, []), local.cache_args), recipeEnv = merge(try(local.serving.recipe.env, {}), local.cache_env, { VLLM_USE_RUST_FRONTEND = "$${VLLM_USE_RUST_FRONTEND}" }),
+    nodeSelector   = local.selector, cpu = "2", memory = "${16 + local.cache_memory_gib}Gi", shm = "8Gi", workspace = "${local.workspace_gib}Gi",
     hfTokenSecret  = var.hf_token_secret, pvcName = var.storage.pvc_name,
     modelPath      = var.storage.mode == "direct_hf" ? "" : var.storage.model_path,
     rdmaResource   = try(var.platform.transport.requires_rdma, false) ? try(var.platform.transport.rdma_resource_name, "") : "",
     router         = { enabled = local.router_enabled },
+    lmcache        = merge(local.lmcache, { enabled = local.lmcache_enabled, controller = local.routing_mode == "kvaware" }),
     monitoring     = { enabled = try(var.platform.monitoring_enabled, false) || var.autoscaling.enabled, platform = var.platform.platform_name },
     autoscaling    = merge(var.autoscaling, { min_replicas = "$${MIN_REPLICAS}", max_replicas = "$${MAX_REPLICAS}", target_inflight = "$${TARGET_INFLIGHT}", prometheus_url = "$${PROMETHEUS_URL}" }),
     "vllm-stack" = {
       servingEngineSpec = { enableEngine = false, modelSpec = [] },
       routerSpec = {
-        enableRouter      = true, serviceAccountName = "oke-llm-router", serviceDiscovery = "k8s", k8sServiceDiscoveryType = "pod-ip",
-        routingLogic      = "prefixaware", replicaCount = 1, serviceType = "ClusterIP",
-        repository        = "docker.io/lmcache/lmstack-router", tag = "v0.1.14@sha256:7107e6a17740478749ef28c812df48f405ccfab8d92f40372a50ef678b6c6b63",
-        extraArgs         = ["--k8s-label-selector", "oke-llm/model=${local.identity},oke-llm/endpoint=true"],
+        enableRouter                   = true, serviceAccountName = "oke-llm-router", serviceDiscovery = "k8s", k8sServiceDiscoveryType = "pod-ip",
+        routingLogic                   = local.routing_mode, replicaCount = 1, serviceType = "ClusterIP",
+        repository                     = "docker.io/lmcache/lmstack-router", tag = "v0.1.14@sha256:7107e6a17740478749ef28c812df48f405ccfab8d92f40372a50ef678b6c6b63",
+        extraArgs                      = ["--k8s-label-selector", "oke-llm/model=${local.identity},oke-llm/endpoint=true"],
+        lmcacheControllerPort          = local.routing_mode == "kvaware" ? 9000 : null,
+        lmcacheControllerReplyPort     = local.routing_mode == "kvaware" ? 9001 : null,
+        lmcacheControllerHeartbeatPort = local.routing_mode == "kvaware" ? 9002 : null,
+        extraPorts = local.routing_mode == "kvaware" ? [
+          { name = "cache-reply", port = 9001, targetPort = 9001, protocol = "TCP" },
+          { name = "cache-heartbeat", port = 9002, targetPort = 9002, protocol = "TCP" }
+        ] : [],
         nodeSelectorTerms = [{ matchExpressions = [{ key = "nvidia.com/gpu.present", operator = "DoesNotExist" }, { key = "nvidia.com/gpu", operator = "DoesNotExist" }, { key = "oke-llm/allocation", operator = "DoesNotExist" }] }]
       },
       cacheserverSpec         = { enabled = false }, loraController = { enableLoraController = false },
@@ -111,6 +119,7 @@ locals {
     identity        = local.identity, ownership_token = local.owner, defaults = local.defaults,
     storage         = merge(var.storage, { workspace_gib = local.workspace_gib, snapshot_bytes = local.snapshot_bytes, workspace_explicit = var.storage.workspace_gib != null }),
     hf_token_secret = var.hf_token_secret,
+    lmcache         = merge(local.lmcache, { enabled = local.lmcache_enabled }), routing_mode = local.routing_mode,
     router_enabled  = local.router_enabled, autoscaling = var.autoscaling, inference_probe = var.inference_probe,
     timeout_seconds = var.timeout_seconds,
     benchmark_image = "docker.io/vllm/vllm-openai-cpu@sha256:827ef38187f9b52f2bb838695ef815ec5b65f4bf3e4c061b002b2b0a19cb0701"
@@ -120,7 +129,8 @@ locals {
 resource "terraform_data" "contract" {
   # Canonical text avoids dynamic-object type changes from discovery-only
   # attributes marking the entire delivery module as pending an update.
-  input = sha256(jsonencode(local.config))
+  input      = sha256(jsonencode(local.config))
+  depends_on = [terraform_data.cache_contract]
   lifecycle {
     precondition {
       condition     = startswith(local.namespace, "${var.platform.platform_name}-model-") && length(local.namespace) <= 63

@@ -56,4 +56,8 @@ metadata:
 spec:
   type: ClusterIP
   selector: {app.kubernetes.io/instance: {{ .Release.Name }}, oke-llm/endpoint: "true"}
-  ports: [{name: http, port: 8000, targetPort: http}]
+  ports:
+    - {name: http, port: 8000, targetPort: http}
+    {{- if and .Values.lmcache .Values.lmcache.enabled (eq .Values.lmcache.mode "mp") }}
+    - {name: cache-metrics, port: 9090, targetPort: cache-metrics}
+    {{- end }}

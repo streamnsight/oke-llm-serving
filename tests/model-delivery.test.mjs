@@ -312,3 +312,10 @@ test('non-direct model storage keeps its existing placement checks without a new
  const f=fixture({config:{storage:{...config.storage,mode:'existing_pvc',pvc_name:'weights'}},state:{nodes:[workspaceNode(undefined)]}});
  try{const r=f.run('model_geometry');assert.equal(r.status,0,r.stderr);assert.doesNotMatch(r.stdout,/workspace_gib|allocatable_quantity/);}finally{f.close();}
 });
+
+test('cache readiness requires the deployed launcher and reports store/retrieve as unverified',()=>{
+ const pod={metadata:{},spec:{containers:[{name:'vllm',image,command:['bash','/lmcache/launch.sh']}]},status:{conditions:[{type:'Ready',status:'True'}]}};
+ const f=fixture({config:{lmcache:{enabled:true,mode:'mp'},routing_mode:'prefixaware'},state:{pods:[pod,pod]}});
+ try{const r=f.run('model_inputs; model_validate');assert.equal(r.status,0,r.stderr);const result=JSON.parse(readFileSync(`${f.dir}/model-validation.json`));assert.equal(result.lmcache.store_retrieve_validation,'manual_cache_benchmark_required');assert.equal(result.routing,'prefixaware');}finally{f.close();}
+ const missing=fixture({config:{lmcache:{enabled:true,mode:'mp'}}});try{const r=missing.run('model_inputs; model_validate');assert.equal(r.status,2,r.stderr);assert.match(r.stderr,/LMCache launcher is absent/);}finally{missing.close();}
+});
