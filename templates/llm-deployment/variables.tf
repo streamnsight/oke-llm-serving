@@ -55,8 +55,13 @@ variable "model_id" {
   default = null
 }
 variable "model_revision" {
-  type    = string
-  default = null
+  type        = string
+  default     = null
+  description = "Defaults to discovery's immutable Hugging Face commit. Exactly main is an optional mutable override for direct_hf serving only."
+  validation {
+    condition     = var.model_revision == null ? true : can(regex("^(main|[a-f0-9]{40})$", var.model_revision))
+    error_message = "model_revision must be a 40-character Hugging Face commit or exactly main. Retained PVC and staged snapshots require a commit."
+  }
 }
 variable "serving_image" {
   type    = string

@@ -44,6 +44,21 @@ run "rendered_cluster_only_stack_autoruns_an_independent_model_project" {
     condition     = var.api_frontend == "python" && output.model_delivery.defaults.VLLM_USE_RUST_FRONTEND == "0"
     error_message = "A generated model stack must default to the Python frontend even when the recipe opts into Rust."
   }
+  assert {
+    condition     = can(regex("^[a-f0-9]{40}$", output.model_delivery.defaults.MODEL_REVISION))
+    error_message = "The generated stack must continue to default to an immutable discovery commit."
+  }
+}
+run "model_deployment_can_select_main_without_rewriting_the_assessed_commit" {
+  command = apply
+  variables {
+    model_revision = "main"
+    storage_mode   = "direct_hf"
+  }
+  assert {
+    condition     = output.model_delivery.defaults.MODEL_REVISION == "main" && output.model_delivery.storage == "direct_hf" && can(regex("^[a-f0-9]{40}$", local.model.model.revision)) && output.model_delivery.defaults.SERVING_IMAGE == run.rendered_cluster_only_stack_autoruns_an_independent_model_project.model_delivery.defaults.SERVING_IMAGE && output.model_delivery.automatic_execution.deployment.state == "SUCCEEDED" && output.model_delivery.automatic_execution.validation.state == "SUCCEEDED"
+    error_message = "The direct-HF main override must reach model deployment/validation while retaining the assessed commit and exact serving image."
+  }
 }
 run "model_deployment_can_opt_into_rust_frontend" {
   command = plan

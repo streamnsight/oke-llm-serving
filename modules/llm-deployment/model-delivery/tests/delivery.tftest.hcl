@@ -52,6 +52,10 @@ run "model_delivery_deploys_and_validates_automatically" {
     error_message = "Python must override a recipe's experimental Rust opt-in in the effective config while preserving raw recipe provenance and other environment values."
   }
   assert {
+    condition     = local.defaults.MODEL_REVISION == var.model.selection.serving_configuration.model.resolved_revision
+    error_message = "Discovery's immutable commit remains the model deployment default."
+  }
+  assert {
     condition     = local.defaults.SERVING_IMAGE == "docker.io/${var.model.selection.serving_configuration.engine.image}" && local.values["vllm-stack"].routerSpec.repository == "docker.io/lmcache/lmstack-router" && startswith(local.config.benchmark_image, "docker.io/vllm/vllm-openai-cpu@sha256:")
     error_message = "Frozen short image names, router and CPU benchmark must have explicit registries without changing image digests."
   }
@@ -75,6 +79,35 @@ run "explicit_Rust_frontend_is_opt_in" {
     condition     = local.defaults.VLLM_USE_RUST_FRONTEND == "1" && local.config.serving.recipe.env.VLLM_USE_RUST_FRONTEND == "1" && local.config.serving.recipe.env.CUDA_MODULE_LOADING == "LAZY"
     error_message = "Rust frontend is available only by explicit selection; unrelated recipe environment remains unchanged."
   }
+}
+run "main_is_an_explicit_direct_Hub_override" {
+  command = plan
+  variables { overrides = { model_revision = "main" } }
+  assert {
+    condition     = local.defaults.MODEL_REVISION == "main" && local.defaults.SERVING_IMAGE == "docker.io/${var.model.selection.serving_configuration.engine.image}" && local.values.recipeArgs == var.model.selection.serving_configuration.recipe.args && var.model.model.revision == "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    error_message = "An explicit main ref is accepted for direct Hub delivery without rewriting discovery's commit, the serving image or recipe argv."
+  }
+}
+run "main_is_not_an_immutable_PVC_snapshot" {
+  command = plan
+  variables {
+    overrides = { model_revision = "main" }
+    storage   = { mode = "existing_pvc", pvc_name = "retained-weights" }
+  }
+  expect_failures = [terraform_data.contract]
+}
+run "main_is_not_a_staged_snapshot" {
+  command = plan
+  variables {
+    overrides = { model_revision = "main" }
+    storage   = { mode = "staged_object_storage", pvc_name = "retained-weights" }
+  }
+  expect_failures = [terraform_data.contract]
+}
+run "other_mutable_refs_are_rejected" {
+  command = plan
+  variables { overrides = { model_revision = "refs/heads/main" } }
+  expect_failures = [terraform_data.contract]
 }
 run "unknown_frontend_is_rejected" {
   command = plan

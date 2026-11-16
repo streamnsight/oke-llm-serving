@@ -83,6 +83,16 @@ test('frontend parameters accept only Python0 or explicit Rust1 before any clust
   const f=fixture({env:{VLLM_USE_RUST_FRONTEND:frontend}});try{const r=f.run('model_inputs');if(['0','1'].includes(frontend))assert.equal(r.status,0,r.stderr);else{assert.equal(r.status,2,r.stderr);assert.match(r.stderr,/VLLM_USE_RUST_FRONTEND must be 0/);assert.equal(r.state.calls.length,0);}}finally{f.close();}
  }
 });
+test('main revision is accepted only for direct Hub serving and reported as mutable',()=>{
+ const f=fixture({env:{MODEL_REVISION:'main'}});
+ try{const r=f.run('model_inputs; model_validate');assert.equal(r.status,0,r.stderr);const report=JSON.parse(readFileSync(`${f.dir}/model-validation.json`));assert.equal(report.model_revision,'main');assert.equal(report.model_revision_kind,'mutable_ref');assert.equal(report.image,image);}finally{f.close();}
+ for(const mode of ['existing_pvc','staged_object_storage']){
+  const f=fixture({env:{MODEL_REVISION:'main'},config:{storage:{...config.storage,mode,pvc_name:'retained-weights'}}});try{const r=f.run('model_inputs');assert.equal(r.status,2,r.stderr);assert.match(r.stderr,/retained PVC and staged snapshots require an immutable commit/);assert.equal(r.state.calls.length,0);}finally{f.close();}
+ }
+ for(const revision of ['latest','refs/heads/main','MAIN','abc123','main;touch unwanted']){
+  const f=fixture({env:{MODEL_REVISION:revision}});try{const r=f.run('model_inputs');assert.equal(r.status,2,r.stderr);assert.match(r.stderr,/40-character Hugging Face commit or exactly main/);assert.equal(r.state.calls.length,0);}finally{f.close();}
+ }
+});
 test('independent operations require matching settings, current Helm revision and generation',()=>{
  const f=fixture();try{assert.equal(f.run('model_inputs; model_ready_owner').status,0);}finally{f.close();}
  for(const changes of [{state:{revision:4}},{state:{metadataRevision:4}},{state:{owner:{data:{ownership_token:config.ownership_token,generation:'old',status:'ready'}}}}]){
@@ -91,7 +101,7 @@ test('independent operations require matching settings, current Helm revision an
  const f2=fixture();try{f2.env.CONTEXT_LENGTH='8192';assert.notEqual(f2.run('model_ready_owner').status,0);}finally{f2.close();}
 });
 test('health/model identity validation makes no text-inference claim for arbitrary modalities',()=>{
- const f=fixture();try{const r=f.run('model_inputs; model_validate');assert.equal(r.status,0,r.stderr);const result=JSON.parse(readFileSync(`${f.dir}/model-validation.json`));assert.match(result.inference_probe,/not_run/);assert.equal(result.responses_conversation_persistence,false);assert(!r.state.calls.some(c=>c.args.includes('--data-binary')));}finally{f.close();}
+ const f=fixture();try{const r=f.run('model_inputs; model_validate');assert.equal(r.status,0,r.stderr);const result=JSON.parse(readFileSync(`${f.dir}/model-validation.json`));assert.match(result.inference_probe,/not_run/);assert.equal(result.responses_conversation_persistence,false);assert.equal(result.model_revision,defaults.MODEL_REVISION);assert.equal(result.model_revision_kind,'immutable_commit');assert(!r.state.calls.some(c=>c.args.includes('--data-binary')));}finally{f.close();}
  const wrong=fixture({state:{advertisedModel:'other'}});try{assert.notEqual(wrong.run('model_validate').status,0);}finally{wrong.close();}
 });
 const values={identity:'model-fixture',model:'org/model',revision:'a'.repeat(40),image,tensorParallel:'2',pipelineParallel:'1',hosts:'1',gpusPerPod:'2',replicas:'2',contextLength:'4096',concurrency:'8',recipeArgs:['--tool-call-parser','qwen3_coder','--reasoning-parser','qwen3','--kv-cache-dtype','fp8','--dtype','bfloat16'],recipeEnv:{VLLM_USE_RUST_FRONTEND:'1'},nodeSelector:{'oke-llm/allocation':'fixture'},cpu:'2',memory:'16Gi',shm:'8Gi',workspace:'32Gi',hfTokenSecret:'hf-token',pvcName:'',modelPath:'',rdmaResource:'',router:{enabled:false},monitoring:{enabled:false},autoscaling:{enabled:false}};

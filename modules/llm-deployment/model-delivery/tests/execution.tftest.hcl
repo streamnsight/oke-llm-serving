@@ -105,6 +105,16 @@ run "frontend_opt_in_reexecutes_with_matching_native_arguments" {
     error_message = "Frontend selection must be a meaningful revision, and native deploy/validation must receive its exact effective value."
   }
 }
+run "main_ref_reexecutes_with_matching_native_arguments" {
+  command = apply
+  variables { overrides = { model_revision = "main" } }
+  assert {
+    condition = local.model_execution_revision != run.apply_onboards_deploys_then_validates.model_delivery.automatic_execution.revision && local.defaults.MODEL_REVISION == "main" && alltrue([
+      for execution in [oci_devops_deployment.workload, oci_devops_deployment.validation] : anytrue([for item in execution.deployment_arguments[0].items : item.name == "MODEL_REVISION" && item.value == "main"])
+    ])
+    error_message = "The explicit mutable main ref must change the deployment revision and reach both native deploy and validation arguments without an image patch."
+  }
+}
 run "changed_trusted_source_reonboards" {
   command = apply
   variables { platform = merge(var.platform, { model_onboarding_revision = "updated-trusted-source" }) }

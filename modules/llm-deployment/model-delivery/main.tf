@@ -127,8 +127,8 @@ resource "terraform_data" "contract" {
       error_message = "Use the expected platform namespace prefix; trusted onboarding must authorize these exact independent-project pipeline IDs before execution."
     }
     precondition {
-      condition     = can(regex("@sha256:[a-f0-9]{64}$", local.defaults.SERVING_IMAGE)) && can(regex("^[a-f0-9]{40}$", local.defaults.MODEL_REVISION))
-      error_message = "Serving image must be digest-pinned and model revision must be an immutable Hugging Face commit."
+      condition     = can(regex("@sha256:[a-f0-9]{64}$", local.defaults.SERVING_IMAGE)) && (can(regex("^[a-f0-9]{40}$", local.defaults.MODEL_REVISION)) || (local.defaults.MODEL_REVISION == "main" && var.storage.mode == "direct_hf"))
+      error_message = "Serving image must be digest-pinned. Model revision must be a 40-character Hugging Face commit, or exactly main for direct_hf serving. Retained PVC and staged snapshots require an immutable commit."
     }
     precondition {
       condition     = local.snapshot_bytes == null ? true : local.workspace_gib >= ceil(local.snapshot_bytes / pow(1024, 3)) && local.snapshot_bytes > 0

@@ -24,7 +24,9 @@ model_inputs() {
   done
   [[ $MODEL_NAMESPACE == "$namespace" ]] || model_fail 'MODEL_NAMESPACE is an immutable onboarding boundary; create/onboard another stack to change it' || return
   [[ $MODEL_ID =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || model_fail 'MODEL_ID must be a Hugging Face repository ID' || return
-  [[ $SERVING_IMAGE =~ ^[A-Za-z0-9][A-Za-z0-9./:_-]*@sha256:[a-f0-9]{64}$ && $MODEL_REVISION =~ ^[a-f0-9]{40}$ ]] || model_fail 'Use an immutable image digest and Hugging Face commit' || return
+  [[ $SERVING_IMAGE =~ ^[A-Za-z0-9][A-Za-z0-9./:_-]*@sha256:[a-f0-9]{64}$ ]] || model_fail 'Use an immutable serving image digest' || return
+  [[ $MODEL_REVISION =~ ^[a-f0-9]{40}$ || $MODEL_REVISION == main ]] || model_fail 'MODEL_REVISION must be a 40-character Hugging Face commit or exactly main for direct_hf serving' || return
+  [[ $MODEL_REVISION != main || $(jq -er .storage.mode "$model_config") == direct_hf ]] || model_fail 'MODEL_REVISION=main is mutable and supported only with direct_hf; retained PVC and staged snapshots require an immutable commit' || return
   image_registry=${SERVING_IMAGE%%/*}
   [[ $SERVING_IMAGE == */* && ( $image_registry == *.* || $image_registry == *:* || $image_registry == localhost ) ]] || model_fail 'SERVING_IMAGE must include its registry, for example docker.io/vllm/vllm-openai@sha256:<digest>. Short image names cannot be resolved interactively by CRI-O; retain the selected digest' || return
   [[ ${VLLM_USE_RUST_FRONTEND:-} == 0 || ${VLLM_USE_RUST_FRONTEND:-} == 1 ]] || model_fail 'VLLM_USE_RUST_FRONTEND must be 0 (Python default) or 1 (explicit Rust opt-in); validate model and chat-template compatibility before enabling Rust' || return
@@ -281,7 +283,7 @@ model_validate() {
     jq -e '.choices|length>0' inference-result.json >/dev/null
   fi
   jq -n --arg model "$MODEL_ID" --arg revision "$MODEL_REVISION" --arg image "$SERVING_IMAGE" --arg probe "$probe" \
-    '{status:"ready",model:$model,model_revision:$revision,image:$image,checks:["pod_readiness","image_identity","health","model_identity"],inference_probe:($probe|if .=="none" then "not_run; choose a task-specific probe" else . end),responses_conversation_persistence:false}' > model-validation.json
+    '{status:"ready",model:$model,model_revision:$revision,model_revision_kind:(if $revision=="main" then "mutable_ref" else "immutable_commit" end),image:$image,checks:["pod_readiness","image_identity","health","model_identity"],inference_probe:($probe|if .=="none" then "not_run; choose a task-specific probe" else . end),responses_conversation_persistence:false}' > model-validation.json
   kill "$model_forward_pid" 2>/dev/null || true
   wait "$model_forward_pid" 2>/dev/null || true
   trap - EXIT

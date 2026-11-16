@@ -51,7 +51,7 @@ variables:
   model_name: { type: string, title: Model instance name }
   namespace: { type: string, title: Onboarded model namespace, description: Must remain under the infrastructure platform namespace prefix. }
   model_id: { type: string, title: Hugging Face repository }
-  model_revision: { type: string, title: Immutable Hugging Face commit }
+  model_revision: { type: string, title: Hugging Face commit or main, description: Defaults to the immutable discovery commit. Exactly main is a mutable override for direct_hf only; retained PVC and staged snapshots require a commit. }
   serving_image: { type: string, title: Digest-pinned serving image }
   api_frontend:
     type: enum
