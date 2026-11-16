@@ -74,7 +74,7 @@ variables:
   workspace_gib: { type: integer, minimum: 1, title: Local workspace GiB per serving pod }
   router_enabled: { type: boolean, default: false, title: Prefix-aware router, description: Automatically enabled for multiple replicas or an autoscaling maximum above one. }
   inference_probe: { type: enum, enum: [ none, completions, chat ], default: none, title: Optional inference probe, description: Health and model identity are always checked. Other modalities need task-specific payloads. }
-  benchmark_backend: { type: enum, enum: [ unsupported, openai, openai-chat ], default: unsupported, title: Benchmark task adapter }
+  benchmark_backend: { type: enum, enum: [ unsupported, openai, openai-chat ], default: openai-chat, title: Benchmark task adapter }
   autoscaling_enabled: { type: boolean, default: false, title: Enable request-based autoscaling, description: Uses retained KEDA/Prometheus and cannot grow beyond complete model slots in the retained GPU allocation. }
   monitoring_enabled: { type: boolean, default: true, title: Publish model monitoring resources, description: Uses retained Prometheus and ServiceMonitor support; does not install shared components. Autoscaling still requires platform metrics when this is off. }
   min_replicas: { type: integer, default: 1, minimum: 1, title: Minimum replicas }

@@ -134,7 +134,7 @@ variable "inference_probe" {
 }
 variable "benchmark_backend" {
   type    = string
-  default = "unsupported"
+  default = "openai-chat"
 }
 variable "autoscaling_enabled" {
   description = "Opt this model into request-based scaling using existing KEDA/Prometheus. Installing those controllers alone does not enable this policy."

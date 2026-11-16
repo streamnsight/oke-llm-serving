@@ -98,7 +98,7 @@ variable "inference_probe" {
 }
 variable "benchmark_backend" {
   type    = string
-  default = "unsupported"
+  default = "openai-chat"
   validation {
     condition     = contains(["unsupported", "openai", "openai-chat"], var.benchmark_backend)
     error_message = "Select an explicit supported benchmark backend; multimodal/audio tasks require a task-specific dataset adapter."
