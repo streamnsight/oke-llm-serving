@@ -8,11 +8,10 @@ A model-first workflow for an existing OKE cluster: discover the model and avail
 
 ## Start with discovery
 
-```sh
-make package
-```
+[![Deploy to Oracle Cloud][magic_button]][magic_oke_llm_serving_stack]
 
-Upload `work/packages/oke-llm-discovery.zip` to OCI Resource Manager, using the ZIP root as its working directory. Enter a public Hugging Face model URL/ID, context length and concurrent sequences per replica. Empty region/shape filters scan READY subscribed regions and visible GPU shapes. Discovery allocates no GPUs. Optional monitoring, autoscaling and model distribution are deployment-stage choices: shared components in infrastructure, model monitoring/scaling and weight delivery in the model stack.
+
+Enter a public Hugging Face model URL/ID, context length and concurrent sequences per replica. Empty region/shape filters scan READY subscribed regions and visible GPU shapes. Discovery allocates no GPUs. Optional monitoring, autoscaling and model distribution are deployment-stage choices: shared components in infrastructure, model monitoring/scaling and weight delivery in the model stack.
 
 The only RMS output is **Open discovery report**, a link to a self-contained HTML page in the private discovery bucket:
 
@@ -73,3 +72,8 @@ Useful documentation:
 - [Serving ecosystem research](outputs/kubernetes-llm-serving-report.md)
 
 Local state, request files, execution evidence and ZIPs stay in ignored `work/` or local state files. Node/YAML is a development-test dependency and is not shipped to RMS.
+
+## References
+
+[magic_button]: https://oci-resourcemanager-plugin.plugins.oci.oraclecloud.com/latest/deploy-to-oracle-cloud.svg
+[magic_oke_model_serving_stack]: https://cloud.oracle.com/resourcemanager/stacks/create?zipUrl=https://github.com/streamnsight/oke-llm-serving/releases/latest/download/oke-llm-serving.zip
