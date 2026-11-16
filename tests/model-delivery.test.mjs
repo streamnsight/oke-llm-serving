@@ -54,7 +54,7 @@ function fixture(changes={}){
  const pod={metadata:{},spec:{containers:[{name:'vllm',image}]},status:{conditions:[{type:'Ready',status:'True'}]}};
  const env={...process.env,PATH:`${dir}/bin:${process.env.PATH}`,...defaults,CHART_VERSION:'0.1.0-test',DELIVERY_GENERATION:'generation',MOCK_STATE:`${dir}/state.json`,...changes.env};
  const settings=hash(`${JSON.stringify(Object.fromEntries([...Object.keys(current.defaults).filter(k=>k!=='INFERENCE_PROBE').sort(),'CHART_VERSION'].map(k=>[k,env[k]])))}\n`);
- const state={calls:[],namespace,nodes:[{status:{conditions:[{type:'Ready',status:'True'}],allocatable:{'nvidia.com/gpu':'4'}}}],pods:[pod,pod],owner:{data:{ownership_token:current.ownership_token,generation:'generation',status:'ready',settings_sha256:settings,helm_revision:'3',chart_version:'0.1.0-test'}},...changes.state};
+ const state={calls:[],namespace,nodes:[{status:{conditions:[{type:'Ready',status:'True'}],allocatable:{'nvidia.com/gpu':'4','ephemeral-storage':'200Gi'}}}],pods:[pod,pod],owner:{data:{ownership_token:current.ownership_token,generation:'generation',status:'ready',settings_sha256:settings,helm_revision:'3',chart_version:'0.1.0-test'}},...changes.state};
  writeFileSync(`${dir}/state.json`,JSON.stringify(state));
  return{dir,env,run(code){const r=spawnSync('bash',['-c',`set -euo pipefail; source runtime/common.sh; ${code}`],{cwd:dir,env,encoding:'utf8',timeout:15000});return{...r,state:JSON.parse(readFileSync(`${dir}/state.json`))};},close(){rmSync(dir,{recursive:true,force:true});}};
 }
@@ -178,7 +178,7 @@ test('benchmark parameter validation rejects shell expressions and oversized tok
 
 const runtimePlatform={...config.platform,binding_mode:'runtime',project_id:'ocid1.devopsproject.oc1.model',cluster_compartment_id:'cluster-compartment',gpu_pool_compartment_id:'pool-compartment',gpu_shape:'BM.GPU.A10.4',availability_domain:'AD-1'};
 const runtimePool={id:'pool','cluster-id':'cluster','lifecycle-state':'ACTIVE','node-shape':'BM.GPU.A10.4','initial-node-labels':[{key:'oke-llm/allocation',value:'fixture'}],'freeform-tags':{'oke-llm-allocation':'owned-allocation'},'node-config-details':{'placement-configs':[{'availability-domain':'AD-1'}]},nodes:[{id:'instance','lifecycle-state':'ACTIVE'}]};
-const runtimeNode={metadata:{labels:{}},spec:{providerID:'oci://instance'},status:{conditions:[{type:'Ready',status:'True'}],allocatable:{'nvidia.com/gpu':'4'}}};
+const runtimeNode={metadata:{labels:{}},spec:{providerID:'oci://instance'},status:{conditions:[{type:'Ready',status:'True'}],allocatable:{'nvidia.com/gpu':'4','ephemeral-storage':'200Gi'}}};
 test('runtime discovers an exact owned OCI pool and never equates allocatable GPU totals with free devices',()=>{
  const otherAdPool={...runtimePool,'node-config-details':{'placement-configs':[{'availability-domain':'AD-2'}]}};
  const f=fixture({config:{platform:{...runtimePlatform,allocation:{gpu_pool_id:null}}},state:{pool:otherAdPool,nodes:[runtimeNode]}});
@@ -232,4 +232,59 @@ test('editable runtime arguments cannot retarget the model project, cluster, pla
  for(const key of Object.keys(fixed)){
   const f=fixture({config:{platform:runtimePlatform,defaults:{...defaults,...fixed}},env:{...fixed,[key]:'other'}});try{const r=f.run('model_inputs');assert.notEqual(r.status,0);assert.match(r.stderr,/immutable onboarding boundary/);assert.equal(r.state.calls.length,0);}finally{f.close();}
  }
+});
+
+const workspaceNode=(quantity,name='gpu')=>({metadata:{name},status:{conditions:[{type:'Ready',status:'True'}],allocatable:{'nvidia.com/gpu':'4',...(quantity===undefined?{}:{'ephemeral-storage':quantity})}}});
+const largeSnapshotStorage={...config.storage,snapshot_bytes:51.75*1024**3,workspace_gib:104,workspace_explicit:true};
+test('direct Hub workspace rejects the real unexpanded GPU root filesystem before native Helm',()=>{
+ const f=fixture({config:{storage:largeSnapshotStorage},state:{nodes:[workspaceNode('28447447403')]},env:{TP:'4',GPUS_PER_POD:'4',REPLICAS:'1'}});
+ try{
+  const r=f.run('model_inputs; model_geometry; model_storage; echo NATIVE_HELM_MAY_START');
+  assert.equal(r.status,2,r.stderr);assert.match(r.stderr,/104Gi/);assert.match(r.stderr,/grow its root partition\/filesystem \(oci-growfs\)/);assert.match(r.stderr,/boot-volume size alone/);assert.doesNotMatch(r.stdout,/NATIVE_HELM_MAY_START/);
+  const check=JSON.parse(readFileSync(`${f.dir}/model-workspace-check.json`));
+  assert.equal(check.workspace_bytes,104*1024**3);assert.equal(check.nodes[0].allocatable_bytes,28447447403);assert.equal(check.eligible_hosts,0);assert.equal(check.maximum_pod_slots,0);assert.equal(check.possible,false);
+  assert.equal(r.state.calls.filter(c=>c.tool==='kubectl'&&c.args.includes('nodes')).length,1);
+  assert(!r.state.calls.some(c=>c.tool==='helm'||c.args.includes('--all-namespaces')||c.args.includes('-A')));
+ }finally{f.close();}
+});
+test('direct Hub workspace parses Kubernetes bytes, binary, decimal, milli and exponent quantities',()=>{
+ const quantities=[214748364800,'214748364800','200Gi','204800Mi','209715200Ki','214748364.8k','214748.3648M','214.7483648G','0.2147483648T','214748364800000m','2.147483648e11','2.147483648E+11','+214748364800','200.Gi','0.1953125Ti'];
+ for(const quantity of quantities){
+  const f=fixture({config:{storage:largeSnapshotStorage},state:{nodes:[workspaceNode(quantity)]},env:{TP:'4',GPUS_PER_POD:'4',REPLICAS:'1'}});
+  try{const r=f.run('model_geometry');assert.equal(r.status,0,`${quantity}: ${r.stderr}`);const check=JSON.parse(readFileSync(`${f.dir}/model-workspace-check.json`));assert.equal(check.nodes[0].allocatable_bytes,214748364800);assert.equal(check.maximum_pod_slots,1);assert.equal(check.possible,true);assert.match(check.free_ephemeral_headroom,/unknown/);}finally{f.close();}
+ }
+});
+test('direct Hub workspace enforces the exact per-Pod byte boundary',()=>{
+ for(const [quantity,pass] of [[String(104*1024**3),true],[String(104*1024**3-1),false]]){
+  const f=fixture({config:{storage:largeSnapshotStorage},state:{nodes:[workspaceNode(quantity)]},env:{TP:'4',GPUS_PER_POD:'4',REPLICAS:'1'}});
+  try{const r=f.run('model_geometry');assert.equal(r.status===0,pass,r.stderr);}finally{f.close();}
+ }
+});
+test('direct Hub workspace fails actionably for missing or unknown node quantities',()=>{
+ for(const quantity of [undefined,null,'','26 GB','not-a-quantity','-1','1e999',{},true]){
+  const f=fixture({config:{storage:largeSnapshotStorage},state:{nodes:[workspaceNode(quantity)]},env:{TP:'4',GPUS_PER_POD:'4',REPLICAS:'1'}});
+  try{const r=f.run('model_geometry');assert.equal(r.status,2,`${quantity}: ${r.stderr}`);assert.match(r.stderr,/ephemeral-storage is missing\/unrecognized/);const check=JSON.parse(readFileSync(`${f.dir}/model-workspace-check.json`));assert.deepEqual(check.unknown_quantity_nodes,['gpu']);assert.equal(check.possible,false);}finally{f.close();}
+ }
+});
+test('direct Hub workspace ceilings account for packed replicas and distinct multi-host placements',()=>{
+ const cases=[
+  {quantities:['28447447403','190Gi'],workspace:68,env:{REPLICAS:'2'},hosts:1,slots:2,pass:true},
+  {quantities:['28447447403','190Gi'],workspace:68,env:{REPLICAS:'1',HOSTS_PER_REPLICA:'2',PP:'2'},hosts:1,slots:2,pass:false},
+  {quantities:['104Gi','104Gi'],workspace:104,env:{REPLICAS:'3',GPUS_PER_POD:'1',TP:'1'},hosts:2,slots:2,pass:false},
+  {quantities:['190Gi','190Gi'],workspace:68,env:{REPLICAS:'2',HOSTS_PER_REPLICA:'2',PP:'2'},hosts:2,slots:4,pass:true}
+ ];
+ for(const c of cases){
+  const f=fixture({config:{platform:{...config.platform,node_count:2,kubernetes_version:'v1.34.1'},storage:{...largeSnapshotStorage,workspace_gib:c.workspace}},state:{nodes:c.quantities.map((q,i)=>workspaceNode(q,`gpu-${i}`))},env:c.env});
+  try{const r=f.run('model_inputs; model_geometry');assert.equal(r.status===0,c.pass,r.stderr);const check=JSON.parse(readFileSync(`${f.dir}/model-workspace-check.json`));assert.equal(check.eligible_hosts,c.hosts);assert.equal(check.maximum_pod_slots,c.slots);assert.equal(check.possible,c.pass);assert(!r.state.calls.some(call=>call.args.includes('--all-namespaces')||call.args.includes('-A')));}finally{f.close();}
+ }
+});
+test('direct Hub workspace ceiling uses the already validated autoscaling maximum',()=>{
+ for(const [maximum,pass] of [['2',true],['3',false]]){
+  const f=fixture({config:{storage:{...largeSnapshotStorage,workspace_gib:68},autoscaling:{enabled:true}},state:{nodes:[workspaceNode('190Gi')]},env:{TP:'1',GPUS_PER_POD:'1',REPLICAS:'1',MIN_REPLICAS:'1',MAX_REPLICAS:maximum,TARGET_INFLIGHT:'8',PROMETHEUS_URL:'http://prometheus'}});
+  try{const r=f.run('model_inputs; model_geometry');assert.equal(r.status===0,pass,r.stderr);const check=JSON.parse(readFileSync(`${f.dir}/model-workspace-check.json`));assert.equal(check.replicas_at_ceiling,Number(maximum));assert.equal(check.required_pod_slots,Number(maximum));}finally{f.close();}
+ }
+});
+test('non-direct model storage keeps its existing placement checks without a new ephemeral requirement',()=>{
+ const f=fixture({config:{storage:{...config.storage,mode:'existing_pvc',pvc_name:'weights'}},state:{nodes:[workspaceNode(undefined)]}});
+ try{const r=f.run('model_geometry');assert.equal(r.status,0,r.stderr);assert.doesNotMatch(r.stdout,/workspace_gib|allocatable_quantity/);}finally{f.close();}
 });

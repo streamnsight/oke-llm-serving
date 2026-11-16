@@ -72,6 +72,36 @@ model_pool() {
   mv model-resolved-config.next.json model-resolved-config.json
   model_config=model-resolved-config.json
 }
+model_workspace_ceiling() {
+  [[ $(jq -r .storage.mode "$model_config") == direct_hf ]] || return 0
+  # These are the already selected Ready full-GPU nodes, not another scan.
+  # Allocatable is a scheduling ceiling; existing requests/usage remain unknown.
+  jq -n --argjson replicas "$1" --argjson hosts "$HOSTS_PER_REPLICA" --argjson gpus "$GPUS_PER_POD" --slurpfile config "$model_config" --slurpfile nodes ready-pool-nodes.json '
+    def quantity_bytes:
+      (try (if type=="number" then . elif type=="string" then
+        ([capture("^(?<number>[+]?(?:[0-9]+(?:[.][0-9]*)?|[.][0-9]+))(?<unit>[KMGTPE]i|[mkMGTPE]|[eE][+-]?[0-9]+)?$")][0]) as $q |
+        if $q==null then null else ($q.unit//"") as $u | ($q.number|tonumber) *
+          (if ($u|test("^[eE][+-]?[0-9]+$")) then pow(10;($u[1:]|tonumber))
+           elif ($u|endswith("i")) then pow(1024;(["Ki","Mi","Gi","Ti","Pi","Ei"]|index($u))+1)
+           else pow(1000;(["m","","k","M","G","T","P","E"]|index($u))-1) end)
+        end else null end) catch null) | if type=="number" and isfinite and .>=0 then . else null end;
+    ($config[0].storage.workspace_gib|tonumber) as $gib |
+    if ($gib|isfinite) and $gib>0 then ($gib*1073741824|ceil) as $workspace |
+      [$nodes[0][] | (.status.allocatable["ephemeral-storage"]//null) as $quantity | ($quantity|quantity_bytes) as $bytes |
+        {node:(.metadata.name//.spec.providerID//"unnamed"),allocatable_quantity:$quantity,allocatable_bytes:$bytes,
+         gpu_slots:(.status.allocatable["nvidia.com/gpu"]|tonumber/$gpus|floor),workspace_slots:(if $bytes==null then null else ($bytes/$workspace|floor) end)} |
+        .maximum_pod_slots=(if .workspace_slots==null then 0 else [.gpu_slots,.workspace_slots]|min end)] as $capacity |
+      {storage_mode:"direct_hf",workspace_gib:$gib,workspace_bytes:$workspace,checkpoint_download_bytes:$config[0].storage.snapshot_bytes,
+       required_hosts_per_replica:$hosts,replicas_at_ceiling:$replicas,required_pod_slots:($replicas*$hosts),
+       eligible_hosts:([$capacity[]|select(.maximum_pod_slots>0)]|length),maximum_pod_slots:([$capacity[].maximum_pod_slots]|add//0),
+       unknown_quantity_nodes:[$capacity[]|select(.allocatable_bytes==null)|.node],nodes:$capacity,
+       free_ephemeral_headroom:"unknown; existing requests and usage were not inspected",placement_validation:"upper_bound_only; Kubernetes requests and bounded rollout establish placement"} |
+      .possible=((.unknown_quantity_nodes|length)==0 and .eligible_hosts>=$hosts and .maximum_pod_slots>=.required_pod_slots)
+    else error("workspace_gib must be positive and finite") end
+  ' > model-workspace-check.json || { model_fail 'Direct Hub workspace ceiling could not be evaluated; supply a positive measured workspace_gib and check selected node allocatable ephemeral-storage'; return 2; }
+  jq . model-workspace-check.json
+  jq -e .possible model-workspace-check.json >/dev/null || model_fail "Direct Hub per-Pod workspace $(jq -r .workspace_gib model-workspace-check.json)Gi cannot fit enough selected GPU-node slots, or allocatable ephemeral-storage is missing/unrecognized. For a custom/larger boot disk, grow its root partition/filesystem (oci-growfs) and wait for kubelet to report the increased allocatable storage before retrying; boot-volume size alone is not usable workspace. Verify the full checkpoint download requirement before reducing workspace_gib. This is an allocatable upper bound, not free-capacity evidence" || return
+}
 model_geometry() {
   local nodes gpus max_replicas selector key
   model_pool
@@ -98,6 +128,7 @@ model_geometry() {
     select((.metadata.labels["nvidia.com/gpu.sharing-strategy"] // "none")=="none" and (.metadata.labels["nvidia.com/mig.strategy"] // "none")=="none" and (.metadata.labels["nvidia.com/gpu.replicas"] // "1")=="1") |
     select((.status.allocatable["nvidia.com/gpu"] // "0" | tonumber)>=$gpus)]' pool-nodes.json > ready-pool-nodes.json
   jq -e --argjson nodes "$nodes" 'length>=$nodes' ready-pool-nodes.json >/dev/null || model_fail 'Selected OCI pool lacks the expected Ready schedulable full-GPU nodes; foreign pools, MIG/shared devices and missing devices do not count' || return
+  model_workspace_ceiling "$max_replicas" || return
   if (( HOSTS_PER_REPLICA > 1 )); then
     local version minor
     version=$(jq -er .platform.kubernetes_version "$model_config")

@@ -53,6 +53,10 @@ run "regular_pool_and_cpu_capacity" {
     error_message = "Both GPU and optional CPU node launches must disable IMDSv1 so IMDSv2-only tenancies accept them."
   }
   assert {
+    condition     = base64decode(oci_containerengine_node_pool.gpu.node_metadata["user_data"]) == file("${path.module}/cloud-init/gpu-node.sh") && !contains(keys(oci_containerengine_node_pool.cpu[0].node_metadata), "user_data")
+    error_message = "GPU launch metadata must carry the readable, module-local root-expansion/OKE bootstrap script through the API's base64 transport. Optional CPU bootstrap is unchanged."
+  }
+  assert {
     condition     = anytrue([for label in oci_containerengine_node_pool.gpu.initial_node_labels : label.key == "nvidia.com/gpu" && label.value == "true"])
     error_message = "GPU pools must advertise their hardware type with a node label before the device plugin becomes ready."
   }
