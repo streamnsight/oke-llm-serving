@@ -11,9 +11,10 @@ action=${3:-inspect}
 [[ $expected_instance =~ ^ocid1\.instance\.[A-Za-z0-9._-]+$ && $expected_boot_bytes =~ ^[1-9][0-9]+$ ]] || fail 'Expected exact instance identity and attached boot-volume size in bytes'
 [[ $action == inspect || $action == --apply ]] || fail 'Select inspection or explicit --apply'
 [[ $(id -u) == 0 ]] || fail 'Existing root/sudo access is required; this script does not change sudo permissions'
-for tool in curl jq findmnt lsblk df systemctl /usr/libexec/oci-growfs; do command -v "$tool" >/dev/null || fail "Required host tool is missing: $tool"; done
+for tool in curl jq readlink findmnt lsblk df systemctl /usr/libexec/oci-growfs; do command -v "$tool" >/dev/null || fail "Required host tool is missing: $tool"; done
 actual_instance=$(curl --noproxy '*' -fsS --connect-timeout 3 --max-time 10 -H 'Authorization: Bearer Oracle' http://169.254.169.254/opc/v2/instance/ | jq -er .id)
 [[ $actual_instance == "$expected_instance" ]] || fail 'Host IMDSv2 identity differs from the validated OCI/Kubernetes instance'
+[[ $(readlink /proc/self/ns/ipc) == "$(readlink /proc/1/ns/ipc)" ]] || fail 'Host IPC namespace is required for LVM/udev synchronization; enter the host namespaces before running growfs'
 root_source=$(findmnt -n -o SOURCE /)
 root_type=$(findmnt -n -o FSTYPE /)
 [[ $root_type == xfs || $root_type == ext4 ]] || fail 'Only the Oracle-supported XFS/ext4 root filesystem is eligible'

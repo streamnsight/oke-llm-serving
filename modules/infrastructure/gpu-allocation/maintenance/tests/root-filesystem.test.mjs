@@ -17,6 +17,7 @@ function runHost(t, args = [], env = {}) {
   const mocks = `
 id() { echo "\${MOCK_UID:-0}"; }
 curl() { printf '{"id":"%s"}\\n' "\${MOCK_INSTANCE:-$EXPECTED_INSTANCE}"; }
+readlink() { if [[ $* == /proc/self/ns/ipc && \${MOCK_IPC_MISMATCH:-false} == true ]]; then echo 'ipc:[2]'; else echo 'ipc:[1]'; fi; }
 findmnt() { if [[ $* == *FSTYPE* ]]; then echo "\${MOCK_FSTYPE:-xfs}"; else echo /dev/mapper/ocivolume-root; fi; }
 lsblk() { printf '{"blockdevices":[{"name":"/dev/sda","type":"disk","size":%s}]}\\n' "\${MOCK_DISK_BYTES:-$EXPECTED_BYTES}"; }
 df() { if [[ $* == *--output=size* ]]; then if [[ -f $MOCK_DIR/grew ]]; then echo 190000000000; else echo 31600000000; fi; else echo 'root filesystem geometry'; fi; }
@@ -49,8 +50,8 @@ test('explicit apply grows before restarting kubelet and verifies actual filesys
   assert.match(unchanged.stderr, /did not increase/);
   assert(!unchanged.calls.some(call => call.includes('restart')));
 });
-test('foreign instance, insufficient disk, unsupported filesystem and absent root access fail before growfs', t => {
-  for (const env of [{ MOCK_INSTANCE: 'ocid1.instance.oc1.test.foreign' }, { MOCK_DISK_BYTES: String(50 * 1024 ** 3) }, { MOCK_FSTYPE: 'overlay' }, { MOCK_UID: '1000' }]) {
+test('foreign instance, wrong IPC namespace, insufficient disk, unsupported filesystem and absent root access fail before growfs', t => {
+  for (const env of [{ MOCK_INSTANCE: 'ocid1.instance.oc1.test.foreign' }, { MOCK_IPC_MISMATCH: 'true' }, { MOCK_DISK_BYTES: String(50 * 1024 ** 3) }, { MOCK_FSTYPE: 'overlay' }, { MOCK_UID: '1000' }]) {
     const result = runHost(t, [], env);
     assert.equal(result.status, 2, result.stderr);
     assert.equal(result.calls.length, 0);
@@ -83,6 +84,7 @@ oci() { printf 'oci %s\\n' "$*" >> "$MOCK_DIR/calls"; case "$1 $2 $3" in 'ce nod
   const payload = JSON.parse(result.stdout);
   assert.equal(payload.target.instanceId, instance);
   assert.match(payload.content.source.text, /sudo -n/);
+  assert(payload.content.source.text.includes('--target 1 --mount --pid --ipc --uts --net --root --wd'));
   assert(payload.content.source.text.includes(`'${bytes}' 'inspect'`));
   assert.match(result.stderr, /No command submitted/);
   assert(!readFileSync(join(dir, 'calls'), 'utf8').match(/\b(create|update|delete|restart)\b/));
@@ -94,7 +96,7 @@ oci() { printf 'oci %s\\n' "$*" >> "$MOCK_DIR/calls"; case "$1 $2 $3" in 'ce nod
   assert.equal(pod.spec.automountServiceAccountToken, false); assert.equal(pod.spec.restartPolicy, 'Never');
   assert(pod.spec.activeDeadlineSeconds <= 600); assert(pod.spec.containers[0].image.includes('@sha256:'));
   assert(!JSON.stringify(pod.spec.containers[0].resources).includes('nvidia.com/gpu'));
-  assert(pod.spec.containers[0].args[0].includes('--target 1 --mount --pid --net --root --wd'));
+  assert(pod.spec.containers[0].args[0].includes('--target 1 --mount --pid --ipc --uts --net --root --wd'));
   assert(pod.spec.containers[0].args[0].includes(`'${bytes}' 'inspect'`));
   assert.equal(spawnSync('bash', ['-n'], { input: pod.spec.containers[0].args[0] }).status, 0);
   result = run('--pod', '--apply');

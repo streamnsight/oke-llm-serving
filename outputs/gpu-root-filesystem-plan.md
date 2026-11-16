@@ -22,7 +22,7 @@ Success means the existing model can schedule using the GPU host's already alloc
 ## Phase 3 — verify
 
 - [ ] Run focused shell/chart/Terraform regressions and validate the actual generated ZIPs with Terraform 1.5.7.
-- [ ] Repair the existing root filesystem in place if authorized, refresh kubelet capacity, and verify node identity/GPU allocation remain unchanged.
+- [x] Repair the existing root filesystem in place after approval, refresh kubelet capacity, and verify node identity/GPU allocation remain unchanged.
 - [ ] Confirm the pending model schedules and actual health validation succeeds; recover any retained model Lease only through the documented explicit terminal-deployment/expiry checks.
 - [ ] Record the current RMS outcome, commit and rebuild the usable packages.
 
@@ -34,4 +34,12 @@ The current workload's Helm install succeeded. Its later readiness stage failed 
 
 The guarded inspection Pod completed successfully on node `10.0.10.19`. Host IMDSv2 confirmed the exact instance; the single backing disk is 219,043,332,096 bytes (204 GiB), partition `/dev/sda3` is 47,782,559,744 bytes, and root XFS/LVM is about 29.5 GiB. Oracle `oci-growfs -n` reported a successful partition-expansion dry run and answered No before expansion. No filesystem growth or kubelet restart was requested. The temporary inspection Pod is removed after collecting its output.
 
-Existing-host `--apply` is separately pending user approval. It expands the existing filesystem and briefly restarts kubelet; it does not change a volume size, reboot/recycle a node, or allocate GPUs.
+The user explicitly approved existing-host `--apply`. It expands the existing filesystem and briefly restarts kubelet; it does not change a volume size, reboot/recycle a node, or allocate GPUs.
+
+## Approved in-place repair result
+
+The existing filesystem grew to 200,613,560,320 bytes; kubelet now reports 180,552,203,990 bytes (168.2 GiB) allocatable ephemeral storage. Node UID, instance OCID and OS boot ID are unchanged, Node Ready is True and all four GPUs remain allocatable. The existing model Pod scheduled onto the GPU node. No volume-size update, GPU allocation, OS reboot or node recycling occurred. Both temporary maintenance Pods are deleted after collecting their logs.
+
+The first maintenance renderer omitted host IPC: the one repair-owned LVM cookie waited in the private Pod IPC namespace while host udev had already settled. After confirming the exact waiter/cookie, active root LV and settled host queue, the operator completed only that one cookie; the original grow operation completed successfully. Future renderers enter host IPC/UTS, and the host script rejects a mismatched IPC namespace before any growfs call.
+
+Validation: 24 allocation Terraform tests, 6 executable bootstrap tests, 4 guarded maintenance tests and 32 model runtime tests passed. The combined JavaScript/shell run passed 154 tests with 3 optional skips; configured model ZIP tests and Terraform 1.5.7 archive checks passed. Model runtime health remains pending the subsequent fully qualified image-reference fix; its CRI-O short-name error is separate from root-disk capacity.

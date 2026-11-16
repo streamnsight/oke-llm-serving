@@ -44,9 +44,9 @@ script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 {
   printf '#!/usr/bin/env bash\nset -euo pipefail\n'
   if [[ $format == pod ]]; then
-    printf 'exec /host/lib64/ld-linux-x86-64.so.2 --library-path /host/usr/lib64:/host/lib64 /host/usr/bin/nsenter --target 1 --mount --pid --net --root --wd -- '
+    printf 'exec /host/lib64/ld-linux-x86-64.so.2 --library-path /host/usr/lib64:/host/lib64 /host/usr/bin/nsenter --target 1 --mount --pid --ipc --uts --net --root --wd -- '
   else
-    printf 'sudo -n '
+    printf 'sudo -n /usr/bin/nsenter --target 1 --mount --pid --ipc --uts --net --root --wd -- '
   fi
   printf '/bin/bash -s -- '\''%s'\'' '\''%s'\'' '\''%s'\'' <<'\''OKE_LLM_ROOT_REPAIR'\''\n' "$instance" "$boot_bytes" "$action"
   cat "$script_dir/repair-root-filesystem.sh"
