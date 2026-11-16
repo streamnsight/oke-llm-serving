@@ -33,7 +33,7 @@ locals {
   }]
   usable_engines = [for check in local.engine_checks : check.engine if check.architecture_ok && check.hints_ok]
   blocking_reasons = compact(concat(
-    [local.memory_supported ? "" : "Model memory/layout estimator unsupported: ${join("; ", try(local.profile.memory.reasons, []))}"],
+    [local.memory_supported ? "" : "Serving layout is unverified; review model planning estimates and assumptions: ${join("; ", try(local.profile.memory.reasons, []))}"],
     [anytrue([for check in local.engine_checks : check.architecture_ok]) ? "" : "No reviewed engine supports the declared architecture: ${join(", ", try(local.profile.architecture.architectures, []))}. This is a catalog coverage limit, not proof the upstream engine cannot serve it."],
     [length(local.usable_engines) > 0 || !anytrue([for check in local.engine_checks : check.architecture_ok]) ? "" : "No architecture-compatible engine satisfies the extracted version hints."],
     [try(local.profile.model.pipeline_tag == "text-generation" && local.profile.model.chat_template_available, false) ? "" : "The initial recipe requires text generation and a declared chat template."]

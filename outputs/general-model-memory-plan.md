@@ -68,7 +68,7 @@ Keep arithmetic and ordinary metadata reads in native Terraform where practical.
 - [x] Run focused executable regressions, `scripts/test-terraform.sh`, Terraform 1.5.7 checks and browser report checks. Validate all three actual generated archive roots from committed source; keep fixtures sanitized and exclude state, credentials and private logs.
 - [ ] Compare estimates with existing measured deployments, recording engine/image/revision/precision/workload/layout. Separate demand from an engine's reserved cache capacity and device utilization setting. Do not allocate or recycle GPUs for estimator testing.
 - [ ] Test refreshed no-op RMS Plan and discovery-only execution where local/service behavior differs. Confirm no GPU resource mutations. Do not describe a metadata replay as a running-model test.
-- [ ] Integrate after relevant validation, rebuild packages after merging, and record package provenance. Hosted bundles and existing RMS uploads require explicit updates; local packaging alone does not update them.
+- [x] Integrate after relevant validation, rebuild packages after merging, and record package provenance. Hosted bundles and existing RMS uploads require explicit updates; local packaging alone does not update them.
 
 ## Acceptance criteria
 
@@ -97,3 +97,5 @@ Implementation decisions and remaining optional refinements:
 - Hugging Face metadata-only inspection: https://huggingface.co/docs/safetensors/en/metadata_parsing
 - Pinned failing model configuration: https://huggingface.co/Qwen/Qwen3.8-2.4T-A95B-FP8/blob/20eb193648df645e73f4572dbf53df50cb4d9fdd/config.json
 - vLLM cache configuration (engine/cache precision and allocation policies): https://docs.vllm.ai/en/stable/api/vllm/config/cache/
+
+Release validation: built discovery, infrastructure and model archives from committed source on a branch based on main, carrying only this feature's three commits. Terraform 1.5.7 initialized and validated the discovery archive, both embedded downstream roots and both standalone downstream archives. The main-based discovery/publication suite passed 12 runs, and report JavaScript passed 16 tests. No hosted bundle, RMS stack or model deployment was updated. Existing worker resources were not mutated. Final packages are rebuilt after integration; package manifests identify their exact source commit.

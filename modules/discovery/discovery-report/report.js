@@ -102,6 +102,7 @@ if (model.component_planning?.payload_budget_bytes > 0) {
   const p = model.component_planning, box = details($("memory-status"), "Memory planning scenario and assumptions", "recipe-details");
   facts(add(box, "dl", undefined, "facts"), [["Planning payload / replica", gb(p.payload_budget_bytes / 1e9)], ["Cache scenario", gb(p.cache_scenario_bytes == null ? null : p.cache_scenario_bytes / 1e9)], ["Workspace allowance", gb(p.workspace_allowance_bytes == null ? null : p.workspace_allowance_bytes / 1e9)], ["Evidence / confidence", text(p.weight_source) + " / " + text(p.status)], ["Cache basis", text(p.cache_source)], ["Margin", number(p.safety_margin_fraction * 100) + "%"]]);
   add(box, "p", p.formula); add(box, "p", p.interpretation);
+  if (p.storage_metadata_conflict) add(box, "p", "Tensor counts and complete shard sizes disagree; planning retains the larger storage baseline. Verify the selected checkpoint.");
   if (p.context_within_declared_maximum === false) add(box, "p", "Requested context exceeds the model's declared maximum; deployment requires an explicitly supported extension.");
 }
 const assumptions = model.memory_assumptions || {};

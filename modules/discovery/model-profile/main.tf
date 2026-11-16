@@ -115,8 +115,8 @@ locals {
   partial_full_kv_bytes   = local.qwen_hybrid ? 2 * local.full_attention_layers * local.kv_heads * local.head_dim * (var.kv_dtype == "float32" ? 4 : 2) * var.context_length * var.concurrency : null
   reasons = compact([
     length(keys(local.config)) > 0 ? "" : "No config.json or explicit recipe fallback is available.",
-    local.conventional ? "" : local.qwen_hybrid ? "Hybrid recurrent/cache allocation requires an engine-specific profile; the full-attention KV payload is shown separately." : "Architecture requires a dedicated estimator.",
-    local.counts_valid ? "" : "Hub safetensors counts are missing, inconsistent or use unsupported dtypes.",
+    local.conventional ? "" : local.qwen_hybrid ? "Hybrid recurrent/cache allocation requires an engine-specific profile; the full-attention KV payload is shown separately." : "Architecture-specific runtime allocation is unprofiled; a heuristic planning scenario is used.",
+    local.counts_valid ? "" : "Complete Hub tensor-byte accounting is unavailable; selected checkpoint storage or an explicit budget can still support planning.",
     local.canonical ? "" : "No unambiguous canonical safetensors checkpoint is declared.",
     local.dimensions_valid ? "" : "Missing or unsupported attention dimensions.",
     local.quantization == null ? "" : "Quantized resident allocations use a native-storage baseline plus an uncalibrated planning allowance.",
