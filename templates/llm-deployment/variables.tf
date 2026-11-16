@@ -62,6 +62,15 @@ variable "serving_image" {
   type    = string
   default = null
 }
+variable "api_frontend" {
+  description = "vLLM API frontend. Python supports the standard model chat templates and serving flags; opt into Rust only after validating compatibility."
+  type        = string
+  default     = "python"
+  validation {
+    condition     = contains(["python", "rust"], var.api_frontend)
+    error_message = "api_frontend must be python or rust."
+  }
+}
 variable "tensor_parallel_size" {
   type    = number
   default = null

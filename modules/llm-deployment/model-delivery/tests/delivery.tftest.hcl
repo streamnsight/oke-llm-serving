@@ -28,7 +28,7 @@ variables {
       serving_configuration = {
         model  = { repository = "org/model", resolved_revision = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" },
         engine = { framework = "vllm", image = "vllm/vllm-openai@sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", multi_node_backend = "mp" },
-        recipe = { args = ["--reasoning-parser", "qwen3", "--tool-call-parser", "qwen3_coder", "--kv-cache-dtype", "fp8", "--dtype", "bfloat16"], env = { VLLM_USE_RUST_FRONTEND = "1" } }
+        recipe = { args = ["--reasoning-parser", "qwen3", "--tool-call-parser", "qwen3_coder", "--kv-cache-dtype", "fp8", "--dtype", "bfloat16"], env = { VLLM_USE_RUST_FRONTEND = "1", CUDA_MODULE_LOADING = "LAZY" } }
       }
     }
   }
@@ -44,8 +44,12 @@ run "model_delivery_deploys_and_validates_automatically" {
     error_message = "Reuse the exact trusted infrastructure project, environment and onboarding path."
   }
   assert {
-    condition     = local.values.recipeArgs == var.model.selection.serving_configuration.recipe.args && local.values.recipeEnv == var.model.selection.serving_configuration.recipe.env && local.values.nodeSelector["oke-llm/allocation"] == "fixture"
-    error_message = "Frozen flags/env and the infrastructure allocation selector must survive without rebuilding parser/dtype/KV arguments."
+    condition     = local.values.recipeArgs == var.model.selection.serving_configuration.recipe.args && local.values.recipeEnv == merge(var.model.selection.serving_configuration.recipe.env, { VLLM_USE_RUST_FRONTEND = "$${VLLM_USE_RUST_FRONTEND}" }) && local.values.nodeSelector["oke-llm/allocation"] == "fixture"
+    error_message = "Frozen argv and all non-frontend env remain intact; only the frontend gets a named editable deployment parameter."
+  }
+  assert {
+    condition     = local.defaults.VLLM_USE_RUST_FRONTEND == "0" && local.config.serving.recipe.env == merge(var.model.selection.serving_configuration.recipe.env, { VLLM_USE_RUST_FRONTEND = "0" }) && local.serving.recipe.env == var.model.selection.serving_configuration.recipe.env
+    error_message = "Python must override a recipe's experimental Rust opt-in in the effective config while preserving raw recipe provenance and other environment values."
   }
   assert {
     condition     = local.defaults.SERVING_IMAGE == "docker.io/${var.model.selection.serving_configuration.engine.image}" && local.values["vllm-stack"].routerSpec.repository == "docker.io/lmcache/lmstack-router" && startswith(local.config.benchmark_image, "docker.io/vllm/vllm-openai-cpu@sha256:")
@@ -63,6 +67,19 @@ run "model_delivery_deploys_and_validates_automatically" {
     condition     = alltrue([for operation, spec in local.operation_specs : length(yamldecode(spec).inputArtifacts) == 2 && yamldecode(spec).env.variables.MODEL_NAMESPACE == "$${MODEL_NAMESPACE}" && toset([for input in yamldecode(spec).inputArtifacts : input.location]) == toset(["./runtime/common.sh", "./runtime/config.json"]) && alltrue([for path in ["common.sh", "config.json"] : anytrue([for input in yamldecode(spec).inputArtifacts : input.path == module.delivery.runtime_artifacts[path].artifact_path && input.version == module.delivery.runtime_artifacts[path].version])]) && module.inline_operation[operation].byte_size <= 51200 && strcontains(module.inline_operation[operation].preparation_command, "cat > 'runtime/operation.sh'")]) && alltrue([for operation, artifact in oci_devops_deploy_artifact.operation : artifact.deploy_artifact_source[0].deploy_artifact_source_type == "INLINE" && artifact.deploy_artifact_source[0].base64encoded_content == module.inline_operation[operation].content]) && !contains(keys(local.operation_shared_files), "common.sh") && !contains(keys(local.operation_files.validate), "benchmark.sh") && !contains(keys(local.operation_files.benchmark), "validate.sh") && output.onboarding_arguments.MODEL_NAMESPACE == output.namespace
     error_message = "Operations must reuse existing inputs, remain readable and fit the raw-content byte limit. Payload sizes: ${jsonencode({ for operation, spec in module.inline_operation : operation => { decoded_bytes = spec.byte_size, encoded_characters = spec.encoded_size } })}"
   }
+}
+run "explicit_Rust_frontend_is_opt_in" {
+  command = plan
+  variables { api_frontend = "rust" }
+  assert {
+    condition     = local.defaults.VLLM_USE_RUST_FRONTEND == "1" && local.config.serving.recipe.env.VLLM_USE_RUST_FRONTEND == "1" && local.config.serving.recipe.env.CUDA_MODULE_LOADING == "LAZY"
+    error_message = "Rust frontend is available only by explicit selection; unrelated recipe environment remains unchanged."
+  }
+}
+run "unknown_frontend_is_rejected" {
+  command = plan
+  variables { api_frontend = "automatic" }
+  expect_failures = [var.api_frontend]
 }
 run "multi_node_preserves_separate_host_geometry" {
   command = plan

@@ -27,6 +27,7 @@ model_inputs() {
   [[ $SERVING_IMAGE =~ ^[A-Za-z0-9][A-Za-z0-9./:_-]*@sha256:[a-f0-9]{64}$ && $MODEL_REVISION =~ ^[a-f0-9]{40}$ ]] || model_fail 'Use an immutable image digest and Hugging Face commit' || return
   image_registry=${SERVING_IMAGE%%/*}
   [[ $SERVING_IMAGE == */* && ( $image_registry == *.* || $image_registry == *:* || $image_registry == localhost ) ]] || model_fail 'SERVING_IMAGE must include its registry, for example docker.io/vllm/vllm-openai@sha256:<digest>. Short image names cannot be resolved interactively by CRI-O; retain the selected digest' || return
+  [[ ${VLLM_USE_RUST_FRONTEND:-} == 0 || ${VLLM_USE_RUST_FRONTEND:-} == 1 ]] || model_fail 'VLLM_USE_RUST_FRONTEND must be 0 (Python default) or 1 (explicit Rust opt-in); validate model and chat-template compatibility before enabling Rust' || return
   # This adapter uses TP within each host and PP across LWS hosts. Other
   # distributed layouts require a separate explicit execution adapter.
   (( TP == GPUS_PER_POD && PP == HOSTS_PER_REPLICA )) || model_fail 'Native MP adapter requires GPUS_PER_POD=TP and HOSTS_PER_REPLICA=PP; cross-host TP/Ray require another adapter' || return

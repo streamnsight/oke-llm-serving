@@ -13,7 +13,7 @@ variableGroups:
     variables:
       - advanced_settings
   - title: Model and runtime
-    variables: [ model_name, namespace, model_id, model_revision, serving_image, tensor_parallel_size, pipeline_parallel_size, hosts_per_replica, gpus_per_pod, replicas, context_length, concurrency, hf_token_secret ]
+    variables: [ model_name, namespace, model_id, model_revision, serving_image, api_frontend, tensor_parallel_size, pipeline_parallel_size, hosts_per_replica, gpus_per_pod, replicas, context_length, concurrency, hf_token_secret ]
     visible: advanced_settings
   - title: Storage and routing
     variables: [ storage_mode, model_pvc_name, model_path, workspace_gib, router_enabled ]
@@ -53,6 +53,13 @@ variables:
   model_id: { type: string, title: Hugging Face repository }
   model_revision: { type: string, title: Immutable Hugging Face commit }
   serving_image: { type: string, title: Digest-pinned serving image }
+  api_frontend:
+    type: enum
+    enum: [ python, rust ]
+    default: python
+    required: false
+    title: vLLM API frontend
+    description: Python is the compatible default, including when a recipe enables Rust. Opt into Rust after validating the model chat template, tool calling and required APIs. The pipeline frontend parameter remains editable.
   tensor_parallel_size: { type: integer, minimum: 1, title: Tensor parallel size within each host }
   pipeline_parallel_size: { type: integer, minimum: 1, title: Pipeline parallel size }
   hosts_per_replica: { type: integer, minimum: 1, title: Hosts per replica }

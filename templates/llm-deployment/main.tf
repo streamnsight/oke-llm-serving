@@ -106,6 +106,7 @@ module "model" {
   }
   storage           = { mode = var.storage_mode, pvc_name = var.model_pvc_name, model_path = var.model_path, workspace_gib = var.workspace_gib }
   hf_token_secret   = var.hf_token_secret
+  api_frontend      = var.api_frontend
   router_enabled    = var.router_enabled
   inference_probe   = var.inference_probe
   benchmark_backend = var.benchmark_backend

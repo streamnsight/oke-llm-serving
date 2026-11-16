@@ -57,8 +57,8 @@ run "apply_onboards_deploys_then_validates" {
     error_message = "Automatic and manual onboarding must use identical transport arguments that reconstruct the exact sorted pipeline IDs."
   }
   assert {
-    condition     = local.config.platform.node_count == 1 && local.config.serving.recipe.args == var.model.selection.serving_configuration.recipe.args && local.config.serving.recipe.env == var.model.selection.serving_configuration.recipe.env
-    error_message = "The stable runtime contract retains complete frozen argv/env and computes configured host demand independently from live inventory."
+    condition     = local.config.platform.node_count == 1 && local.config.serving.recipe.args == var.model.selection.serving_configuration.recipe.args && local.config.serving.recipe.env == merge(var.model.selection.serving_configuration.recipe.env, { VLLM_USE_RUST_FRONTEND = "0" }) && local.defaults.VLLM_USE_RUST_FRONTEND == "0"
+    error_message = "The stable runtime contract retains complete argv and non-frontend env, records the Python default and computes configured host demand independently from live inventory."
   }
 }
 run "capacity_and_inventory_refresh_do_not_reexecute" {
@@ -93,6 +93,16 @@ run "effective_configuration_reexecutes" {
   assert {
     condition     = local.model_execution_revision != run.apply_onboards_deploys_then_validates.model_delivery.automatic_execution.revision && module.delivery.generations.workload != run.apply_onboards_deploys_then_validates.model_delivery.generation
     error_message = "A meaningful context/geometry/model configuration change must execute corrected pipelines with the new generation."
+  }
+}
+run "frontend_opt_in_reexecutes_with_matching_native_arguments" {
+  command = apply
+  variables { api_frontend = "rust" }
+  assert {
+    condition = local.model_execution_revision != run.apply_onboards_deploys_then_validates.model_delivery.automatic_execution.revision && local.config.serving.recipe.env.VLLM_USE_RUST_FRONTEND == "1" && alltrue([
+      for execution in [oci_devops_deployment.workload, oci_devops_deployment.validation] : anytrue([for item in execution.deployment_arguments[0].items : item.name == "VLLM_USE_RUST_FRONTEND" && item.value == "1"])
+    ])
+    error_message = "Frontend selection must be a meaningful revision, and native deploy/validation must receive its exact effective value."
   }
 }
 run "changed_trusted_source_reonboards" {

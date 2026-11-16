@@ -10,6 +10,15 @@ variable "model" {
   type        = any
   description = "Frozen llm_model specification, including the exact selection, recipe argv/env and profile."
 }
+variable "api_frontend" {
+  type        = string
+  default     = "python"
+  description = "vLLM API frontend. Python is the default; Rust is an explicit opt-in requiring model/template compatibility validation."
+  validation {
+    condition     = contains(["python", "rust"], var.api_frontend)
+    error_message = "api_frontend must be python or rust. Rust frontend support requires explicit compatibility validation."
+  }
+}
 variable "name" {
   type     = string
   default  = null

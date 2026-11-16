@@ -18,26 +18,27 @@ locals {
   image_parts     = split("/", local.image_reference)
   serving_image   = length(local.image_parts) == 1 ? "docker.io/library/${local.image_reference}" : (local.image_parts[0] == "localhost" || can(regex("[.:]", local.image_parts[0])) ? local.image_reference : "docker.io/${local.image_reference}")
   defaults = {
-    MODEL_NAMESPACE     = local.namespace
-    MODEL_CLUSTER_ID    = var.platform.cluster_id
-    MODEL_PLATFORM_NAME = var.platform.platform_name
-    MODEL_PROJECT_ID    = var.platform.project_id
-    MODEL_GPU_POOL_ID   = try(coalesce(var.platform.allocation.gpu_pool_id, "runtime"), "runtime")
-    MODEL_ID            = coalesce(var.overrides.model_id, try(local.serving.model.repository, null), var.model.model.repository)
-    MODEL_REVISION      = coalesce(var.overrides.model_revision, try(local.serving.model.resolved_revision, null), try(var.model.model.revision, null), "unresolved")
-    SERVING_IMAGE       = local.serving_image
-    TP                  = tostring(coalesce(var.overrides.tensor_parallel_size, try(local.selection.tensor_parallel_size, null), 1))
-    PP                  = tostring(coalesce(var.overrides.pipeline_parallel_size, try(local.selection.pipeline_parallel_size, null), 1))
-    HOSTS_PER_REPLICA   = tostring(coalesce(var.overrides.hosts_per_replica, try(local.selection.pipeline_parallel_size, null), 1))
-    GPUS_PER_POD        = tostring(coalesce(var.overrides.gpus_per_pod, try(local.selection.tensor_parallel_size, null), 1))
-    REPLICAS            = tostring(coalesce(var.overrides.replicas, try(local.selection.replicas, null), 1))
-    CONTEXT_LENGTH      = tostring(coalesce(var.overrides.context_length, try(local.profile.memory.assumptions.context_length, null), 4096))
-    CONCURRENCY         = tostring(coalesce(var.overrides.concurrency, try(local.profile.memory.assumptions.concurrency, null), 1))
-    INFERENCE_PROBE     = var.inference_probe
-    MIN_REPLICAS        = tostring(var.autoscaling.min_replicas)
-    MAX_REPLICAS        = tostring(var.autoscaling.max_replicas)
-    TARGET_INFLIGHT     = tostring(var.autoscaling.target_inflight)
-    PROMETHEUS_URL      = var.autoscaling.prometheus_url == "" ? "not-configured" : var.autoscaling.prometheus_url
+    MODEL_NAMESPACE        = local.namespace
+    MODEL_CLUSTER_ID       = var.platform.cluster_id
+    MODEL_PLATFORM_NAME    = var.platform.platform_name
+    MODEL_PROJECT_ID       = var.platform.project_id
+    MODEL_GPU_POOL_ID      = try(coalesce(var.platform.allocation.gpu_pool_id, "runtime"), "runtime")
+    MODEL_ID               = coalesce(var.overrides.model_id, try(local.serving.model.repository, null), var.model.model.repository)
+    MODEL_REVISION         = coalesce(var.overrides.model_revision, try(local.serving.model.resolved_revision, null), try(var.model.model.revision, null), "unresolved")
+    SERVING_IMAGE          = local.serving_image
+    VLLM_USE_RUST_FRONTEND = var.api_frontend == "rust" ? "1" : "0"
+    TP                     = tostring(coalesce(var.overrides.tensor_parallel_size, try(local.selection.tensor_parallel_size, null), 1))
+    PP                     = tostring(coalesce(var.overrides.pipeline_parallel_size, try(local.selection.pipeline_parallel_size, null), 1))
+    HOSTS_PER_REPLICA      = tostring(coalesce(var.overrides.hosts_per_replica, try(local.selection.pipeline_parallel_size, null), 1))
+    GPUS_PER_POD           = tostring(coalesce(var.overrides.gpus_per_pod, try(local.selection.tensor_parallel_size, null), 1))
+    REPLICAS               = tostring(coalesce(var.overrides.replicas, try(local.selection.replicas, null), 1))
+    CONTEXT_LENGTH         = tostring(coalesce(var.overrides.context_length, try(local.profile.memory.assumptions.context_length, null), 4096))
+    CONCURRENCY            = tostring(coalesce(var.overrides.concurrency, try(local.profile.memory.assumptions.concurrency, null), 1))
+    INFERENCE_PROBE        = var.inference_probe
+    MIN_REPLICAS           = tostring(var.autoscaling.min_replicas)
+    MAX_REPLICAS           = tostring(var.autoscaling.max_replicas)
+    TARGET_INFLIGHT        = tostring(var.autoscaling.target_inflight)
+    PROMETHEUS_URL         = var.autoscaling.prometheus_url == "" ? "not-configured" : var.autoscaling.prometheus_url
   }
   # This is a full snapshot PER POD: packed replicas do not share emptyDir.
   snapshot_bytes = try(coalesce(var.model.model.checkpoint_download_bytes, try(local.profile.weights.total_file_bytes, null)), null)
@@ -55,7 +56,7 @@ locals {
     identity       = local.identity, model = "$${MODEL_ID}", revision = "$${MODEL_REVISION}", image = "$${SERVING_IMAGE}",
     tensorParallel = "$${TP}", pipelineParallel = "$${PP}", hosts = "$${HOSTS_PER_REPLICA}", gpusPerPod = "$${GPUS_PER_POD}",
     replicas       = "$${REPLICAS}", contextLength = "$${CONTEXT_LENGTH}", concurrency = "$${CONCURRENCY}",
-    recipeArgs     = try(local.serving.recipe.args, []), recipeEnv = try(local.serving.recipe.env, {}),
+    recipeArgs     = try(local.serving.recipe.args, []), recipeEnv = merge(try(local.serving.recipe.env, {}), { VLLM_USE_RUST_FRONTEND = "$${VLLM_USE_RUST_FRONTEND}" }),
     nodeSelector   = local.selector, cpu = "2", memory = "16Gi", shm = "8Gi", workspace = "${local.workspace_gib}Gi",
     hfTokenSecret  = var.hf_token_secret, pvcName = var.storage.pvc_name,
     modelPath      = var.storage.mode == "direct_hf" ? "" : var.storage.model_path,
@@ -105,7 +106,7 @@ locals {
       backend  = try(local.selection.platform_plan.topology.backend, local.serving.engine.multi_node_backend, "mp"),
       strategy = try(local.selection.platform_plan.topology.strategy, local.runtime_hosts > 1 ? "multi_node_tp_pp" : "single_node_tp")
     } } } },
-    serving         = { recipe = { args = try(local.serving.recipe.args, []), env = try(local.serving.recipe.env, {}), companions = try(local.serving.recipe.companions, []) } },
+    serving         = { recipe = { args = try(local.serving.recipe.args, []), env = merge(try(local.serving.recipe.env, {}), { VLLM_USE_RUST_FRONTEND = local.defaults.VLLM_USE_RUST_FRONTEND }), companions = try(local.serving.recipe.companions, []) } },
     namespace       = local.namespace, release = local.name,
     identity        = local.identity, ownership_token = local.owner, defaults = local.defaults,
     storage         = merge(var.storage, { workspace_gib = local.workspace_gib, snapshot_bytes = local.snapshot_bytes, workspace_explicit = var.storage.workspace_gib != null }),

@@ -40,6 +40,18 @@ run "rendered_cluster_only_stack_autoruns_an_independent_model_project" {
     condition     = output.model_delivery.onboarding.pipeline_id == local.platform.model_onboarding_pipeline_id && output.model_delivery.automatic_execution.onboarding.state == "SUCCEEDED" && output.model_delivery.automatic_execution.deployment.state == "SUCCEEDED" && output.model_delivery.automatic_execution.validation.state == "SUCCEEDED" && !output.model_delivery.automatic_execution.benchmark_automatically_started
     error_message = "The generated model stack must wait for trusted onboarding, deployment and independent validation; benchmarks remain manual."
   }
+  assert {
+    condition     = var.api_frontend == "python" && output.model_delivery.defaults.VLLM_USE_RUST_FRONTEND == "0"
+    error_message = "A generated model stack must default to the Python frontend even when the recipe opts into Rust."
+  }
+}
+run "model_deployment_can_opt_into_rust_frontend" {
+  command = plan
+  variables { api_frontend = "rust" }
+  assert {
+    condition     = module.model[0].model_delivery.defaults.VLLM_USE_RUST_FRONTEND == "1"
+    error_message = "The advanced root frontend choice must reach the editable deployment pipeline parameter."
+  }
 }
 run "cluster_only_autoscaling_derives_standard_metrics_endpoint" {
   command = plan

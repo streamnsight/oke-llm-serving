@@ -11,7 +11,7 @@ import {parseAllDocuments,parse,stringify} from 'yaml';
 const root=resolve(import.meta.dirname,'..'), modulePath=`${root}/modules/llm-deployment/model-delivery`;
 const hash=s=>createHash('sha256').update(s).digest('hex');
 const image=`docker.io/vllm/vllm-openai@sha256:${'e'.repeat(64)}`;
-const defaults={MODEL_NAMESPACE:'fixture-model-test',MODEL_ID:'org/model',MODEL_REVISION:'a'.repeat(40),SERVING_IMAGE:image,TP:'2',PP:'1',HOSTS_PER_REPLICA:'1',GPUS_PER_POD:'2',REPLICAS:'2',CONTEXT_LENGTH:'4096',CONCURRENCY:'8',INFERENCE_PROBE:'none'};
+const defaults={MODEL_NAMESPACE:'fixture-model-test',MODEL_ID:'org/model',MODEL_REVISION:'a'.repeat(40),SERVING_IMAGE:image,VLLM_USE_RUST_FRONTEND:'0',TP:'2',PP:'1',HOSTS_PER_REPLICA:'1',GPUS_PER_POD:'2',REPLICAS:'2',CONTEXT_LENGTH:'4096',CONCURRENCY:'8',INFERENCE_PROBE:'none'};
 const config={namespace:defaults.MODEL_NAMESPACE,release:'model',identity:'model-fixture',ownership_token:'stable-owned-model-token',timeout_seconds:600,defaults,router_enabled:true,
  platform:{platform_name:'fixture',cluster_id:'cluster',allocation:{gpu_pool_id:'pool'},node_count:1,gpu_count_per_host:4,gpu_selector:'oke-llm/allocation=fixture',required_components:['lws'],transport:{requires_rdma:false}},
  storage:{mode:'direct_hf',pvc_name:'',snapshot_bytes:1024,workspace_gib:8,workspace_explicit:false},autoscaling:{enabled:false},model:{selection:{serving_configuration:{recipe:{args:[],env:{}}}}}};
@@ -76,6 +76,11 @@ test('manual image parameters require an explicit registry before any cluster op
  }
  for(const registry of ['docker.io','ghcr.io','fra.ocir.io','localhost','localhost:5000','registry.example:5443']){
   const f=fixture({env:{SERVING_IMAGE:`${registry}/org/engine@sha256:${digest}`}});try{const r=f.run('model_inputs');assert.equal(r.status,0,r.stderr);}finally{f.close();}
+ }
+});
+test('frontend parameters accept only Python0 or explicit Rust1 before any cluster action',()=>{
+ for(const frontend of ['0','1','true','2','python','']){
+  const f=fixture({env:{VLLM_USE_RUST_FRONTEND:frontend}});try{const r=f.run('model_inputs');if(['0','1'].includes(frontend))assert.equal(r.status,0,r.stderr);else{assert.equal(r.status,2,r.stderr);assert.match(r.stderr,/VLLM_USE_RUST_FRONTEND must be 0/);assert.equal(r.state.calls.length,0);}}finally{f.close();}
  }
 });
 test('independent operations require matching settings, current Helm revision and generation',()=>{
