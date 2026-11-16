@@ -50,7 +50,7 @@ resource "oci_devops_deploy_artifact" "model_onboarding" {
   argument_substitution_mode = "NONE"
   deploy_artifact_source {
     deploy_artifact_source_type = "INLINE"
-    base64encoded_content       = base64encode(module.inline_onboarding.content)
+    base64encoded_content       = module.inline_onboarding.content
   }
 }
 resource "oci_devops_deploy_stage" "model_onboarding" {

@@ -71,12 +71,12 @@ resource "oci_devops_deploy_artifact" "values" {
   argument_substitution_mode = "SUBSTITUTE_PLACEHOLDERS"
   deploy_artifact_source {
     deploy_artifact_source_type = "INLINE"
-    base64encoded_content       = local.values_encoded[each.key]
+    base64encoded_content       = each.value.values_yaml
   }
   lifecycle {
     precondition {
-      condition     = local.values_bytes[each.key] > 0 && local.values_bytes[each.key] <= 51200 && length(local.values_encoded[each.key]) <= 51200
-      error_message = "Helm values for ${each.key} are ${local.values_bytes[each.key]} decoded UTF-8 bytes and ${length(local.values_encoded[each.key])} encoded API characters; content must be nonempty and both sizes must fit the conservative 51200 limit."
+      condition     = local.values_bytes[each.key] > 0 && local.values_bytes[each.key] <= 51200
+      error_message = "Helm values for ${each.key} are ${local.values_bytes[each.key]} UTF-8 bytes; raw content must be nonempty and fit the 51200-byte limit. The OCI provider handles transport encoding."
     }
   }
 }
@@ -156,9 +156,9 @@ resource "oci_devops_deploy_artifact" "command" {
   argument_substitution_mode = "NONE"
   deploy_artifact_source {
     deploy_artifact_source_type = "INLINE"
-    # OCI's API transport encoding only: the decoded YAML contains readable
-    # Bash and quoted heredocs, with no runtime base64 script decoding.
-    base64encoded_content = base64encode(module.inline_command[each.key].content)
+    # The OCI provider maps this text to Go []byte; the SDK handles JSON
+    # base64 encoding. Passing base64encode(...) would encode it twice.
+    base64encoded_content = module.inline_command[each.key].content
   }
 }
 resource "oci_devops_deploy_stage" "shell" {

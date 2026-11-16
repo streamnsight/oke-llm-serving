@@ -28,7 +28,7 @@ variables {
 run "large_pinned_manifest_does_not_expand_the_inline_command" {
   command = plan
   assert {
-    condition     = length(local.config) > 51200 && module.inline_command[0].encoded_size < 51200 && keys(oci_generic_artifacts_content_artifact_by_path.input) == ["model.json"] && length(yamldecode(output.command_spec).inputArtifacts) == 1
+    condition     = length(local.config) > 51200 && module.inline_command[0].byte_size < 51200 && keys(oci_generic_artifacts_content_artifact_by_path.input) == ["model.json"] && length(yamldecode(output.command_spec).inputArtifacts) == 1
     error_message = "Large pinned manifests must remain one Registry input, with plan-known resource keys and bounded readable inline source delivery."
   }
 }

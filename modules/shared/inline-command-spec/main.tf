@@ -25,8 +25,9 @@ locals {
   }))
   # Measure decoded UTF-8 bytes from the transport representation, without
   # executing any decoding in the command body. Terraform length counts Unicode
-  # characters. Bound the encoded API field as well: a GENERIC_FILE update
-  # accepting decoded bytes does not establish the COMMAND_SPEC create limit.
+  # characters. Callers pass the raw content to the provider; the Go SDK
+  # serializes its []byte field to base64 automatically. encoded_size is
+  # diagnostic only and must not replace the decoded-content byte limit.
   encoded_size = length(base64encode(local.content))
   byte_size    = local.encoded_size / 4 * 3 - (endswith(base64encode(local.content), "==") ? 2 : endswith(base64encode(local.content), "=") ? 1 : 0)
 }
@@ -43,8 +44,8 @@ output "content" {
     error_message = "Inline content conflicts with its quoted heredoc delimiter."
   }
   precondition {
-    condition     = local.byte_size <= 51200 && local.encoded_size <= 51200
-    error_message = "Inline command specification is ${local.byte_size} decoded UTF-8 bytes and ${local.encoded_size} encoded API characters; both must fit the conservative 51200 limit. Reuse existing Artifact Registry file inputs for larger shared sources."
+    condition     = local.byte_size <= 51200
+    error_message = "Inline command specification is ${local.byte_size} UTF-8 bytes (wire base64 length ${local.encoded_size}); raw content must fit the 51200-byte limit. Pass content directly to the OCI provider; its SDK performs transport encoding."
   }
 }
 output "encoded_size" { value = local.encoded_size }

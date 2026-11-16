@@ -40,7 +40,7 @@ run "measure_utf8_bytes_not_unicode_character_count" {
   expect_failures = [output.content]
 }
 
-run "reject_encoded_transport_overflow_with_decoded_content_below_limit" {
+run "accept_sdk_transport_larger_than_raw_content_limit" {
   command = plan
   variables {
     files         = {}
@@ -48,37 +48,36 @@ run "reject_encoded_transport_overflow_with_decoded_content_below_limit" {
   }
   assert {
     condition     = output.byte_size < 51200 && output.encoded_size > 51200
-    error_message = "This regression must exercise an encoded-field overflow that decoded-only accounting misses."
+    error_message = "SDK transport can exceed 51200 characters when raw content fits; callers must not manually base64-encode the provider input."
   }
-  expect_failures = [output.content]
 }
 
-run "accept_exact_encoded_field_boundary" {
+run "accept_exact_raw_content_boundary" {
   command = plan
   variables {
     files = {}
     specification = {
       steps   = []
-      padding = substr(join("", [for i in range(1024) : "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"]), 0, 38400 - length(yamlencode({ steps = [], padding = "" })))
+      padding = substr(join("", [for i in range(1024) : "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"]), 0, 51200 - length(yamlencode({ steps = [], padding = "" })))
     }
   }
   assert {
-    condition     = output.byte_size == 38400 && output.encoded_size == 51200
-    error_message = "A 38400-byte complete ASCII document fits the 51200-character transport field exactly."
+    condition     = output.byte_size == 51200 && output.encoded_size == 68268
+    error_message = "A complete 51200-byte document fits even though its SDK transport encoding is longer."
   }
 }
-run "reject_first_encoded_field_boundary_overflow" {
+run "reject_first_raw_content_boundary_overflow" {
   command = plan
   variables {
     files = {}
     specification = {
       steps   = []
-      padding = substr(join("", [for i in range(1024) : "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"]), 0, 38401 - length(yamlencode({ steps = [], padding = "" })))
+      padding = substr(join("", [for i in range(1024) : "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"]), 0, 51201 - length(yamlencode({ steps = [], padding = "" })))
     }
   }
   assert {
-    condition     = output.byte_size == 38401 && output.encoded_size == 51204
-    error_message = "One more decoded byte crosses the encoded field budget."
+    condition     = output.byte_size == 51201 && output.encoded_size == 68268
+    error_message = "One more raw byte exceeds the content limit even though the base64 lengths are equal."
   }
   expect_failures = [output.content]
 }

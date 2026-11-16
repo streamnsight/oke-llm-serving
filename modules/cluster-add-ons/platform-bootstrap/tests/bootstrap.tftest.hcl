@@ -35,7 +35,7 @@ run "default_platform_installs_monitoring_and_shared_KEDA_without_model_scaling"
     error_message = "Desired configuration is delivered inline and routine execution reports belong in DevOps logs, without a results repository."
   }
   assert {
-    condition     = alltrue([for mode, spec in module.inline_platform : spec.encoded_size <= 51200 && strcontains(spec.preparation_command, "platform.sh") && strcontains(spec.preparation_command, "platform.json") && base64decode(oci_devops_deploy_artifact.platform[mode].deploy_artifact_source[0].base64encoded_content) == spec.content]) && alltrue([for spec in values(local.command_specs) : length(yamldecode(spec).inputArtifacts) == 0 && strcontains(yamldecode(spec).steps[0].command, "sha256sum -c -") && !strcontains(spec, "base64")])
+    condition     = alltrue([for mode, spec in module.inline_platform : spec.byte_size <= 51200 && strcontains(spec.preparation_command, "platform.sh") && strcontains(spec.preparation_command, "platform.json") && oci_devops_deploy_artifact.platform[mode].deploy_artifact_source[0].base64encoded_content == spec.content]) && alltrue([for spec in values(local.command_specs) : length(yamldecode(spec).inputArtifacts) == 0 && strcontains(yamldecode(spec).steps[0].command, "sha256sum -c -") && !strcontains(spec, "base64")])
     error_message = "Platform code and configuration must remain readable inline heredocs with exact checksums, bounded payloads and no runtime base64 decoding."
   }
   assert {
@@ -139,7 +139,7 @@ run "trusted_model_onboarding_is_separate_and_binding_is_complete" {
     error_message = "Only the trusted platform principal onboards exact model principals; no model pipeline starts automatically."
   }
   assert {
-    condition     = oci_devops_deploy_stage.model_onboarding.deploy_stage_type == "SHELL" && oci_devops_deploy_artifact.model_onboarding.argument_substitution_mode == "NONE" && oci_devops_deploy_artifact.model_onboarding.deploy_artifact_source[0].deploy_artifact_source_type == "INLINE" && base64decode(oci_devops_deploy_artifact.model_onboarding.deploy_artifact_source[0].base64encoded_content) == module.inline_onboarding.content && module.inline_onboarding.encoded_size <= 51200 && length(yamldecode(local.model_onboarding_command).inputArtifacts) == 0 && yamldecode(local.model_onboarding_command).env.variables.MODEL_NAMESPACE == "$${MODEL_NAMESPACE}" && !strcontains(local.model_onboarding_command, "base64")
+    condition     = oci_devops_deploy_stage.model_onboarding.deploy_stage_type == "SHELL" && oci_devops_deploy_artifact.model_onboarding.argument_substitution_mode == "NONE" && oci_devops_deploy_artifact.model_onboarding.deploy_artifact_source[0].deploy_artifact_source_type == "INLINE" && oci_devops_deploy_artifact.model_onboarding.deploy_artifact_source[0].base64encoded_content == module.inline_onboarding.content && module.inline_onboarding.byte_size <= 51200 && length(yamldecode(local.model_onboarding_command).inputArtifacts) == 0 && yamldecode(local.model_onboarding_command).env.variables.MODEL_NAMESPACE == "$${MODEL_NAMESPACE}" && !strcontains(local.model_onboarding_command, "base64")
     error_message = "Onboarding uses editable non-secret arguments and verified readable inline sources, with no runtime encoded code."
   }
 }
