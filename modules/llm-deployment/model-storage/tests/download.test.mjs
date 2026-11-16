@@ -186,7 +186,7 @@ if(args[0]==='get' && args[1]?.startsWith('pvc/')) { console.log(JSON.stringify(
 if(args[0]==='get' && args[1]==='storageclass') { console.log(JSON.stringify({volumeBindingMode:process.env.MOCK_IMMEDIATE_STORAGECLASS?'Immediate':'WaitForFirstConsumer'})); process.exit(0); }
 if(args[0]==='get' && args[1]==='nodes') { console.log(JSON.stringify({items:[{metadata:{labels:{'node-pool':'cpu'}},spec:{},status:{conditions:[{type:'Ready',status:'True'}],allocatable:{'nvidia.com/gpu':process.env.MOCK_GPU_NODE?'4':'0'}}}]})); process.exit(0); }
 if(args[0]==='create' && args[1]==='configmap') process.exit(0);
-if(args[0]==='create' && args[1]==='-f') { if(process.env.MOCK_JOB_CONFLICT) process.exit(96); fs.writeFileSync(path.join(root,'job-created'),'yes'); process.exit(0); }
+if(args[0]==='create' && args[1]==='-f') { if(process.env.MOCK_JOB_CONFLICT) process.exit(96); fs.copyFileSync(args[2],path.join(root,'created-job.json')); fs.writeFileSync(path.join(root,'job-created'),'yes'); process.exit(0); }
 if(args[0]==='get' && args[1]==='job') { console.log(JSON.stringify({status:{succeeded:1}})); process.exit(0); }
 if(args[0]==='logs') process.exit(0);
 if(args[0]==='delete') process.exit(process.env.MOCK_CLEANUP_FAILURE?88:0);
@@ -221,17 +221,32 @@ process.exit(99);
   const report = JSON.parse(result.stdout.split('Model staging report:\n')[1]);
   const ociCalls = readFileSync(join(f.root, 'objects', 'oci-calls'), 'utf8').trim().split('\n').map(JSON.parse);
   assert.equal(ociCalls.some(args => args.includes('artifacts')), false, 'routine reports must only use the DevOps log');
-  return { result, calls, report };
+  const jobPath = join(f.root, 'objects', 'created-job.json');
+  return { result, calls, report, job: existsSync(jobPath) ? JSON.parse(readFileSync(jobPath, 'utf8')) : null };
 }
 
 test('controller stages only a Job and cleans transient resources while retaining PVC and namespace', t => {
-  const { result, calls, report } = runController(t);
+  const { result, calls, report, job } = runController(t);
   assert.equal(result.status, 0, result.stderr);
   assert.equal(report.status, 'staged');
+  assert.equal(report.staging_image, `docker.io/library/image@sha256:${'d'.repeat(64)}`);
+  assert.equal(job.spec.template.spec.containers[0].image, report.staging_image);
+  assert.equal(job.spec.template.spec.containers[0].env.find(v => v.name === 'STAGING_IMAGE').value, report.staging_image);
   assert.equal(calls.some(args => args[0] === 'create' && args[1] === '-f'), true);
   const deletes = calls.filter(args => !args.includes('auth') && args.includes('delete'));
   assert.equal(deletes.length, 2);
   assert.equal(deletes.every(args => args.includes('job') || args.includes('configmap')), true);
+});
+
+test('edited staging image arguments qualify Docker Hub organizations and preserve an explicit registry', t => {
+  const digest = `@sha256:${'d'.repeat(64)}`;
+  for (const [input, expected] of [[`team/model-stager:v1${digest}`, `docker.io/team/model-stager:v1${digest}`], [`localhost:5000/team/model-stager${digest}`, `localhost:5000/team/model-stager${digest}`]]) {
+    const { result, report, job } = runController(t, { STAGING_IMAGE: input });
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(report.staging_image, expected);
+    assert.equal(job.spec.template.spec.containers[0].image, expected);
+    assert.equal(job.spec.template.spec.containers[0].env.find(v => v.name === 'STAGING_IMAGE').value, expected);
+  }
 });
 
 test('concurrent Job conflict never deletes the other execution Job', t => {

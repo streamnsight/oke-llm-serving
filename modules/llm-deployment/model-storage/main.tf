@@ -15,6 +15,12 @@ locals {
   pvc_name  = "${var.name}-download"
   scripts   = toset(["stage.sh", "download.sh", "validate.jq", "job.jq"])
 }
+locals {
+  staging_repository   = try(split("@", var.staging_image)[0], "")
+  staging_first_part   = split("/", local.staging_repository)[0]
+  staging_has_registry = strcontains(local.staging_repository, "/") && (strcontains(local.staging_first_part, ".") || strcontains(local.staging_first_part, ":") || local.staging_first_part == "localhost")
+  staging_image        = var.staging_image == null ? null : (local.staging_has_registry ? var.staging_image : "docker.io/${strcontains(local.staging_repository, "/") ? "" : "library/"}${var.staging_image}")
+}
 resource "terraform_data" "requirements" {
   count = local.enabled ? 1 : 0
   lifecycle {
@@ -69,7 +75,7 @@ locals {
   }) : "{}"
   artifact_contents = local.enabled ? merge({ "model.json" = local.config }, { for s in local.scripts : s => file("${path.module}/scripts/${s}") }) : {}
   inline_files      = local.enabled ? { for s in local.scripts : s => file("${path.module}/scripts/${s}") } : {}
-  parameters        = { STAGING_IMAGE = coalesce(var.staging_image, "unset"), JOB_DEADLINE_SECONDS = tostring(var.deadline_seconds) }
+  parameters        = { STAGING_IMAGE = coalesce(local.staging_image, "unset"), JOB_DEADLINE_SECONDS = tostring(var.deadline_seconds) }
   command_spec = local.enabled ? yamlencode({
     version = "0.1", component = "command", shell = "bash", timeoutInSeconds = 28800, failImmediatelyOnError = true,
     env = { variables = {
@@ -229,6 +235,7 @@ output "storage" {
     snapshot_sha256              = local.enabled ? local.snapshot : null, pipeline_id = try(oci_devops_deploy_pipeline.stage[0].id, null),
     namespace                    = local.enabled ? local.namespace : null, service_account = local.enabled ? var.service_account : null,
     scratch_pvc                  = local.enabled ? local.pvc_name : null,
+    staging_image                = local.enabled ? local.staging_image : null,
     runtime_status               = local.enabled ? "requires_validation" : "not_applicable",
     model_deployment_integration = "pending: model stack must materialize and verify the snapshot into a local/PVC model path before vLLM starts",
     retained                     = local.enabled

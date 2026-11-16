@@ -9,6 +9,14 @@ input_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 printf '%s  %s\n' "$MODEL_CONFIG_SHA256" "$input_dir/model.json" | sha256sum -c -
 jq -e -f "$input_dir/validate.jq" "$input_dir/model.json" >/dev/null
 [[ "$STAGING_IMAGE" =~ ^[A-Za-z0-9][A-Za-z0-9./:_-]*@sha256:[a-f0-9]{64}$ ]] || { echo 'STAGING_IMAGE must be digest-pinned' >&2; exit 2; }
+staging_repository=${STAGING_IMAGE%@*}
+staging_first_part=${staging_repository%%/*}
+if [[ $staging_repository != */* ]]; then
+  STAGING_IMAGE="docker.io/library/$STAGING_IMAGE"
+elif [[ $staging_first_part != *.* && $staging_first_part != *:* && $staging_first_part != localhost ]]; then
+  STAGING_IMAGE="docker.io/$STAGING_IMAGE"
+fi
+export STAGING_IMAGE
 [[ "$JOB_DEADLINE_SECONDS" =~ ^[1-9][0-9]{2,4}$ && "$JOB_DEADLINE_SECONDS" -ge 300 && "$JOB_DEADLINE_SECONDS" -le 25200 ]] || { echo 'Job deadline must be 300..25200 seconds' >&2; exit 2; }
 [[ "$KUBERNETES_VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ && "$MODEL_STAGE_NAME" =~ ^[a-z][a-z0-9-]{0,30}[a-z0-9]$ ]] || exit 2
 run_dir=$(mktemp -d)

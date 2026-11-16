@@ -187,3 +187,26 @@ run "stable_tag_commit_is_reused_without_a_second_resolution_call" {
     error_message = "The exact immutable SHA already returned by tag enumeration must be reused."
   }
 }
+run "all_recommended_and_alternative_images_are_registry_qualified" {
+  command = plan
+  variables {
+    assess_alternatives = true
+    recipe_features     = []
+  }
+  override_data {
+    target = data.http.image
+    values = { status_code = 200, response_body = "{\"images\":[{\"os\":\"linux\",\"architecture\":\"amd64\",\"digest\":\"sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee\"},{\"os\":\"linux\",\"architecture\":\"arm64\",\"digest\":\"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}]}" }
+  }
+  override_data {
+    target = data.http.alternative_image
+    values = { status_code = 200, response_body = "{\"images\":[{\"os\":\"linux\",\"architecture\":\"amd64\",\"digest\":\"sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\"},{\"os\":\"linux\",\"architecture\":\"arm64\",\"digest\":\"sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\"}]}" }
+  }
+  assert {
+    condition     = output.resolution.engine.image == "docker.io/vllm/vllm-openai@sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee" && output.resolution.engine_candidates[1].image == "docker.io/vllm/vllm-openai@sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff" && alltrue([for image in flatten(concat([[output.resolution.engine.image], values(output.resolution.engine.available_images)], [for engine in output.resolution.engine_candidates : concat([engine.image], values(engine.available_images))])) : can(regex("^docker[.]io/vllm/vllm-openai@sha256:[a-f0-9]{64}$", image))]) && length(output.resolution.engine.available_images) == 2 && length(output.resolution.engine_candidates[1].available_images) == 2
+    error_message = "Every stable/nightly image and architecture alternative must retain its digest and explicit registry, so runtimes never resolve an ambiguous short name."
+  }
+  assert {
+    condition     = output.resolution.engine.version == "0.33.0" && output.resolution.engine.image_metadata_url == "https://hub.docker.com/v2/repositories/vllm/vllm-openai/tags/v0.33.0" && output.resolution.engine_candidates[1].image_metadata_url == "https://hub.docker.com/v2/repositories/vllm/vllm-openai/tags/nightly"
+    error_message = "Qualifying image names must not alter source engine versions or Docker Hub metadata HTTP repository paths."
+  }
+}

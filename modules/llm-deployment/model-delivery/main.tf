@@ -12,6 +12,11 @@ locals {
   namespace = coalesce(var.namespace, "${var.platform.platform_name}-model-${substr(sha256(local.name), 0, 12)}")
   identity  = "model-${substr(sha256("${var.platform.cluster_id}/${local.namespace}/${local.name}"), 0, 24)}"
   owner     = sha256("${var.platform.platform_name}/${var.platform.cluster_id}/${local.namespace}/${local.name}")
+  # CRI-O must not have to resolve a short name interactively. Add Docker Hub's
+  # default registry at this deployment boundary, preserving the selected digest.
+  image_reference = coalesce(var.overrides.serving_image, try(local.serving.engine.image, null), "unresolved")
+  image_parts     = split("/", local.image_reference)
+  serving_image   = length(local.image_parts) == 1 ? "docker.io/library/${local.image_reference}" : (local.image_parts[0] == "localhost" || can(regex("[.:]", local.image_parts[0])) ? local.image_reference : "docker.io/${local.image_reference}")
   defaults = {
     MODEL_NAMESPACE     = local.namespace
     MODEL_CLUSTER_ID    = var.platform.cluster_id
@@ -20,7 +25,7 @@ locals {
     MODEL_GPU_POOL_ID   = try(coalesce(var.platform.allocation.gpu_pool_id, "runtime"), "runtime")
     MODEL_ID            = coalesce(var.overrides.model_id, try(local.serving.model.repository, null), var.model.model.repository)
     MODEL_REVISION      = coalesce(var.overrides.model_revision, try(local.serving.model.resolved_revision, null), try(var.model.model.revision, null), "unresolved")
-    SERVING_IMAGE       = coalesce(var.overrides.serving_image, try(local.serving.engine.image, null), "unresolved")
+    SERVING_IMAGE       = local.serving_image
     TP                  = tostring(coalesce(var.overrides.tensor_parallel_size, try(local.selection.tensor_parallel_size, null), 1))
     PP                  = tostring(coalesce(var.overrides.pipeline_parallel_size, try(local.selection.pipeline_parallel_size, null), 1))
     HOSTS_PER_REPLICA   = tostring(coalesce(var.overrides.hosts_per_replica, try(local.selection.pipeline_parallel_size, null), 1))
@@ -63,7 +68,7 @@ locals {
       routerSpec = {
         enableRouter      = true, serviceAccountName = "oke-llm-router", serviceDiscovery = "k8s", k8sServiceDiscoveryType = "pod-ip",
         routingLogic      = "prefixaware", replicaCount = 1, serviceType = "ClusterIP",
-        repository        = "lmcache/lmstack-router", tag = "v0.1.14@sha256:7107e6a17740478749ef28c812df48f405ccfab8d92f40372a50ef678b6c6b63",
+        repository        = "docker.io/lmcache/lmstack-router", tag = "v0.1.14@sha256:7107e6a17740478749ef28c812df48f405ccfab8d92f40372a50ef678b6c6b63",
         extraArgs         = ["--k8s-label-selector", "oke-llm/model=${local.identity},oke-llm/endpoint=true"],
         nodeSelectorTerms = [{ matchExpressions = [{ key = "nvidia.com/gpu.present", operator = "DoesNotExist" }, { key = "nvidia.com/gpu", operator = "DoesNotExist" }, { key = "oke-llm/allocation", operator = "DoesNotExist" }] }]
       },
@@ -107,7 +112,7 @@ locals {
     hf_token_secret = var.hf_token_secret,
     router_enabled  = local.router_enabled, autoscaling = var.autoscaling, inference_probe = var.inference_probe,
     timeout_seconds = var.timeout_seconds,
-    benchmark_image = "vllm/vllm-openai-cpu@sha256:827ef38187f9b52f2bb838695ef815ec5b65f4bf3e4c061b002b2b0a19cb0701"
+    benchmark_image = "docker.io/vllm/vllm-openai-cpu@sha256:827ef38187f9b52f2bb838695ef815ec5b65f4bf3e4c061b002b2b0a19cb0701"
   }
   runtime_files = merge({ for asset in ["preflight.sh", "validate.sh", "retired.sh", "common.sh"] : asset => file("${path.module}/scripts/${asset}") }, { "config.json" = jsonencode(local.config) })
 }

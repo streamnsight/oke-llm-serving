@@ -12,7 +12,7 @@ timeout=$(jq -er .timeout_seconds "$model_config")
 owner_name="oke-llm-owner-$(printf '%s' "$namespace/$release" | sha256sum | cut -c1-24)"
 model_fail() { echo "$*" >&2; return 2; }
 model_inputs() {
-  local key expected platform_name platform_owner model_namespace
+  local key expected platform_name platform_owner model_namespace image_registry
   for key in TP PP HOSTS_PER_REPLICA GPUS_PER_POD REPLICAS CONTEXT_LENGTH CONCURRENCY; do
     [[ ${!key:-} =~ ^[1-9][0-9]*$ ]] || model_fail "$key must be a positive integer" || return
   done
@@ -25,6 +25,8 @@ model_inputs() {
   [[ $MODEL_NAMESPACE == "$namespace" ]] || model_fail 'MODEL_NAMESPACE is an immutable onboarding boundary; create/onboard another stack to change it' || return
   [[ $MODEL_ID =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || model_fail 'MODEL_ID must be a Hugging Face repository ID' || return
   [[ $SERVING_IMAGE =~ ^[A-Za-z0-9][A-Za-z0-9./:_-]*@sha256:[a-f0-9]{64}$ && $MODEL_REVISION =~ ^[a-f0-9]{40}$ ]] || model_fail 'Use an immutable image digest and Hugging Face commit' || return
+  image_registry=${SERVING_IMAGE%%/*}
+  [[ $SERVING_IMAGE == */* && ( $image_registry == *.* || $image_registry == *:* || $image_registry == localhost ) ]] || model_fail 'SERVING_IMAGE must include its registry, for example docker.io/vllm/vllm-openai@sha256:<digest>. Short image names cannot be resolved interactively by CRI-O; retain the selected digest' || return
   # This adapter uses TP within each host and PP across LWS hosts. Other
   # distributed layouts require a separate explicit execution adapter.
   (( TP == GPUS_PER_POD && PP == HOSTS_PER_REPLICA )) || model_fail 'Native MP adapter requires GPUS_PER_POD=TP and HOSTS_PER_REPLICA=PP; cross-host TP/Ray require another adapter' || return

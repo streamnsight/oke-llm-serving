@@ -39,3 +39,11 @@ run "custom_registry_is_explicitly_unknown" {
     error_message = "Do not guess CUDA metadata or attempt anonymous credentials against arbitrary private registries."
   }
 }
+run "qualified_docker_io_image_keeps_verified_metadata_repository_paths" {
+  command = plan
+  variables { image = "docker.io/vllm/vllm-openai@sha256:ffdd332f0605be6d8caa0f7c6dbff9295ee2612ae0a8d4fb13537b6de861aeab" }
+  assert {
+    condition     = output.runtime.image == var.image && output.runtime.cuda_version == "13.2.0" && output.runtime.source == "digest_verified_public_image_config" && data.http.token[0].url == "https://auth.docker.io/token?service=registry.docker.io&scope=repository:vllm/vllm-openai:pull" && data.http.manifest[0].url == "https://registry-1.docker.io/v2/vllm/vllm-openai/manifests/sha256:ffdd332f0605be6d8caa0f7c6dbff9295ee2612ae0a8d4fb13537b6de861aeab"
+    error_message = "A qualified pull reference must reuse the canonical Docker Hub repository path and preserve manifest/config digest verification."
+  }
+}

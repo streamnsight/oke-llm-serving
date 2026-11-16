@@ -101,7 +101,7 @@ variable "model" {
   }
 }
 variable "staging_image" {
-  description = "Required for Object Storage: tested linux/amd64 digest image with Bash, curl, jq, coreutils and OCI CLI supporting oke_workload_identity. See image/Dockerfile."
+  description = "Required for Object Storage: tested linux/amd64 digest image with Bash, curl, jq, coreutils and OCI CLI supporting oke_workload_identity. Docker Hub references are qualified automatically. See image/Dockerfile."
   type        = string
   default     = null
   validation {

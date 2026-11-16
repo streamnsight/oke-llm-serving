@@ -185,7 +185,7 @@ locals {
   engine_valid = length(local.engine_issues) == 0
   engine = {
     id                       = "vllm-${local.image_tag}-${replace(var.engine_platform, "/", "-")}", framework = "vllm", version = local.use_nightly ? "nightly" : trimprefix(local.stable_tag, "v")
-    image                    = local.image_pinned ? "vllm/vllm-openai@${local.image_digest}" : null
+    image                    = local.image_pinned ? "docker.io/vllm/vllm-openai@${local.image_digest}" : null
     platform                 = var.engine_platform, architectures = local.supported_arches
     gpu_compute_capabilities = distinct([for gpu in values(jsondecode(file("${path.module}/../accelerator-inventory/data/gpus.json")).shapes) : gpu.compute_capability if try(gpu.compute_capability >= (try(var.profile.memory.assumptions.kv_dtype, "bfloat16") == "bfloat16" ? 80 : 75), false)])
     source                   = "https://github.com/vllm-project/vllm/blob/${coalesce(local.source_sha, "unresolved")}/vllm/model_executor/models/registry.py"
@@ -205,9 +205,9 @@ data "http" "alternative_image" {
   }
 }
 locals {
-  available_images   = { for i in try(local.image_metadata.images, []) : "${i.os}/${i.architecture}" => "vllm/vllm-openai@${i.digest}" if i.os == "linux" && contains(["amd64", "arm64"], i.architecture) && can(regex("^sha256:[a-f0-9]{64}$", i.digest)) }
+  available_images   = { for i in try(local.image_metadata.images, []) : "${i.os}/${i.architecture}" => "docker.io/vllm/vllm-openai@${i.digest}" if i.os == "linux" && contains(["amd64", "arm64"], i.architecture) && can(regex("^sha256:[a-f0-9]{64}$", i.digest)) }
   recommended_engine = merge(local.engine, { channel = local.use_nightly ? "nightly" : "stable", available_images = local.available_images })
-  alternative_images = { for i in try(jsondecode(data.http.alternative_image[0].response_body).images, []) : "${i.os}/${i.architecture}" => "vllm/vllm-openai@${i.digest}" if i.os == "linux" && contains(["amd64", "arm64"], i.architecture) && can(regex("^sha256:[a-f0-9]{64}$", i.digest)) }
+  alternative_images = { for i in try(jsondecode(data.http.alternative_image[0].response_body).images, []) : "${i.os}/${i.architecture}" => "docker.io/vllm/vllm-openai@${i.digest}" if i.os == "linux" && contains(["amd64", "arm64"], i.architecture) && can(regex("^sha256:[a-f0-9]{64}$", i.digest)) }
   alternative_arches = [for a in local.arches : a if try(strcontains(data.http.nightly_registry[0].response_body, "\"${a}\""), false)]
   engine_candidates = concat([local.recommended_engine], [for include in [true] : merge(local.engine, {
     id                 = "vllm-nightly", version = "nightly", channel = "nightly", image_tag = "nightly", available_images = local.alternative_images,

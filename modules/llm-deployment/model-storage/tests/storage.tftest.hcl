@@ -35,7 +35,7 @@ run "object_storage_uses_retained_private_data_and_cpu_job_adapter" {
     }
   }
   assert {
-    condition     = oci_objectstorage_bucket.weights[0].access_type == "NoPublicAccess" && oci_objectstorage_bucket.weights[0].versioning == "Enabled" && output.storage.retained && output.storage.runtime_status == "requires_validation" && endswith(output.storage.manifest_key, "/manifest.json")
+    condition     = oci_objectstorage_bucket.weights[0].access_type == "NoPublicAccess" && oci_objectstorage_bucket.weights[0].versioning == "Enabled" && output.storage.retained && output.storage.runtime_status == "requires_validation" && endswith(output.storage.manifest_key, "/manifest.json") && output.storage.staging_image == var.staging_image
     error_message = "Weights are retained private model data; Terraform must not claim a successful runtime transfer."
   }
   assert {
