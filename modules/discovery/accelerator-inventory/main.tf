@@ -49,7 +49,7 @@ locals {
         quota_names                   = shape.quota_names == null ? [] : shape.quota_names
         gpu_memory_gib                = try(local.gpu_catalog.shapes[shape.name].memory_bytes_per_gpu / pow(1024, 3), null)
         gpu_memory_bytes_per_gpu      = try(local.gpu_catalog.shapes[shape.name].memory_bytes_per_gpu, null)
-        gpu_memory_source             = try(local.gpu_catalog.shapes[shape.name].memory_bytes_per_gpu > 0, false) ? local.gpu_catalog.source : null
+        gpu_memory_source             = try(local.gpu_catalog.shapes[shape.name].memory_bytes_per_gpu > 0, false) ? try(local.gpu_catalog.shape_sources[shape.name], local.gpu_catalog.source) : null
         nvlink_topology               = null
       } if coalesce(shape.gpus, 0) > 0 && (length(var.shape_names) == 0 || contains(var.shape_names, shape.name))
     ]

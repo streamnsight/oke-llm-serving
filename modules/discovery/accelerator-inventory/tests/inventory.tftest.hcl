@@ -146,3 +146,16 @@ run "unmapped_quota_name" {
     error_message = "Unknown quota-name mappings must not become guessed entitlement counts."
   }
 }
+
+run "live_B4_A100_shape_has_reviewed_memory_metadata" {
+  command = plan
+  variables { shape_names = ["BM.GPU.B4.8"] }
+  override_data {
+    target = data.oci_core_shapes.domain["AD-1"]
+    values = {shapes=[{name="BM.GPU.B4.8",gpus=8,memory_in_gbs=2048,quota_names=["gpu-test-count"]}]}
+  }
+  assert {
+    condition = output.result.availability_domains[0].shapes[0].gpu_memory_bytes_per_gpu == 40000000000 && strcontains(output.result.availability_domains[0].shapes[0].gpu_memory_source, "supported-gpu-shapes.md")
+    error_message = "B4 is eight 40 GB A100 GPUs; native inventory must retain its source."
+  }
+}

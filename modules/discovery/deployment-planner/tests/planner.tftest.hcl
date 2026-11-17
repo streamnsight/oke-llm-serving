@@ -137,7 +137,7 @@ run "FP8_with_enough_memory_but_incompatible_A10_is_excluded" {
     }
   }
   assert {
-    condition = length(output.assessment.candidates)==0 && output.assessment.precision_compatibility["VM.GPU.A10.1"].status=="not_compatible" && output.assessment.precision_compatibility["BM.GPU.H100.8"].status=="compatible"
+    condition = length(output.assessment.candidates)==0 && output.assessment.precision_compatibility["VM.GPU.A10.1"].status=="not_compatible" && output.assessment.precision_compatibility["BM.GPU.H100.8"].status=="compatible" && output.assessment.precision_compatibility["BM.GPU.B4.8"].status=="not_compatible"
     error_message = "Memory/capacity/headroom cannot bypass FP8 compatibility."
   }
 }
@@ -154,5 +154,13 @@ run "unknown_quantization_cannot_become_a_deployment_option" {
   assert {
     condition = length(output.assessment.candidates)==0 && output.assessment.precision_compatibility["VM.GPU.A10.1"].status=="not_verified"
     error_message = "Unknown kernel support must fail closed."
+  }
+}
+
+run "B4_dtype_support_is_known_without_allocating_a_GPU" {
+  command = plan
+  assert {
+    condition = output.assessment.precision_compatibility["BM.GPU.B4.8"].status == "compatible" && output.assessment.precision_compatibility["VM.GPU2.1"].status == "not_compatible"
+    error_message = "B4 A100 supports BF16; missing native BF16 on P100 remains excluded."
   }
 }

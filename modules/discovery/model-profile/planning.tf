@@ -19,10 +19,12 @@ locals {
   storage_conflict       = try(abs(local.native_weight_bytes - local.safe_shard_sizes) / max(local.native_weight_bytes, local.safe_shard_sizes) > 0.02, false)
   planning_weight_source = var.weight_budget_gb > 0 ? "user_weight_budget" : local.native_weight_bytes != null ? "hub_dtype_counts" : local.planning_weights != null ? "selected_checkpoint_file_sizes" : "missing_select_checkpoint_or_supply_weight_budget_gb"
   # Dense all-layer cache is a scenario for unknown/hybrid architectures, not an upper bound.
-  dense_kv_scenario = local.dimensions_valid ? 2 * local.layers * local.kv_heads * local.head_dim * (var.kv_dtype == "float32" ? 4 : 2) * var.context_length * var.concurrency : null
-  planning_cache    = try(coalesce(local.kv_bytes, local.dense_kv_scenario, local.planning_weights * var.unknown_cache_fraction), null)
-  workspace         = try(local.planning_weights * var.workspace_fraction, null)
-  planning_payload  = var.planning_budget_gb > 0 ? var.planning_budget_gb * 1e9 : try(ceil(((var.weight_budget_gb > 0 ? local.planning_weights : max(local.planning_weights, coalesce(local.safe_shard_sizes, local.planning_weights))) + local.planning_cache + (local.supported ? 0 : local.workspace)) * (1 + var.margin)), null)
+  dense_kv_scenario    = local.dimensions_valid ? 2 * local.layers * local.kv_heads * local.head_dim * (var.kv_dtype == "float32" ? 4 : 2) * var.context_length * var.concurrency : null
+  planning_cache       = try(coalesce(local.kv_bytes, local.dense_kv_scenario, local.planning_weights * var.unknown_cache_fraction), null)
+  workspace            = try(local.planning_weights * var.workspace_fraction, null)
+  planning_base        = try((var.weight_budget_gb > 0 ? local.planning_weights : max(local.planning_weights, coalesce(local.safe_shard_sizes, local.planning_weights))) + local.planning_cache, null)
+  planning_uncertainty = try(max(local.supported ? 0 : local.workspace, local.planning_base * var.margin), null)
+  planning_payload     = var.planning_budget_gb > 0 ? var.planning_budget_gb * 1e9 : try(ceil(local.planning_base + local.planning_uncertainty), null)
   planning = {
     status                          = local.planning_payload == null ? "missing_inputs" : var.planning_budget_gb > 0 ? "user_declared" : local.supported ? "structural_estimate" : "heuristic_uncalibrated"
     weight_bytes                    = local.planning_weights
@@ -33,13 +35,14 @@ locals {
     cache_scenario_bytes            = local.planning_cache
     cache_source                    = local.kv_bytes != null ? "ordinary_full_context_attention" : local.dense_kv_scenario != null ? "all_layer_dense_surrogate_not_upper_bound" : "weight_fraction_uncalibrated"
     workspace_allowance_bytes       = local.supported ? 0 : local.workspace
+    uncertainty_allowance_bytes     = local.planning_uncertainty
     payload_budget_bytes            = local.planning_payload
     runtime_allowance_per_gpu_bytes = local.runtime_bytes
     safety_margin_fraction          = var.margin
     unknown_cache_fraction          = var.unknown_cache_fraction
     workspace_fraction              = var.workspace_fraction
     context_within_declared_maximum = try(var.context_length <= local.max_context, null)
-    formula                         = "payload = (native weight baseline + cache scenario + workspace allowance) * (1 + margin); each GPU separately reserves runtime allowance and 10% device headroom"
+    formula                         = "base = native weight baseline + cache scenario; payload = base + max(workspace allowance, base * margin); each GPU separately reserves runtime allowance and 10% device headroom"
     interpretation                  = "Planning scenario, not a guaranteed upper bound, measured resident allocation or proof of per-rank fit. All expert weights remain resident; no CPU offload."
   }
 }

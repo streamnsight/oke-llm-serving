@@ -171,7 +171,7 @@ test("capacity table shows per-AD supply and shared regional limit without a reg
   assert.match(nodes.capacity.children[1].children[0].textContent,/region-a AD-2/);
   assert.match(nodes.capacity.children[0].children[2].textContent.replace(/\s+/g," "),/34 GPUs \/ 34 hosts physically available/);
   assert.match(nodes.capacity.children[1].children[2].textContent.replace(/\s+/g," "),/20 GPUs \/ 20 hosts physically available/);
-  assert.match(nodes.capacity.textContent.replace(/\s+/g," "), /Region: 4 GPUs Remaining headroom: 2 GPUs/);
+  assert.match(nodes.capacity.textContent.replace(/\s+/g," "), /limit 4 \/ left 2 Region · GPUs/);
   assert.doesNotMatch(nodes.capacity.textContent, /54 GPUs|hosts in region/);
 });
 test("unknown limits and quota units are explicit; zero headroom is not unknown", () => {
@@ -203,7 +203,7 @@ test("each AD row keeps its own limits and exclusion badge and is searchable by 
   const [first,second]=nodes.capacity.children;
   assert.match(first.textContent,/Review limit increase/);assert.doesNotMatch(second.textContent,/Review limit increase/);
   assert.doesNotMatch(first.textContent,/999/);assert.doesNotMatch(second.textContent,/999/);
-  assert.match(second.children[3].textContent.replace(/\s+/g," "),/AD AD-2: 32 GPUs/);
+  assert.match(second.children[3].textContent.replace(/\s+/g," "),/limit 32 \/ left 8 AD AD-2 · GPUs/);
   nodes["capacity-search"].value="AD-2";nodes["capacity-search"].events.input();
   assert.equal(nodes.capacity.children.length,1);assert.match(nodes.capacity.children[0].children[0].textContent,/AD-2/);
 });
@@ -220,4 +220,10 @@ test("generic planning scenario is numeric and explicitly heuristic without depl
   assert.match(nodes["memory-metrics"].textContent,/3,768 GB|3768 GB/);
   assert.match(nodes["memory-status"].textContent,/Heuristic planning scenario available/);
   assert.match(nodes["memory-status"].textContent,/not a guaranteed upper bound/);
+});
+
+test("regional quota uses limit / left labels and preserves AD scope, zero and unknown", () => {
+ const {nodes}=execute({regional_capacity:[{region:"us-phoenix-1",gpu_shape:"VM.GPU.A10.1",gpus_per_host:1,availability_domains:[{availability_domain:"jVha:PHX-AD-3",available_hosts:8,limits:[{...quota("AD",32,32),availability_domain:"jVha:PHX-AD-3"},{...quota("REGION",null,0)}]}]}]});
+ const text=nodes.capacity.textContent.replace(/\s+/g," ");
+ assert.match(text,/limit 32 \/ left 32/);assert.match(text,/AD jVha:PHX-AD-3 · GPUs/);assert.match(text,/limit Unknown \/ left 0/);
 });

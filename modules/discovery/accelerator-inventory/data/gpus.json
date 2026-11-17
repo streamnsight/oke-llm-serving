@@ -1,6 +1,6 @@
 {
   "schema_version": "1.0",
-  "reviewed_at": "2026-11-11",
+  "reviewed_at": "2026-11-16",
   "source": "https://docs.oracle.com/en-us/iaas/Content/Compute/References/computeshapes.htm",
   "compute_capability_sources": [
     "https://developer.nvidia.com/cuda/gpus",
@@ -218,6 +218,16 @@
       "compute_cluster_supported": false,
       "recipe_hardware": "gb300",
       "cpu_architecture": "arm64"
+    },
+    "BM.GPU.B4.8": {
+      "gpu": "A100-40GB",
+      "gpus": 8,
+      "memory_bytes_per_gpu": 40000000000,
+      "compute_capability": 80,
+      "rdma": true,
+      "compute_cluster_supported": false,
+      "recipe_hardware": "a100-40gb",
+      "cpu_architecture": "amd64"
     }
   },
   "compute_cluster_source": "https://docs.oracle.com/en-us/iaas/Content/Compute/Tasks/compute-clusters.htm",
@@ -251,5 +261,8 @@
     "us-phoenix-1",
     "us-sanjose-1"
   ],
-  "platform_notes": "CPU architecture and recipe hardware labels describe listed OCI shapes; a GB200 host is not interchangeable with an x86 B200 host. Validate against the selected OKE image and live shape documentation."
+  "platform_notes": "CPU architecture and recipe hardware labels describe listed OCI shapes; a GB200 host is not interchangeable with an x86 B200 host. Validate against the selected OKE image and live shape documentation.",
+  "shape_sources": {
+    "BM.GPU.B4.8": "https://raw.githubusercontent.com/oracle-samples/oci-data-science-ai-samples/main/ai-quick-actions/supported-gpu-shapes.md"
+  }
 }

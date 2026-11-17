@@ -136,3 +136,7 @@ test('an explicit unmatched shape is not silently expanded to every GPU',()=>{
  assert.equal(r.status,0,r.stderr);assert.equal(r.result.regions[0].inventory.availability_domains[0].shapes.length,0);
  assert.equal(r.result.regions[0].capacity.availability_domains[0].status,'no_gpu_shapes_listed');
 });
+test('live B4 shape retains its reviewed GPU memory source in CLI inventory',()=>{
+ const result=spawnSync('jq',['-L',resolve(root,'modules/discovery/oci-discovery/scripts/lib'),'--slurpfile','catalog',resolve(root,'modules/discovery/accelerator-inventory/data/gpus.json'),'include "oci-discovery"; inventory_shapes($catalog[0])'],{input:JSON.stringify([{shape:'BM.GPU.B4.8',gpus:8,gpu_description:'NVIDIA A100',memory_in_gbs:2048}]),encoding:'utf8'});
+ assert.equal(result.status,0,result.stderr);const shape=JSON.parse(result.stdout)[0];assert.equal(shape.gpu_memory_bytes_per_gpu,40000000000);assert.match(shape.gpu_memory_source,/supported-gpu-shapes\.md$/);
+});

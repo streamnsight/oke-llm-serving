@@ -100,7 +100,7 @@ if (model.planning_memory?.selected_payload_budget_bytes > 0) {
 }
 if (model.component_planning?.payload_budget_bytes > 0) {
   const p = model.component_planning, box = details($("memory-status"), "Memory planning scenario and assumptions", "recipe-details");
-  facts(add(box, "dl", undefined, "facts"), [["Planning payload / replica", gb(p.payload_budget_bytes / 1e9)], ["Cache scenario", gb(p.cache_scenario_bytes == null ? null : p.cache_scenario_bytes / 1e9)], ["Workspace allowance", gb(p.workspace_allowance_bytes == null ? null : p.workspace_allowance_bytes / 1e9)], ["Evidence / confidence", text(p.weight_source) + " / " + text(p.status)], ["Cache basis", text(p.cache_source)], ["Margin", number(p.safety_margin_fraction * 100) + "%"]]);
+  facts(add(box, "dl", undefined, "facts"), [["Planning payload / replica", gb(p.payload_budget_bytes / 1e9)], ["Cache scenario", gb(p.cache_scenario_bytes == null ? null : p.cache_scenario_bytes / 1e9)], ["Workspace component of uncertainty", gb(p.workspace_allowance_bytes == null ? null : p.workspace_allowance_bytes / 1e9)], ["Evidence / confidence", text(p.weight_source) + " / " + text(p.status)], ["Cache basis", text(p.cache_source)], ["Margin", number(p.safety_margin_fraction * 100) + "%"]]);
   add(box, "p", p.formula); add(box, "p", p.interpretation);
   if (p.storage_metadata_conflict) add(box, "p", "Tensor counts and complete shard sizes disagree; planning retains the larger storage baseline. Verify the selected checkpoint.");
   if (p.context_within_declared_maximum === false) add(box, "p", "Requested context exceeds the model's declared maximum; deployment requires an explicitly supported extension.");
@@ -221,8 +221,12 @@ function renderCapacity() {
     const limits = ad.limits || [];
     if (!limits.length) add(cells[3], "div", "Configured limit and headroom unknown");
     for (const limit of limits) {
-      capacityQuantity(cells[3], limit.current_limit, text(limit.unit), limitScope(limit) + ": ");
-      capacityQuantity(cells[3], limit.remaining_headroom, text(limit.unit), "Remaining headroom: ");
+      const amounts = add(cells[3], "div");
+      add(amounts, "span", "limit ");
+      add(amounts, limit.current_limit == null || limit.current_limit < 0 ? "span" : "strong", limit.current_limit == null || limit.current_limit < 0 ? "Unknown" : number(limit.current_limit));
+      add(amounts, "span", " / left ");
+      add(amounts, limit.remaining_headroom == null || limit.remaining_headroom < 0 ? "span" : "strong", limit.remaining_headroom == null || limit.remaining_headroom < 0 ? "Unknown" : number(limit.remaining_headroom));
+      add(cells[3], "small", limitScope(limit) + " · " + text(limit.unit));
       add(cells[3], "small", limit.name);
     }
     if ((ad.limit_increase_requests || []).length) badge(cells[4], "Review limit increase", true);

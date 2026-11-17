@@ -36,7 +36,7 @@ locals {
     [local.memory_supported ? "" : "Serving layout is unverified; review model planning estimates and assumptions: ${join("; ", try(local.profile.memory.reasons, []))}"],
     [anytrue([for check in local.engine_checks : check.architecture_ok]) ? "" : "No reviewed engine supports the declared architecture: ${join(", ", try(local.profile.architecture.architectures, []))}. This is a catalog coverage limit, not proof the upstream engine cannot serve it."],
     [length(local.usable_engines) > 0 || !anytrue([for check in local.engine_checks : check.architecture_ok]) ? "" : "No architecture-compatible engine satisfies the extracted version hints."],
-    [try(local.profile.model.pipeline_tag == "text-generation" && local.profile.model.chat_template_available, false) ? "" : "The initial recipe requires text generation and a declared chat template."]
+    [try(local.profile.model.pipeline_tag == "text-generation" && local.profile.model.chat_template_available, false) || try(contains(local.api.meta.tasks, "text") && local.profile.model.chat_template_available, false) ? "" : "The initial recipe requires text generation and a declared chat template."]
   ))
   shape_rows = flatten([for region in var.regions : [for ad in region.inventory.availability_domains : [for shape in ad.shapes : {
     region               = region.inventory.region, ad = ad.name, shape = shape
@@ -131,6 +131,7 @@ output "assessment" {
     capacity_and_headroom_shapes   = local.capacity_and_headroom_shapes
     limit_increase_recommendations = local.limit_increase_recommendations
     blocking_reasons               = local.blocking_reasons
+    recipe_layout_rejections       = local.recipe_layout_rejections
     evaluated_layout_count         = length(local.evaluated)
     rejection_counts = {
       layout_or_catalog = length([for layout in local.evaluated : true if length(layout.reasons) > 0])

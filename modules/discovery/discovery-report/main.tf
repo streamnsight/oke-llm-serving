@@ -192,8 +192,9 @@ locals {
     status                = length(local.choices) > 0 ? "confirmed_capacity_options_available" : "no_confirmed_options",
     failure_summary = length(local.choices) > 0 ? [] : distinct(concat(
       try(var.assessment.blocking_reasons, []),
+      try(var.assessment.recipe_layout_rejections, []),
       [for request in try(var.assessment.limit_increase_recommendations, []) : "GPU limit increase: ${request.limit_name} in ${request.region}${request.availability_domain == null ? "" : "/${request.availability_domain}"}; current limit ${request.current_limit}."],
-      flatten([for row in try(var.assessment.shape_observations, []) : try(row.exclusion_reasons, [])]),
+      flatten([for row in try(var.assessment.shape_observations, []) : [for reason in try(row.exclusion_reasons, []) : "${row.region}/${row.availability_domain}/${row.shape}: ${reason}"] if try(row.capacity_status == "positive", false) || !anytrue([for observed in try(var.assessment.shape_observations, []) : try(observed.capacity_status == "positive", false)])]),
       length(try(var.assessment.blocking_reasons, [])) == 0 && length(try(var.assessment.shape_observations, [])) == 0 ? ["No confirmed model/hardware options were produced. Review model requirements and regional capacity and limit details."] : []
     )),
     notices = ["Memory uses decimal GB (1 GB = 1,000,000,000 bytes). Null means unknown, not zero.", "Physical supply is shown per AD for each exact shape. A node-pool option can use only its selected AD; supply in other ADs cannot satisfy that allocation.", "Different shapes may share supply. Entitlement ceilings are not additive across ADs or regions. Capacity is a snapshot, not a reservation.", "All serving configurations require runtime validation; infrastructure links do not establish CUDA/RDMA/API/performance compatibility."],

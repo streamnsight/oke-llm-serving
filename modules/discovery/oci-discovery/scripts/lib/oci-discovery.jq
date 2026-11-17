@@ -7,7 +7,7 @@ def inventory_shapes($catalog): [ .[] | . as $s | $catalog.shapes[.shape].memory
   local_disks_total_size_in_gbs, rdma_ports, rdma_bandwidth_in_gbps,
   quota_names:(.quota_names // [] | unique), gpu_memory_gib:(if $memory>0 then $memory/1073741824 else null end),
   gpu_memory_bytes_per_gpu:(if $memory>0 then $memory else null end),
-  gpu_memory_source:(if $memory>0 then $catalog.source else null end), nvlink_topology:null
+  gpu_memory_source:(if $memory>0 then ($catalog.shape_sources[.shape] // $catalog.source) else null end), nvlink_topology:null
 }];
 def limit_plan($q; $defs; $quotas):
   [.[] | select(.name as $n | $quotas|index($n)) |
