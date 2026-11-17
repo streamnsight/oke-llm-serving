@@ -12,12 +12,12 @@ run "legacy_topic_preserves_project_and_namespace_identity" {
   command   = plan
   state_key = "migration"
   variables {
-    name           = "legacy-model"
+    name           = "legacy--model"
     compartment_id = "compartment"
     target         = { cluster_id = "cluster", runner_subnet_id = "subnet", runner_nsg_ids = [], metadata_ready = true, issues = [] }
   }
   assert {
-    condition     = output.resources.project_name == run.legacy_stack.project_name && output.resources.instance_key == null && oci_ons_notification_topic.model.name == run.legacy_stack.topic_name
+    condition     = output.resources.project_name == run.legacy_stack.project_name && output.resources.instance_key == null && oci_ons_notification_topic.model.name == run.legacy_stack.topic_name && output.resources.log_group_name == run.legacy_stack.log_group_name
     error_message = "An existing unsuffixed topic must retain its project name and original default namespace."
   }
 }

@@ -9,7 +9,7 @@ variables {
 run "owns_new_metadata_before_any_gpu_pool_exists" {
   command = apply
   assert {
-    condition     = output.resources.project_id == oci_devops_project.model.id && startswith(oci_devops_project.model.name, "independent-model-") && oci_artifacts_repository.scripts.is_immutable && oci_artifacts_repository.results.is_immutable
+    condition     = output.resources.project_id == oci_devops_project.model.id && startswith(oci_devops_project.model.name, "independent-model-") && oci_logging_log_group.model.display_name == oci_devops_project.model.name && oci_artifacts_repository.scripts.is_immutable && oci_artifacts_repository.results.is_immutable
     error_message = "Each model stack owns its own project and immutable software/results repositories."
   }
   assert {

@@ -14,3 +14,9 @@ resource "oci_devops_project" "model" {
 }
 output "topic_name" { value = oci_ons_notification_topic.model.name }
 output "project_name" { value = oci_devops_project.model.name }
+
+resource "oci_logging_log_group" "model" {
+  compartment_id = "compartment"
+  display_name   = "legacy--model"
+}
+output "log_group_name" { value = oci_logging_log_group.model.display_name }

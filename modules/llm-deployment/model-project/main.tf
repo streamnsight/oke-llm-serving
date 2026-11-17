@@ -20,6 +20,9 @@ resource "oci_ons_notification_topic" "model" {
     ignore_changes = [name]
   }
 }
+locals {
+  metadata_name = oci_ons_notification_topic.model.name == "${local.service_name}-notifications" ? var.name : trimsuffix(oci_ons_notification_topic.model.name, "-notifications")
+}
 resource "oci_devops_project" "model" {
   compartment_id = var.compartment_id
   name           = trimsuffix(oci_ons_notification_topic.model.name, "-notifications")
@@ -34,10 +37,10 @@ resource "oci_devops_project" "model" {
 }
 resource "oci_logging_log_group" "model" {
   compartment_id = var.compartment_id
-  display_name   = var.name
+  display_name   = local.metadata_name
 }
 resource "oci_logging_log" "model" {
-  display_name = var.name
+  display_name = local.metadata_name
   log_group_id = oci_logging_log_group.model.id
   log_type     = "SERVICE"
   is_enabled   = true
@@ -53,21 +56,21 @@ resource "oci_logging_log" "model" {
 }
 resource "oci_artifacts_repository" "scripts" {
   compartment_id  = var.compartment_id
-  display_name    = "${var.name}-scripts"
+  display_name    = "${local.metadata_name}-scripts"
   description     = "Immutable model pipeline scripts, chart inputs and frozen specifications; no model weights."
   repository_type = "GENERIC"
   is_immutable    = true
 }
 resource "oci_artifacts_repository" "results" {
   compartment_id  = var.compartment_id
-  display_name    = "${var.name}-results"
+  display_name    = "${local.metadata_name}-results"
   description     = "Immutable validation and benchmark results for this independent model project."
   repository_type = "GENERIC"
   is_immutable    = true
 }
 resource "oci_devops_deploy_environment" "model" {
   project_id              = oci_devops_project.model.id
-  display_name            = "${var.name}-oke"
+  display_name            = "${local.metadata_name}-oke"
   deploy_environment_type = "OKE_CLUSTER"
   cluster_id              = var.target.cluster_id
   network_channel {
@@ -81,7 +84,7 @@ output "resources" {
     project_id            = oci_devops_project.model.id, project_name = oci_devops_project.model.name,
     deploy_environment_id = oci_devops_deploy_environment.model.id, compartment_id = var.compartment_id,
     script_repository_id  = oci_artifacts_repository.scripts.id, result_repository_id = oci_artifacts_repository.results.id,
-    log_group_id          = oci_logging_log_group.model.id
+    log_group_id          = oci_logging_log_group.model.id, log_group_name = oci_logging_log_group.model.display_name
     instance_key          = oci_ons_notification_topic.model.name == "${local.service_name}-notifications" ? null : oci_ons_notification_topic.model.name
   }
 }
