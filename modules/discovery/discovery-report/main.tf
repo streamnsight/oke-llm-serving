@@ -50,6 +50,9 @@ locals {
   minimum_model_hosts = { for key, shape in local.shape_contexts : key => try(
     local.model_budget_bytes > 0 && shape.memory_bytes_per_gpu * 0.9 > try(var.profile.memory.runtime_allowance_bytes, 0) ? ceil(local.model_budget_bytes / (one(shape.gpu_counts) * (shape.memory_bytes_per_gpu * 0.9 - try(var.profile.memory.runtime_allowance_bytes, 0)))) : null, null
   ) }
+  minimum_model_gpus = { for key, shape in local.shape_contexts : key => try(
+    local.model_budget_bytes > 0 && shape.memory_bytes_per_gpu * 0.9 > try(var.profile.memory.runtime_allowance_bytes, 0) ? ceil(local.model_budget_bytes / (shape.memory_bytes_per_gpu * 0.9 - try(var.profile.memory.runtime_allowance_bytes, 0))) : null, null
+  ) }
   ad_limits = { for key, ad in local.ad_observations : key => distinct(flatten([
     for row in local.inventory_rows : row.limits if jsonencode([row.region, row.shape]) == ad.shape_key && row.ad == ad.availability_domain
   ])) }
@@ -81,6 +84,7 @@ locals {
     dtype_compatibility     = try(var.assessment.precision_compatibility[shape.shape], { status = "not_verified", reason = "No dtype compatibility assessment is available.", required_precision = "unknown" }),
     memory_gb_per_gpu       = try(shape.memory_bytes_per_gpu / 1e9, null),
     minimum_model_hosts     = local.minimum_model_hosts[key], model_sizing_basis = local.model_budget_basis,
+    minimum_model_gpus      = local.minimum_model_gpus[key],
     limit_increase_possible = anytrue([for ad in values(local.ad_details) : length(ad.limit_increase_requests) > 0 if ad.shape_key == key]),
     gpus_per_host           = length(shape.gpu_counts) == 1 ? shape.gpu_counts[0] : null,
     expected_ads            = length(shape.ads), known_ads = length([for ad in values(local.ad_observations) : ad if ad.shape_key == key && ad.known]),

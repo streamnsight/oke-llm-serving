@@ -49,7 +49,7 @@ test("option sections start collapsed and retain packing, both stack URLs and ex
   assert.equal(nodes.options.children.length, 2);
   assert.ok(created.filter(node => node.className === "option").every(node => node.tag === "details" && !node.open));
   assert.match(nodes.options.textContent, /GPUs needed per replica/);
-  assert.match(nodes.options.textContent, /replicas in 1 × 8-GPU hosts/);
+  assert.match(nodes.options.textContent, /2 replicas · 8 GPUs allocated/);
   assert.match(nodes.options.textContent, /136 GPUs \/ 17 hosts/);
   assert.match(nodes.options.textContent, /expiry-time/);
   const hrefs = created.filter(node => node.tag === "a").map(node => node.href);
@@ -152,8 +152,8 @@ test("options group by region while each node pool shows only its selected AD su
   const cards = created.filter(node => node.className === "option");
   assert.equal(cards.length, 3, "keep each AD-specific stack choice and its links");
   assert.match(cards[0].children[0].textContent, /34 GPUs physically available in selected AD/);
-  assert.match(cards[0].children[0].textContent, /Region: 4 GPUs Current configured limit/);
-  assert.match(cards[0].children[0].textContent, /Remaining headroom: Region: 2 GPUs/);
+  assert.match(cards[0].children[0].textContent.replace(/\s+/g," "), /Region: 4 \(below required allocation of 8 GPUs\) GPUs Current configured limit/);
+  assert.match(cards[0].children[0].textContent.replace(/\s+/g," "), /Remaining headroom: Region: 2 \(below required allocation of 8 GPUs\) GPUs/);
   assert.doesNotMatch(cards[0].children[0].textContent, /999|reported in region/);
   assert.match(cards[1].children[0].textContent, /AD-2/);
   nodes.search.value = "AD-2"; nodes.search.events.input();
@@ -169,8 +169,8 @@ test("capacity table shows per-AD supply and shared regional limit without a reg
   assert.equal(nodes.capacity.children.length,2);
   assert.match(nodes.capacity.children[0].children[0].textContent,/region-a AD-1/);
   assert.match(nodes.capacity.children[1].children[0].textContent,/region-a AD-2/);
-  assert.match(nodes.capacity.children[0].children[2].textContent.replace(/\s+/g," "),/34 GPUs \/ 34 hosts physically available/);
-  assert.match(nodes.capacity.children[1].children[2].textContent.replace(/\s+/g," "),/20 GPUs \/ 20 hosts physically available/);
+  assert.match(nodes.capacity.children[0].children[4].textContent.replace(/\s+/g," "),/34 GPUs \/ 34 hosts physically available/);
+  assert.match(nodes.capacity.children[1].children[4].textContent.replace(/\s+/g," "),/20 GPUs \/ 20 hosts physically available/);
   assert.match(nodes.capacity.textContent.replace(/\s+/g," "), /limit 4 \/ left 2 Region · GPUs/);
   assert.doesNotMatch(nodes.capacity.textContent, /54 GPUs|hosts in region/);
 });
@@ -178,7 +178,7 @@ test("unknown limits and quota units are explicit; zero headroom is not unknown"
   const row = option("region-a");
   row.capacity.limits = [{...quota("GLOBAL", null, 0), unit: "units (unverified)"}];
   const {created} = execute({options: {row}, option_count: 1});
-  const summary = created.find(node => node.className === "option").children[0].textContent;
+  const summary = created.find(node => node.className === "option").children[0].textContent.replace(/\s+/g," ");
   assert.match(summary, /Global: Unknown units \(unverified\)/);
   assert.match(summary, /Remaining headroom: Global: 0 units \(unverified\)/);
 });
@@ -186,7 +186,7 @@ test("unknown limits and quota units are explicit; zero headroom is not unknown"
 test("capacity rows put region and AD first and bold only numeric quantities beside normal units", () => {
   const ad="jVha:AP-MELBOURNE-1-AD-1";
   const {nodes}=execute({regional_capacity:[{region:"ap-melbourne-1",gpu_shape:"BM.GPU.A10.4",memory_gb_per_gpu:24,gpus_per_host:4,known_ads:1,expected_ads:1,minimum_model_hosts:1,availability_domains:[{availability_domain:ad,available_hosts:7,entitled_hosts:3,limits:[quota("REGION",32,12)],limit_increase_requests:[]}]}]});
-  const row=nodes.capacity.children[0],[identity,perHost,physical,limits]=row.children;
+  const row=nodes.capacity.children[0],[identity,needed,perHost,limits,physical]=row.children;
   assert.equal(identity.children[0].tag,"strong");assert.equal(identity.children[0].textContent,"ap-melbourne-1 "+ad);
   assert.equal(identity.children[1].textContent,"BM.GPU.A10.4");assert.equal(identity.children[1].tag,"div");
   assert.equal(identity.children[2].textContent,"24 GB per GPU");
@@ -232,8 +232,62 @@ test("selected AD is omitted only from the collapsed quota summary", () => {
  const row=option("ca-montreal-1");row.availability_domain="jVha:CA-MONTREAL-1-AD-1";
  row.capacity.limits=[{...quota("AD",56,52),availability_domain:row.availability_domain}];
  const {created}=execute({options:{row},option_count:1});const card=created.find(n=>n.className==="option");
- const quotaSummary=card.children[0].children.at(-1).textContent;
+ const quotaSummary=card.children[0].children[3].textContent.replace(/\s+/g," ");
  assert.match(quotaSummary,/56 GPUs/);assert.match(quotaSummary,/Remaining headroom: 52 GPUs/);
  assert.doesNotMatch(quotaSummary,/jVha|AD /);assert.match(card.children[0].children[0].textContent,/jVha:CA-MONTREAL-1-AD-1/);
  assert.match(card.children[1].textContent,/AD jVha:CA-MONTREAL-1-AD-1/);
+});
+
+
+test("option summary puts sizing and hosts before quota and available supply", () => {
+  const {created} = execute();
+  const summary = created.find(node => node.className === "option").children[0];
+  const stats = summary.children.slice(1);
+  assert.match(stats[0].textContent, /^4 GPUs needed per replica/);
+  assert.match(stats[1].textContent, /^1 Hosts · 8 GPUs each/);
+  assert.match(stats[1].textContent, /2 replicas · 8 GPUs allocated/);
+  assert.match(stats[2].textContent, /Current configured limit/);
+  assert.match(stats[3].textContent, /^136 GPUs physically available/);
+});
+
+test("regional columns compare each GPU quantity with the full host allocation", () => {
+  const {nodes, created} = execute({regional_capacity: [{
+    region: "region", gpu_shape: "GPU.8", gpus_per_host: 8, minimum_model_gpus: 9, minimum_model_hosts: 2,
+    availability_domains: [{availability_domain: "AD", available_hosts: 1, limits: [quota("REGION", 8, 4)]}]
+  }]});
+  const [identity, needed, perHost, limits, physical] = nodes.capacity.children[0].children;
+  assert.match(identity.textContent, /region AD/);
+  assert.match(needed.textContent, /^9 Memory lower bound \/ replica Allocate 16 GPUs \/ 2 hosts/);
+  assert.equal(perHost.textContent, "8");
+  assert.match(limits.textContent.replace(/\s+/g," "), /limit 8/);
+  assert.match(physical.textContent, /^8/);
+  const short = created.filter(node => node.className === "insufficient");
+  assert.deepEqual(short.map(node => node.textContent), ["8", "8", "4"]);
+  assert.ok(short.every(node => node.title.includes("16 GPUs")));
+  assert.match(template, /GPUs needed<\/th>.*GPUs per host<\/th>.*Current limit and headroom<\/th>.*Physical capacity per AD<\/th>/);
+});
+
+test("quota and capacity equality suffice; unknown sizing or quota units stay neutral", () => {
+  for (const [needed, hosts, limit, left, unit, available, expected] of [
+    [4, 1, 8, 8, "GPUs", 1, 0],
+    [4, 1, 8, 0, "GPUs", 1, 1],
+    [4, 1, 4, 8, "GPUs", 1, 1],
+    [4, 1, null, -1, "GPUs", 1, 0],
+    [4, 1, 0, 0, "units (unverified)", 1, 0],
+    [null, null, 0, 0, "GPUs", 1, 0],
+    [9, 2, 16, 16, "GPUs", 1, 1],
+  ]) {
+    const {created} = execute({options: {}, option_count: 0, regional_capacity: [{
+      region: "region", gpu_shape: "GPU.8", gpus_per_host: 8, minimum_model_gpus: needed, minimum_model_hosts: hosts,
+      availability_domains: [{availability_domain: "AD", available_hosts: available, limits: [{...quota("AD", limit, left), unit}]}]
+    }]});
+    assert.equal(created.filter(node => node.className === "insufficient").length, expected, JSON.stringify({needed, hosts, limit, left, unit, available}));
+  }
+});
+
+test("option quota and physical shortages are marked individually against allocated GPUs", () => {
+  const row = option("region");
+  row.capacity = {...row.capacity, ad_available_gpus: 4, limits: [quota("REGION", 4, 8), {...quota("GLOBAL", 0, 0), unit: "units (unverified)"}]};
+  const {created} = execute({options: {row}, option_count: 1});
+  assert.deepEqual(created.filter(node => node.className === "insufficient").map(node => node.textContent), ["4", "4"]);
 });
