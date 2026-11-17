@@ -14,10 +14,12 @@ data "http" "pp_support" {
   }
 }
 locals {
-  pp_table_lines          = split("\n", try(data.http.pp_support[0].response_body, ""))
-  pp_headers              = [for line in local.pp_table_lines : split("|", line) if startswith(trimspace(line), "| Architecture")]
-  pp_table_valid          = length(local.pp_headers) > 0 && alltrue([for cells in local.pp_headers : strcontains(try(cells[length(cells) - 2], ""), "[PP]")])
-  pp_source_architectures = [for arch in try(local.profile.architecture.architectures, []) : arch if local.pp_table_valid && anytrue([for line in local.pp_table_lines : try(strcontains(split("|", line)[1], "`${arch}`") && strcontains(reverse(split("|", trimspace(line)))[1], "✅"), false)])]
+  # Evaluate each table with its own header. The upstream page also contains
+  # plugin tables without a PP column; those must neither block nor prove PP.
+  pp_tables = [for block in split("\n\n", replace(try(data.http.pp_support[0].response_body, ""), "\r\n", "\n")) : split("\n", trimspace(block)) if
+    startswith(trimspace(block), "| Architecture") && try(strcontains(reverse(split("|", split("\n", trimspace(block))[0]))[1], "[PP]"), false)
+  ]
+  pp_source_architectures = [for arch in try(local.profile.architecture.architectures, []) : arch if anytrue([for line in flatten(local.pp_tables) : try(strcontains(split("|", line)[1], "`${arch}`") && strcontains(reverse(split("|", trimspace(line)))[1], "✅"), false)])]
   pp_evidence = try(var.serving_resolution.engine.pipeline_parallel_support, {
     architectures  = local.pp_source_architectures
     source_url     = try(data.http.pp_support[0].url, null)

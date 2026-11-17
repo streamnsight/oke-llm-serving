@@ -26,7 +26,7 @@ override_data {
 
 override_data {
  target = data.http.pp_support[0]
- values = {status_code=200,response_body="| Architecture | Models | LoRA | [PP](parallel.md) |\n| `DenseForCausalLM` | Dense | ✅ | ✅ |\n"}
+ values = {status_code=200,response_body="| Architecture | Models | Plugin Repository |\n| `DenseForCausalLM` | Dense plugin | ✅ |\n\n| Architecture | Models | Example HF Models | [LoRA](lora.md) | [PP](parallel.md) |\n| `DenseForCausalLM` | Dense | org/dense | ✅ | ✅ |\n"}
 }
 
 run "two_hosts_form_one_distributed_replica" {
@@ -107,7 +107,7 @@ run "missing_PP_support_is_not_a_LoRA_tick" {
 
 override_data {
  target = data.http.pp_support[0]
- values = {status_code=200,response_body="| Architecture | Models | LoRA | [PP](parallel.md) |\n| `DenseForCausalLM` | Dense | ✅ | ❌ |\n"}
+ values = {status_code=200,response_body="| Architecture | Models | Plugin Repository |\n| `DenseForCausalLM` | Dense plugin | ✅ |\n\n| Architecture | Models | LoRA | [PP](parallel.md) |\n| `DenseForCausalLM` | Dense | ✅ | ❌ |\n"}
 }
  assert {
  condition = length(output.assessment.suggestions)==0
