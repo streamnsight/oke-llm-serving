@@ -7,17 +7,22 @@ terraform {
 variable "name" { type = string }
 variable "compartment_id" { type = string }
 variable "target" { type = any }
+resource "terraform_data" "identity" {}
 locals {
   # DNS-compatible model names can contain consecutive dashes; OCI service names cannot.
   service_name = replace(var.name, "/-+/", "-")
 }
 resource "oci_ons_notification_topic" "model" {
   compartment_id = var.compartment_id
-  name           = "${local.service_name}-notifications"
+  name           = "${local.service_name}-${substr(replace(terraform_data.identity.id, "-", ""), 0, 12)}-notifications"
+  lifecycle {
+    # Keep legacy topics and their project/namespace identity on source upgrades.
+    ignore_changes = [name]
+  }
 }
 resource "oci_devops_project" "model" {
   compartment_id = var.compartment_id
-  name           = local.service_name
+  name           = trimsuffix(oci_ons_notification_topic.model.name, "-notifications")
   description    = "Independent model lifecycle: deploy, validate, benchmark and undeploy on separately retained GPU infrastructure."
   notification_config { topic_id = oci_ons_notification_topic.model.id }
   lifecycle {
@@ -77,5 +82,6 @@ output "resources" {
     deploy_environment_id = oci_devops_deploy_environment.model.id, compartment_id = var.compartment_id,
     script_repository_id  = oci_artifacts_repository.scripts.id, result_repository_id = oci_artifacts_repository.results.id,
     log_group_id          = oci_logging_log_group.model.id
+    instance_key          = oci_ons_notification_topic.model.name == "${local.service_name}-notifications" ? null : oci_ons_notification_topic.model.name
   }
 }

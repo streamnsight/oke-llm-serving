@@ -54,6 +54,8 @@ The model release uses a repository-owned workload chart for Deployment or LWS i
 
 Small scripts, specifications and values use readable inline DevOps artifacts. Required file inputs and downloadable benchmark results use Generic Artifact Registry; routine deployment, readiness and failure reports go to DevOps logs. Helm charts use OCIR. Object Storage holds discovery/model stack bundles and optional retained model data.
 
+New model stacks use a state-persisted instance suffix for their notification topic and project, and a separate default namespace. Two stacks for the same model can coexist without sharing ownership. Existing stacks retain their legacy names on source upgrades; explicit namespace overrides remain unchanged.
+
 Undeploy removes only the owned model release and its model-specific resources. It preserves namespaces, retained data, shared controllers and GPU hosts. Revoke access before destroying the model's metadata/project. Terraform destruction of pipeline definitions alone does not uninstall an imperative Helm release; use the explicit guarded undeploy flow first.
 
 ## Current validation limits

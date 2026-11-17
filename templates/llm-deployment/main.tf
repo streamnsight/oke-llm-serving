@@ -5,13 +5,17 @@ terraform {
   required_providers { oci = { source = "oracle/oci", version = "~> 9.12" } }
 }
 locals {
-  model               = try(jsondecode(file("${path.module}/inputs/model-spec.json")), null)
-  configured          = local.model != null
-  compartment_id      = coalesce(var.compartment_id, var.compartment_ocid, var.tenancy_ocid)
-  expected_region     = try(local.model.selection.region, null)
-  model_name          = coalesce(var.model_name, "model-${substr(sha256(try(local.model.model.repository, "unconfigured/model")), 0, 10)}")
-  model_namespace     = coalesce(var.namespace, "${try(module.target[0].target.platform_name, coalesce(var.platform_name, "llm-platform"))}-model-${substr(sha256(local.model_name), 0, 12)}")
-  project_name        = "${local.model_name}-${substr(sha256("${var.cluster_id}/${local.model_namespace}"), 0, 8)}"
+  model           = try(jsondecode(file("${path.module}/inputs/model-spec.json")), null)
+  configured      = local.model != null
+  compartment_id  = coalesce(var.compartment_id, var.compartment_ocid, var.tenancy_ocid)
+  expected_region = try(local.model.selection.region, null)
+  model_name      = coalesce(var.model_name, "model-${substr(sha256(try(local.model.model.repository, "unconfigured/model")), 0, 10)}")
+  namespace_base  = coalesce(var.namespace, "${try(module.target[0].target.platform_name, coalesce(var.platform_name, "llm-platform"))}-model-${substr(sha256(local.model_name), 0, 12)}")
+  project_name    = "${local.model_name}-${substr(sha256("${var.cluster_id}/${local.namespace_base}"), 0, 8)}"
+  # Legacy projects keep their retained namespace. New stack instances receive
+  # a separate default namespace; an explicit namespace remains an expert choice.
+  model_namespace = coalesce(var.namespace, try(module.project[0].resources.instance_key, null) == null ? local.namespace_base :
+  "${try(module.target[0].target.platform_name, coalesce(var.platform_name, "llm-platform"))}-model-${substr(sha256("${local.model_name}/${module.project[0].resources.instance_key}"), 0, 12)}")
   assessed_components = try(local.model.selection.platform_plan.components, {})
   hosts_per_replica   = coalesce(var.hosts_per_replica, var.pipeline_parallel_size, try(local.model.selection.hosts_per_replica, null), try(local.model.selection.pipeline_parallel_size, null), 1)
   monitoring_required = var.monitoring_enabled || var.autoscaling_enabled

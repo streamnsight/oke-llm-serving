@@ -2,14 +2,14 @@
 # Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
 mock_provider "oci" {}
 variables {
-  name           = "independent-model"
+  name           = "independent--model"
   compartment_id = "model-compartment"
-  target = { cluster_id = "existing-cluster", runner_subnet_id = "runner-subnet", runner_nsg_ids = [], metadata_ready = true, issues = [], allocation = { gpu_pool_id = null } }
+  target         = { cluster_id = "existing-cluster", runner_subnet_id = "runner-subnet", runner_nsg_ids = [], metadata_ready = true, issues = [], allocation = { gpu_pool_id = null } }
 }
 run "owns_new_metadata_before_any_gpu_pool_exists" {
   command = apply
   assert {
-    condition     = output.resources.project_id == oci_devops_project.model.id && oci_devops_project.model.name == "independent-model" && oci_artifacts_repository.scripts.is_immutable && oci_artifacts_repository.results.is_immutable
+    condition     = output.resources.project_id == oci_devops_project.model.id && startswith(oci_devops_project.model.name, "independent-model-") && oci_artifacts_repository.scripts.is_immutable && oci_artifacts_repository.results.is_immutable
     error_message = "Each model stack owns its own project and immutable software/results repositories."
   }
   assert {
@@ -22,11 +22,17 @@ run "network_ambiguity_blocks_metadata_creation" {
   variables { target = { cluster_id = "existing-cluster", runner_subnet_id = "runner-subnet", runner_nsg_ids = [], metadata_ready = false, issues = ["ambiguous runner subnet"] } }
   expect_failures = [oci_devops_project.model]
 }
+run "names_are_stable_on_unchanged_reruns" {
+  command = apply
+  assert {
+    condition     = output.resources.project_name == run.owns_new_metadata_before_any_gpu_pool_exists.resources.project_name && output.resources.instance_key == run.owns_new_metadata_before_any_gpu_pool_exists.resources.instance_key
+    error_message = "A persisted per-stack identity must survive reruns without renaming its topic or project."
+  }
+}
 run "model_punctuation_does_not_create_invalid_service_names" {
   command = plan
-  variables { name = "m-qwen-qwen3-8--cd680c-71f707f4" }
   assert {
-    condition     = oci_ons_notification_topic.model.name == "m-qwen-qwen3-8-cd680c-71f707f4-notifications" && oci_devops_project.model.name == "m-qwen-qwen3-8-cd680c-71f707f4"
-    error_message = "Generated model names must collapse consecutive dashes for both OCI Notifications and DevOps projects."
+    condition     = can(regex("^independent-model-[a-f0-9]{12}-notifications$", oci_ons_notification_topic.model.name)) && oci_devops_project.model.name == trimsuffix(oci_ons_notification_topic.model.name, "-notifications") && output.resources.instance_key == oci_ons_notification_topic.model.name
+    error_message = "New topics and projects must use normalized, uniquely suffixed names and provide an independent namespace identity."
   }
 }
