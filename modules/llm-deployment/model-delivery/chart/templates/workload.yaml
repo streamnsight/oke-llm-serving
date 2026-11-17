@@ -50,8 +50,9 @@ spec:
 ---
 apiVersion: v1
 kind: Service
+# LWS owns the headless Service named after the release for startup DNS.
 metadata:
-  name: {{ .Release.Name }}
+  name: {{ .Release.Name }}{{ if gt (int .Values.hosts) 1 }}-http{{ end }}
   labels: {{- include "model.labels" . | nindent 4 }}
 spec:
   type: ClusterIP

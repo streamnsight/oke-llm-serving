@@ -11,6 +11,9 @@ owner=$(jq -er .ownership_token "$model_config")
 timeout=$(jq -er .timeout_seconds "$model_config")
 owner_name="oke-llm-owner-$(printf '%s' "$namespace/$release" | sha256sum | cut -c1-24)"
 model_fail() { echo "$*" >&2; return 2; }
+model_http_service() {
+  if (( HOSTS_PER_REPLICA > 1 )); then printf '%s-http' "$release"; else printf '%s' "$release"; fi
+}
 model_inputs() {
   local key expected platform_name platform_owner model_namespace image_registry
   for key in TP PP HOSTS_PER_REPLICA GPUS_PER_POD REPLICAS CONTEXT_LENGTH CONCURRENCY; do
@@ -258,7 +261,7 @@ model_validate() {
   expected=$REPLICAS
   if jq -e .autoscaling.enabled "$model_config" >/dev/null; then expected=$MIN_REPLICAS; fi
   jq -e --arg image "$SERVING_IMAGE" --argjson expected "$((expected * HOSTS_PER_REPLICA))" '[.items[]|select(.metadata.deletionTimestamp==null)]|length >= $expected and all(.[]; any(.spec.containers[]; .name=="vllm" and .image==$image) and any(.status.conditions[]; .type=="Ready" and .status=="True"))' model-pods.json >/dev/null || model_fail 'Serving pod count, image identity or readiness does not match this model configuration' || return
-  endpoint=$release; port=8000
+  endpoint=$(model_http_service); port=8000
   if jq -e .router_enabled "$model_config" >/dev/null; then
     kubectl -n "$namespace" rollout status "deployment/$release-deployment-router" --timeout="${timeout}s"
     endpoint="$release-router-service"; port=80

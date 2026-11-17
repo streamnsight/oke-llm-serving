@@ -112,6 +112,36 @@ test('single-host chart preserves recipe flags and packs replicas without univer
 test('LWS chart has rank variables, per-group host separation and leader-only endpoints',()=>{
  const c=chartFixture();try{const docs=c.render({hosts:'2',pipelineParallel:'2',rdmaResource:'rdma/resource'}),lws=docs.find(d=>d.kind==='LeaderWorkerSet'),t=lws.spec.leaderWorkerTemplate;assert.equal(t.size,2);assert.equal(t.leaderTemplate.metadata.labels['oke-llm/endpoint'],'true');assert.equal(t.workerTemplate.metadata.labels['oke-llm/endpoint'],'false');for(const p of[t.leaderTemplate,t.workerTemplate]){assert.deepEqual(p.spec.affinity.podAntiAffinity.requiredDuringSchedulingIgnoredDuringExecution[0].matchLabelKeys,['leaderworkerset.sigs.k8s.io/group-index']);assert(p.spec.containers[0].args.includes('$(LWS_LEADER_ADDRESS)'));assert.equal(p.spec.containers[0].resources.requests['rdma/resource'],1);}assert(t.workerTemplate.spec.containers[0].args.includes('--headless'));assert(!t.leaderTemplate.spec.containers[0].args.includes('--headless'));}finally{c.close();}
 });
+test('multi-host HTTP service cannot shadow the LWS discovery service',()=>{
+ const c=chartFixture();try{
+  for(const hosts of ['1','2']){
+   const docs=c.render({hosts}),http=docs.find(d=>d.kind==='Service');
+   assert.equal(http.metadata.name,hosts==='1'?'model':'model-http');
+   assert.equal(http.spec.type,'ClusterIP');
+   assert.equal(http.spec.publishNotReadyAddresses,undefined);
+   assert.equal(http.spec.selector['oke-llm/endpoint'],'true');
+   if(hosts==='2')assert.notEqual(http.metadata.name,docs.find(d=>d.kind==='LeaderWorkerSet').metadata.name);
+  }
+ }finally{c.close();}
+});
+test('validation selects the effective direct HTTP service or the router',()=>{
+ for(const [hosts,router,endpoint] of [['1',false,'model'],['2',false,'model-http'],['2',true,'model-router-service']]){
+  const f=fixture({config:{router_enabled:router},env:{HOSTS_PER_REPLICA:hosts,PP:hosts,REPLICAS:'1'}});
+  try{const r=f.run('model_inputs; model_validate');assert.equal(r.status,0,r.stderr);assert(r.state.calls.some(c=>c.tool==='kubectl'&&c.args.includes('port-forward')&&c.args.includes('service/'+endpoint)));}finally{f.close();}
+ }
+});
+test('benchmark Jobs select the effective direct HTTP service or router',()=>{
+ for(const [hosts,router,endpoint] of [['1',false,'model'],['2',false,'model-http'],['2',true,'model-router-service']]){
+  const f=fixture({config:{router_enabled:router,serving:{recipe:{args:[]}},benchmark_image:image},env:{HOSTS_PER_REPLICA:hosts,PP:hosts,OCI_DEPLOYMENT_ID:'deployment',BENCHMARK_BACKEND:'openai',BENCHMARK_REQUESTS:'2',BENCHMARK_INPUT_TOKENS:'256',BENCHMARK_OUTPUT_TOKENS:'64'}});
+  try{
+   writeFileSync(`${f.dir}/runtime/bench-client.sh`,'exit 0\n');
+   writeFileSync(`${f.dir}/bin/kubectl`,`#!${process.execPath}\nconst a=process.argv.slice(2);if(a.includes('wait'))process.exit(1);if(a.includes('apply'))process.stdin.resume();else if(a.includes('create'))console.log('{}');\n`,{mode:0o755});
+   const r=f.run('bash runtime/benchmark.sh');assert.equal(r.status,2,r.stderr);
+   const job=JSON.parse(readFileSync(`${f.dir}/benchmark-job.json`));
+   assert.equal(job.spec.template.spec.containers[0].env.find(e=>e.name==='BASE_URL').value,`http://${endpoint}.fixture-model-test.svc:${router?'80':'8000'}`);
+  }finally{f.close();}
+ }
+});
 test('pinned upstream router dependency renders only namespaced router resources and literal leader selector',{skip:!process.env.MODEL_ROUTER_CHART_FILE},()=>{
  const c=chartFixture(true);try{const docs=c.render({router:{enabled:true},'vllm-stack':{servingEngineSpec:{enableEngine:false,modelSpec:[]},routerSpec:{enableRouter:true,serviceAccountName:'oke-llm-router',routingLogic:'prefixaware',extraArgs:['--k8s-label-selector','oke-llm/model=model-fixture,oke-llm/endpoint=true'],repository:'lmcache/lmstack-router',tag:'v0.1.14@sha256:'+'7'.repeat(64)},'kube-prometheus-stack':{enabled:false},'prometheus-adapter':{enabled:false},'k8s-aibom':{enabled:false}}});const router=docs.find(d=>d.kind==='Deployment'&&d.metadata.name==='model-deployment-router');assert(router);const container=router.spec.template.spec.containers[0];assert(container.args.includes('prefixaware'));assert(container.args.includes('oke-llm/model=model-fixture,oke-llm/endpoint=true'));assert.equal(router.spec.template.spec.serviceAccountName,'oke-llm-router');assert(!docs.some(d=>['ClusterRole','ClusterRoleBinding','CustomResourceDefinition','Role','RoleBinding','PersistentVolumeClaim'].includes(d.kind)));}finally{c.close();}
 });

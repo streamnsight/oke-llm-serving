@@ -107,3 +107,5 @@ or change the serving model automatically.
 MP cache Prometheus metrics are exposed on the model Service's `cache-metrics`
 port 9090 and scraped by the existing ServiceMonitor when monitoring is enabled.
 Disabled caches keep the existing serving command, resources and Service ports.
+
+For multi-host releases, the private HTTP Service is `<release>-http`; single-host releases retain `<release>`. LeaderWorkerSet owns the separate headless `<release>` Service and publishes leader/worker DNS before readiness, allowing distributed initialization. Validation and benchmarks select the HTTP Service from the effective host count; router endpoints are unchanged. Upgrading a previously failing multi-host release removes the old colliding HTTP Service so the LWS controller can create its headless Service.
