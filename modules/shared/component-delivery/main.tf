@@ -102,11 +102,11 @@ resource "oci_devops_deploy_pipeline" "component" {
   description  = "Independent ${each.value.operation} operation. Component ownership, dependency checks and immutable run evidence; no GPU allocation."
   deploy_pipeline_parameters {
     dynamic "items" {
-      for_each = local.parameters[each.value.component]
+      for_each = merge(local.parameters[each.value.component], { CONFIRM_UNINSTALL = each.value.operation == "undeploy" ? "true" : "false" })
       content {
         name          = items.key
         default_value = items.value
-        description   = items.key == "CHART_VERSION" ? "Explicit upstream chart version; deploy mirrors this version before the native Helm stage." : items.key == "RECOVER_LOCK_HOLDER" ? "Explicit previous deployment OCID; recovery requires expired lease and terminal prior deployment." : items.key == "CONFIRM_UNINSTALL" ? "Set true only for the separate owned-release undeploy pipeline." : "Non-secret editable deployment argument. Helm values use matching placeholders."
+        description   = items.key == "CHART_VERSION" ? "Explicit upstream chart version; deploy mirrors this version before the native Helm stage." : items.key == "RECOVER_LOCK_HOLDER" ? "Explicit previous deployment OCID; recovery requires expired lease and terminal prior deployment." : items.key == "CONFIRM_UNINSTALL" ? "Defaults true for the dedicated undeploy pipeline and false for other operations." : "Non-secret editable deployment argument. Helm values use matching placeholders."
       }
     }
   }

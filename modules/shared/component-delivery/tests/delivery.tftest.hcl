@@ -37,6 +37,10 @@ variables {
 run "conditional_native_helm_delivery" {
   command = apply
   assert {
+    condition     = alltrue([for key, pipeline in oci_devops_deploy_pipeline.component : one([for parameter in pipeline.deploy_pipeline_parameters[0].items : parameter.default_value if parameter.name == "CONFIRM_UNINSTALL"]) == (local.operations[key].operation == "undeploy" ? "true" : "false")])
+    error_message = "Dedicated undeploy pipelines must uninstall by default; deploy/reuse pipelines must retain false."
+  }
+  assert {
     condition     = length(oci_devops_deploy_stage.helm) == 2 && length(output.component_pipeline_ids) == 3 && length(output.undeploy_pipeline_ids) == 3 && length(output.all_pipeline_ids) == 6
     error_message = "Only managed components get native Helm; reuse cannot uninstall and retire retains teardown only."
   }

@@ -29,7 +29,7 @@ independent Terraform states sharing a repository do not own the same artifact.
 
 | Mode | Deploy/validate pipeline | Explicit undeploy pipeline |
 |---|---|---|
-| `managed` | Shell prepare → native Helm install/upgrade → Shell validation | Yes, confirmation and ownership guarded |
+| `managed` | Shell prepare → native Helm install/upgrade → Shell validation | Yes, defaults to uninstall with ownership checks |
 | `reuse` | Read-only Helm/controller validation and result artifact | No |
 | `retire` | None | Retained until the owner removes it |
 
@@ -113,7 +113,9 @@ Expiry never permits automatic takeover. Inspect the deployment and release;
 then explicitly pass `RECOVER_LOCK_HOLDER` equal to the old deployment OCID. The
 runner also requires the lease duration to have elapsed and OCI to report that
 deployment as `SUCCEEDED`, `FAILED` or `CANCELED`. It refuses pending, active or
-unreadable deployments. Undeploy separately requires `CONFIRM_UNINSTALL=true`.
+unreadable deployments. Dedicated undeploy pipelines default `CONFIRM_UNINSTALL`
+to `true`; selecting that pipeline is sufficient to uninstall. An explicit
+`false` override still prevents uninstall.
 
 Every Shell operation prints its structured JSON summary to stdout for DevOps
 Logging, including effective non-secret parameters, their SHA-256, generation,
