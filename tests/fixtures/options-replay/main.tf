@@ -4,6 +4,8 @@ terraform {
   required_providers { http = { source = "hashicorp/http", version = "~> 3.4" } }
 }
 variable "context_length" { default = 4096 }
+variable "pp_enabled" { default = false }
+variable "hosts_capacity" { default = 1 }
 module "model_profile" {
   source = "../../../modules/discovery/model-profile"
   model = "Qwen/Qwen3.8-27B"
@@ -15,13 +17,13 @@ module "planner" {
   profile = module.model_profile.profile
   engines = []
   recipe_api_enabled = true
-  serving_resolution = {engine={platform="linux/amd64",image="fixture",id="stable",version="0.34.0",architectures=["Qwen3_5ForConditionalGeneration"],gpu_compute_capabilities=[86,90],multi_node_backend="mp"},recipe={feature_options={},compatible_strategies=["single_node_tp"]}}
+  serving_resolution = {engine={framework="vllm",platform="linux/amd64",image="fixture",id="stable",version="0.34.0",source_commit=var.pp_enabled ? "62d4bc3c7e33b1b6c906e233e6af2d3506c482ca" : null,architectures=["Qwen3_5ForConditionalGeneration"],gpu_compute_capabilities=[86,90],multi_node_backend="mp"},recipe={feature_options={},compatible_strategies=["single_node_tp"]}}
   regions = local.regions
 }
 output "profile" { value = module.model_profile.profile }
 output "assessment" { value = module.planner.assessment }
 
-locals { regions = [{inventory={region="ca-montreal-1",availability_domains=[{name="AD-1",shapes=[{shape="BM.GPU.A10.4",gpus=4,gpu_memory_bytes_per_gpu=24000000000,rdma_ports=0,quota_names=["gpu-count"]}]}],limits=[{name="gpu-count",description="GPUs for test instances",scope_type="AD",availability_domain="AD-1",tenancy_limit=64,resource_availability={status="observed",available=64}}]},capacity={region="ca-montreal-1",availability_domains=[{name="AD-1",assessment={observed_at="fixture",shapes=[{shape="BM.GPU.A10.4",available_instances=1,availability_status="AVAILABLE"}]}}]}}] }
+locals { regions = [{inventory={region="ca-montreal-1",availability_domains=[{name="AD-1",shapes=[{shape="BM.GPU.A10.4",gpus=4,gpu_memory_bytes_per_gpu=24000000000,rdma_ports=0,quota_names=["gpu-count"]}]}],limits=[{name="gpu-count",description="GPUs for test instances",scope_type="AD",availability_domain="AD-1",tenancy_limit=64,resource_availability={status="observed",available=64}}]},capacity={region="ca-montreal-1",availability_domains=[{name="AD-1",assessment={observed_at="fixture",shapes=[{shape="BM.GPU.A10.4",available_instances=var.hosts_capacity,availability_status="AVAILABLE"}]}}]}}] }
 module "report" {
   source = "../../../modules/discovery/discovery-report"
   profile = module.model_profile.profile

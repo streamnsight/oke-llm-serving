@@ -55,7 +55,7 @@ variable "serving_resolution" {
 }
 
 variable "recipe_api_enabled" {
-  description = "Resolve hardware-specific recipe JSON and generate untested single-node suggestions."
+  description = "Resolve hardware-specific recipe JSON and generate untested single-host or source-supported multi-host suggestions."
   type        = bool
   default     = false
 }

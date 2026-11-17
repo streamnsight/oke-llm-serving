@@ -18,7 +18,7 @@ outputs:
 primaryOutputButton: ${comparison_report_url}
 variableGroups:
   - title: Model and workload
-    variables: [model, revision, context_length, concurrency]
+    variables: [model, revision, context_length, concurrency, max_hosts_per_replica]
   - title: Memory planning assumptions
     variables: [checkpoint_file, weight_budget_gb, planning_budget_gb, unknown_cache_fraction, workspace_fraction]
   - title: Capacity observation
@@ -29,6 +29,13 @@ variableGroups:
     visible: false
     variables: [tenancy_ocid, compartment_ocid, region]
 variables:
+  max_hosts_per_replica:
+    type: integer
+    title: Maximum hosts per model replica
+    default: 8
+    minimum: 1
+    maximum: 32
+    description: Consider multi-host TP/PP layouts up to this bound when source support, dtype, capacity and quota are confirmed.
 
   checkpoint_file:
     type: string

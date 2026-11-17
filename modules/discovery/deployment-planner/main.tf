@@ -132,6 +132,7 @@ output "assessment" {
     limit_increase_recommendations = local.limit_increase_recommendations
     blocking_reasons               = local.blocking_reasons
     recipe_layout_rejections       = local.recipe_layout_rejections
+    pipeline_parallel_support      = local.pp_evidence
     evaluated_layout_count         = length(local.evaluated)
     rejection_counts = {
       layout_or_catalog = length([for layout in local.evaluated : true if length(layout.reasons) > 0])

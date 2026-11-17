@@ -31,7 +31,7 @@ run "adapt_bf16_to_four_a10s_without_a_complete_estimator" {
     error_message="A10 should receive a clearly untested TP4 BF16 suggestion, without pretending it is an upstream A10 rendering."
   }
   assert {
-    condition=contains(output.assessment.suggestions[0].serving_configuration.recipe.args,"qwen3_coder") && !contains(output.assessment.suggestions[0].serving_configuration.recipe.args,"--tensor-parallel-size") && output.assessment.suggestions[0].serving_configuration.engine.image=="vllm/vllm-openai@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc" && length(output.assessment.suggestions[0].serving_configuration.recipe.dependencies)==1
+    condition=contains(output.assessment.suggestions[0].serving_configuration.recipe.args,"qwen3_coder") && !contains(output.assessment.suggestions[0].serving_configuration.recipe.args,"--tensor-parallel-size") && output.assessment.suggestions[0].serving_configuration.engine.image=="docker.io/vllm/vllm-openai@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc" && length(output.assessment.suggestions[0].serving_configuration.recipe.dependencies)==1
     error_message="Parsers, image digest and dependency evidence must survive, with topology managed separately."
   }
 }
@@ -87,7 +87,7 @@ run "an_exact_previously_resolved_image_tag_does_not_repeat_registry_lookup" {
   serving_resolution={engine={platform="linux/amd64",image="fixture",image_tag="qwen38",available_images={"linux/amd64"="vllm/vllm-openai@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"},id="stable",version="0.33.0",architectures=["Qwen3_5ForConditionalGeneration"],gpu_compute_capabilities=[86,90],multi_node_backend="mp"},recipe={feature_options={},compatible_strategies=["single_node_tp"]}}
  }
  assert {
-  condition=length(data.http.recipe_image)==0 && output.assessment.suggestions[0].serving_configuration.engine.image=="vllm/vllm-openai@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+  condition=length(data.http.recipe_image)==0 && output.assessment.suggestions[0].serving_configuration.engine.image=="docker.io/vllm/vllm-openai@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
   error_message="Reuse immutable platform digests only when the renderer requests the exact already-resolved repository/tag; do not repeat that registry HTTP request."
  }
 }

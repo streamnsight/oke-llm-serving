@@ -44,7 +44,7 @@ locals {
   rendering_images = toset([for r in values(local.valid_renderings) : r.docker_image if can(regex("^vllm/vllm-openai:[A-Za-z0-9_.-]+$", r.docker_image))])
   resolved_recipe_images = { for image in local.rendering_images : image => var.serving_resolution.engine.available_images if try(
     image == "vllm/vllm-openai:${var.serving_resolution.engine.image_tag}" && length(var.serving_resolution.engine.available_images) > 0 &&
-    alltrue([for reference in values(var.serving_resolution.engine.available_images) : can(regex("^vllm/vllm-openai@sha256:[a-f0-9]{64}$", reference))]), false
+    alltrue([for reference in values(var.serving_resolution.engine.available_images) : can(regex("^(docker[.]io/)?vllm/vllm-openai@sha256:[a-f0-9]{64}$", reference))]), false
   ) }
   api_images = setsubtract(local.rendering_images, toset(keys(local.resolved_recipe_images)))
 }
@@ -60,7 +60,8 @@ data "http" "recipe_image" {
   }
 }
 locals {
-  recipe_images = merge(local.resolved_recipe_images, { for image, response in data.http.recipe_image : image => { for platform in ["amd64", "arm64"] : "linux/${platform}" => "vllm/vllm-openai@${one([for i in try(jsondecode(response.response_body).images, []) : i.digest if i.os == "linux" && i.architecture == platform])}" if length([for i in try(jsondecode(response.response_body).images, []) : i if i.os == "linux" && i.architecture == platform && can(regex("^sha256:[a-f0-9]{64}$", i.digest))]) == 1 } })
+  recipe_image_refs = merge(local.resolved_recipe_images, { for image, response in data.http.recipe_image : image => { for platform in ["amd64", "arm64"] : "linux/${platform}" => "docker.io/vllm/vllm-openai@${one([for i in try(jsondecode(response.response_body).images, []) : i.digest if i.os == "linux" && i.architecture == platform])}" if length([for i in try(jsondecode(response.response_body).images, []) : i if i.os == "linux" && i.architecture == platform && can(regex("^sha256:[a-f0-9]{64}$", i.digest))]) == 1 } })
+  recipe_images     = { for tag, refs in local.recipe_image_refs : tag => { for platform, ref in refs : platform => startswith(ref, "vllm/") ? "docker.io/${ref}" : ref } }
   # Recipe guidelines are a heuristic budget, not a per-rank allocation proof.
   heuristic_weights = try(local.api_variant_metadata.precision == "bf16" && local.profile.weights.tensor_data_bytes > 0 ? local.profile.weights.tensor_data_bytes : null, null)
   heuristic_kv = try(local.heuristic_weights > 0 && alltrue([for n in [local.a.layers, local.a.kv_heads, local.a.head_dim] : n > 0]) ?
@@ -80,24 +81,27 @@ locals {
   suggestion_rows = [for row in local.sizing_rows : merge(row, {
     rendering  = local.valid_renderings[row.hardware]
     image      = local.recipe_images[local.valid_renderings[row.hardware].docker_image][row.platform]
-    tp_options = [for tp in [1, 2, 4, 8] : tp if try(local.api_budget > 0 && try(local.profile.memory.assumptions.context_length <= local.api.model.context_length, true) && row.gpu.gpus == row.shape.gpus && tp <= row.shape.gpus && local.a.heads % tp == 0 && (local.a.kv_heads % tp == 0 || tp % local.a.kv_heads == 0) && local.api_budget / tp + local.profile.memory.runtime_allowance_bytes <= row.gpu.memory_bytes_per_gpu * 0.9, false)]
+    tp_options = [for tp in [1, 2, 4, 8] : tp if try(local.api_budget > 0 && try(local.profile.memory.assumptions.context_length <= local.profile.architecture.declared_context_length, true) && try(local.profile.memory.assumptions.context_length <= local.api.model.context_length, true) && row.gpu.gpus == row.shape.gpus && tp <= row.shape.gpus && local.a.heads % tp == 0 && (local.a.kv_heads % tp == 0 || tp % local.a.kv_heads == 0) && local.api_budget / tp + local.profile.memory.runtime_allowance_bytes <= row.gpu.memory_bytes_per_gpu * 0.9, false)]
   }) if try(local.precision_checks[row.shape.shape].status == "compatible", false) && (!local.fp8_required || try(lower(local.api_variant_metadata.precision) == "fp8" && contains(local.api_variant_metadata.supported_hardware, row.hardware), false)) && can(local.valid_renderings[row.hardware]) && can(local.recipe_images[local.valid_renderings[row.hardware].docker_image][row.platform])]
-  recipe_layout_rejections = distinct([for row in local.suggestion_rows : "${row.shape.shape}: no supported single-host TP layout fits ${try(local.profile.memory.assumptions.context_length, 0)} context tokens x ${try(local.profile.memory.assumptions.concurrency, 0)} sequences with a ${try(format("%.2f", local.api_budget / 1e9), "unknown")} GB planning payload plus per-GPU runtime. Reduce the workload or assess a supported larger/multi-host layout." if length(row.tp_options) == 0 && try(row.capacity_status == "positive" && row.entitled_instances >= 1, false)])
-  packed_suggestion_rows = [for row in local.suggestion_rows : merge(row, {
+  recipe_layout_rejections = distinct([for row in local.suggestion_rows : "${row.shape.shape}: no supported TP/PP layout fits ${try(local.profile.memory.assumptions.context_length, 0)} context tokens x ${try(local.profile.memory.assumptions.concurrency, 0)} sequences with a ${try(format("%.2f", local.api_budget / 1e9), "unknown")} GB planning payload within ${var.max_nodes_per_replica} hosts, plus per-GPU runtime. Reduce the workload or assess a supported larger/multi-host layout." if length(row.tp_options) == 0 && !anytrue([for multi in local.packed_pp_rows : multi.region == row.region && multi.ad == row.ad && multi.shape.shape == row.shape.shape]) && try(row.capacity_status == "positive" && row.entitled_instances >= 1, false)])
+  packed_single_rows = [for row in local.suggestion_rows : merge(row, {
+    pp                = 1
+    rank_bytes        = ceil(local.api_budget / row.tp_options[0] + local.profile.memory.runtime_allowance_bytes)
     replicas_per_node = floor(row.shape.gpus / row.tp_options[0])
     node_count        = ceil(var.replicas / floor(row.shape.gpus / row.tp_options[0]))
     replicas          = ceil(var.replicas / floor(row.shape.gpus / row.tp_options[0])) * floor(row.shape.gpus / row.tp_options[0])
   }) if length(row.tp_options) > 0]
+  packed_suggestion_rows = concat(local.packed_single_rows, local.packed_pp_rows)
   raw_suggestions = [for row in local.packed_suggestion_rows : {
-    id                         = substr(sha256(jsonencode([local.profile.model, local.profile.memory.assumptions, row.region, row.ad, row.shape.shape, row.rendering, row.image, "recipe-suggestion"])), 0, 16)
+    id                         = substr(sha256(jsonencode([local.profile.model, local.profile.memory.assumptions, row.region, row.ad, row.shape.shape, row.rendering, row.image, row.pp, "recipe-suggestion"])), 0, 16)
     region                     = row.region, availability_domain = row.ad, gpu_shape = row.shape.shape, gpus_per_node = row.shape.gpus
-    tensor_parallel_size       = row.tp_options[0], pipeline_parallel_size = 1, node_count = row.node_count, replicas = row.replicas, requires_rdma = false
+    tensor_parallel_size       = row.tp_options[0], pipeline_parallel_size = row.pp, hosts_per_replica = row.pp, node_count = row.node_count, replicas = row.replicas, requires_rdma = false
     requested_minimum_replicas = var.replicas, replicas_per_node = row.replicas_per_node
-    configuration_status       = "suggested_requires_validation", configuration_origin = row.hardware == local.api_hardware[row.hardware] && tostring(row.tp_options[0]) == try(row.rendering.argv[index(row.rendering.argv, "--tensor-parallel-size") + 1], "") ? "upstream_rendering" : "adapted_recipe"
+    configuration_status       = "suggested_requires_validation", configuration_origin = row.pp > 1 ? "adapted_multi_host_recipe" : row.hardware == local.api_hardware[row.hardware] && tostring(row.tp_options[0]) == try(row.rendering.argv[index(row.rendering.argv, "--tensor-parallel-size") + 1], "") ? "upstream_rendering" : "adapted_recipe"
     runtime_validation         = "not_run", upstream_validation = "not_established_for_this_configuration"
     deployment_requirements    = try(local.profile.model.config_sources.config_repository != null, false) ? ["Stage the independently pinned external config/tokenizer before deployment; the weights revision must not be reused as the config repository revision."] : []
-    estimated_rank_bytes       = ceil(local.api_budget / row.tp_options[0] + local.profile.memory.runtime_allowance_bytes)
-    memory_status              = "heuristic_recipe_budget_not_per_rank_proof", aggregate_payload_bytes = local.api_budget
+    estimated_rank_bytes       = row.rank_bytes
+    memory_status              = row.pp > 1 ? "heuristic_stage_rank_estimate_requires_validation" : "heuristic_recipe_budget_not_per_rank_proof", aggregate_payload_bytes = local.api_budget
     capacity_status            = row.capacity_status, limit_status = row.limit_status, headroom_status = row.headroom_status
     available_instances        = try(row.capacity.available_instances, null)
     availability               = "available_at_scan"
@@ -108,15 +112,17 @@ locals {
       status             = "suggested_requires_validation", model = local.profile.model
       engine             = merge(var.serving_resolution.engine, { id = "recipe-${row.hardware}", image = row.image, platform = row.platform, available_images = local.recipe_images[row.rendering.docker_image], image_tag = row.rendering.docker_image, version = "recipe-${split(":", row.rendering.docker_image)[1]}", channel = "recipe", image_source_association = "recipe_image_digest_runtime_not_verified" })
       recipe = merge(var.serving_resolution.recipe, {
-        args         = [for i, arg in slice(row.rendering.argv, 3, length(row.rendering.argv)) : arg if !contains(local.recipe_managed_flags, split("=", arg)[0]) && !try(contains(local.recipe_managed_flags, slice(row.rendering.argv, 3, length(row.rendering.argv))[i - 1]), false)]
-        env          = row.rendering.env, selected_features = row.rendering.selection.features, selected_hardware = row.hardware
-        api          = { url = data.http.recipe_rendering[local.rendering_queries[row.hardware]].url, sha256 = sha256(data.http.recipe_rendering[local.rendering_queries[row.hardware]].response_body), selection = row.rendering.selection, original_argv = row.rendering.argv, original_image = row.rendering.docker_image, rendering = row.rendering }
-        dependencies = try(local.api.model.install.extras, []), companions = try(row.rendering.companions, [])
-        serving_mode = try(local.api.meta.tasks[0], "unknown"), serving_tasks = try(local.api.meta.tasks, []), modality_validation = "not_run_requires_task_specific_validation"
+        pipeline_parallel_support = row.pp > 1 ? local.pp_evidence : null
+        adapted_topology          = { tensor_parallel_size = row.tp_options[0], pipeline_parallel_size = row.pp, hosts_per_replica = row.pp }
+        args                      = [for i, arg in slice(row.rendering.argv, 3, length(row.rendering.argv)) : arg if !contains(local.recipe_managed_flags, split("=", arg)[0]) && !try(contains(local.recipe_managed_flags, slice(row.rendering.argv, 3, length(row.rendering.argv))[i - 1]), false)]
+        env                       = row.pp > 1 ? merge(row.rendering.env, { NCCL_IB_DISABLE = "1" }) : row.rendering.env, selected_features = row.rendering.selection.features, selected_hardware = row.hardware
+        api                       = { url = data.http.recipe_rendering[local.rendering_queries[row.hardware]].url, sha256 = sha256(data.http.recipe_rendering[local.rendering_queries[row.hardware]].response_body), selection = row.rendering.selection, original_argv = row.rendering.argv, original_image = row.rendering.docker_image, rendering = row.rendering }
+        dependencies              = try(local.api.model.install.extras, []), companions = try(row.rendering.companions, [])
+        serving_mode              = try(local.api.meta.tasks[0], "unknown"), serving_tasks = try(local.api.meta.tasks, []), modality_validation = "not_run_requires_task_specific_validation"
       })
     }
-    recommendation_reason = "Smallest enumerated intra-host TP layout meeting a heuristic memory budget; spare GPUs on allocated hosts run complete extra replicas. Full host quantities have confirmed capacity/headroom; no price or throughput prediction."
-    warnings              = ["Untested configuration; run deployment validation and benchmarking.", "Memory budget divides upstream guidance approximately; sharding balance, recurrent/vision state, CUDA graphs and workload KV fit are not proven.", "Recipe dependency commands are evidence, not executed; validate their availability in the pinned image.", row.hardware == "a10" ? "A10 adapts the H100 BF16 baseline; TP may cross PCIe and is not upstream validated." : "GPU model match alone does not establish validation of this image/variant/TP/workload."]
+    recommendation_reason = "Smallest fitting PP host group for the enumerated TP, or a fitting single-host layout. Complete host quantities have confirmed capacity/headroom; memory and performance require runtime validation."
+    warnings              = concat(row.pp > 1 ? ["Adapted multi-host TP/PP layout: pinned source declares PP support, but this image/workload combination is not runtime validated.", "Cross-host PP uses Ethernet/TCP with NCCL_IB_DISABLE=1; no RDMA or throughput claim. Uneven stages, KV replication and embedding allowance are included in the heuristic rank estimate."] : [], ["Untested configuration; run deployment validation and benchmarking.", "Memory budget divides upstream guidance approximately; sharding balance, recurrent/vision state, CUDA graphs and workload KV fit are not proven.", "Recipe dependency commands are evidence, not executed; validate their availability in the pinned image.", row.hardware == "a10" ? "A10 adapts the H100 BF16 baseline; TP may cross PCIe and is not upstream validated." : "GPU model match alone does not establish validation of this image/variant/TP/workload."])
   } if try(row.capacity_status == "positive" && row.capacity.available_instances >= row.node_count && row.limit_status == "positive" && row.entitled_instances >= row.node_count, false) && try(!contains(keys(local.api_variant_metadata), "supported_hardware") || contains(local.api_variant_metadata.supported_hardware, row.hardware), true)]
   recipe_managed_flags = ["--tensor-parallel-size", "-tp", "--pipeline-parallel-size", "-pp", "--max-model-len", "--max-num-seqs", "--dtype", "--kv-cache-dtype", "--gpu-memory-utilization"]
 }

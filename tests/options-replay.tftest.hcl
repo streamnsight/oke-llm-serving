@@ -43,3 +43,21 @@ run "long_context_cannot_silently_reuse_the_short_context_fit" {
     error_message = "262144x4 exceeds this single-host budget despite BF16 dtype compatibility."
   }
 }
+
+override_data {
+ target = module.planner.data.http.pp_support[0]
+ values = {status_code=200,response_body="| Architecture | Models | LoRA | [PP](parallel.md) |\n| `Qwen3_5ForConditionalGeneration` | Qwen3.5 | ✅ | ✅ |\n"}
+}
+run "actual_hybrid_metadata_produces_a_complete_multi_host_option" {
+ command = plan
+ module {source="./tests/fixtures/options-replay"}
+ variables {
+ context_length=262144
+ pp_enabled=true
+ hosts_capacity=8
+}
+ assert {
+   condition = try(anytrue([for o in output.assessment.suggestions : o.tensor_parallel_size==4 && o.pipeline_parallel_size==7 && o.node_count==7 && o.hosts_per_replica==7 && o.platform_plan.components.lws.required && o.estimated_rank_bytes<=21600000000]),false)
+   error_message = "Pinned Qwen hybrid metadata must produce the conservative TP4/PP7 layout when the complete host group fits in one AD."
+ }
+}

@@ -112,3 +112,13 @@ variable "workspace_fraction" {
     error_message = "Workspace allowance must be nonnegative."
   }
 }
+
+variable "max_hosts_per_replica" {
+  description = "Maximum hosts to consider for one model replica; multi-host options require upstream PP support and full capacity/headroom."
+  type        = number
+  default     = 8
+  validation {
+    condition     = var.max_hosts_per_replica >= 1 && var.max_hosts_per_replica <= 32 && floor(var.max_hosts_per_replica) == var.max_hosts_per_replica
+    error_message = "Maximum hosts per replica must be an integer between 1 and 32."
+  }
+}

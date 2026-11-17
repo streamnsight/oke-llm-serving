@@ -52,6 +52,7 @@ module "serving_resolution" {
   recipe_metadata     = local.recipe_metadata_snapshot
 }
 module "planner" {
+  max_nodes_per_replica     = var.max_hosts_per_replica
   source                    = "./modules/discovery/deployment-planner"
   recipe_api_enabled        = true
   assess_cache_alternatives = false

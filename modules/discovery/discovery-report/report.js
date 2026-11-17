@@ -127,8 +127,8 @@ function limitQuantity(limit, field) {
   const value = limit[field];
   return (value == null || value < 0 ? "Unknown" : number(value)) + " " + text(limit.unit);
 }
-function limitSummary(limits, field) {
-  return limits.length ? limits.map(limit => limitScope(limit) + ": " + limitQuantity(limit, field)).join("; ") : "Unknown";
+function limitSummary(limits, field, selectedAD) {
+  return limits.length ? limits.map(limit => (limit.scope === "AD" && limit.availability_domain === selectedAD ? "" : limitScope(limit) + ": ") + limitQuantity(limit, field)).join("; ") : "Unknown";
 }
 function renderOptions() {
   const filter = $("search").value.toLowerCase(), mode = $("sort").value;
@@ -158,8 +158,8 @@ function renderOptions() {
       const metric = add(summary, "div", undefined, "option-stat"); add(metric, "strong", value); add(metric, "span", caption);
     }
     const quota = add(summary, "div", undefined, "option-stat");
-    add(quota, "strong", limitSummary(limits, "current_limit")); add(quota, "span", "Current configured limit");
-    add(quota, "small", "Remaining headroom: " + limitSummary(limits, "remaining_headroom"));
+    add(quota, "strong", limitSummary(limits, "current_limit", row.availability_domain)); add(quota, "span", "Current configured limit");
+    add(quota, "small", "Remaining headroom: " + limitSummary(limits, "remaining_headroom", row.availability_domain));
     const body = add(option, "div", undefined, "option-body"), allocation = add(body, "section");
     add(allocation, "h3", "Allocation and replica packing");
     facts(add(allocation, "dl", undefined, "facts"), [["Shape / GPU type", row.gpu_shape + " / " + text(row.gpu_type)], ["Hosts / allocated GPUs", number(a.required_hosts) + " / " + number(a.allocated_gpus)], ["GPUs per replica · TP × PP", number(a.required_gpus_per_replica) + " · " + number(a.tensor_parallel_size) + " × " + number(a.pipeline_parallel_size)], ["Replicas / replicas per host", number(a.replicas) + " / " + number(a.replicas_per_host)], ["Unused GPUs", number(a.unused_gpus)], ["GPU memory per device", gb(row.memory_gb.per_gpu)], ["Estimated memory per rank", gb(row.memory_gb.estimated_per_gpu)], ["Transport", row.requires_rdma ? "RDMA required" : "Ethernet / within-host interconnect"]]);

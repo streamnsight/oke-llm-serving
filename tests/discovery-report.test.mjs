@@ -227,3 +227,13 @@ test("regional quota uses limit / left labels and preserves AD scope, zero and u
  const text=nodes.capacity.textContent.replace(/\s+/g," ");
  assert.match(text,/limit 32 \/ left 32/);assert.match(text,/AD jVha:PHX-AD-3 · GPUs/);assert.match(text,/limit Unknown \/ left 0/);
 });
+
+test("selected AD is omitted only from the collapsed quota summary", () => {
+ const row=option("ca-montreal-1");row.availability_domain="jVha:CA-MONTREAL-1-AD-1";
+ row.capacity.limits=[{...quota("AD",56,52),availability_domain:row.availability_domain}];
+ const {created}=execute({options:{row},option_count:1});const card=created.find(n=>n.className==="option");
+ const quotaSummary=card.children[0].children.at(-1).textContent;
+ assert.match(quotaSummary,/56 GPUs/);assert.match(quotaSummary,/Remaining headroom: 52 GPUs/);
+ assert.doesNotMatch(quotaSummary,/jVha|AD /);assert.match(card.children[0].children[0].textContent,/jVha:CA-MONTREAL-1-AD-1/);
+ assert.match(card.children[1].textContent,/AD jVha:CA-MONTREAL-1-AD-1/);
+});
