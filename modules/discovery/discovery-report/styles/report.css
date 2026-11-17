@@ -48,6 +48,10 @@ input { width: 360px; }
 .option-stat small { display: block; margin-top: 4px; font-size: 12px; color: var(--oci-color-text-secondary); }
 .option-stat strong { display: block; overflow-wrap: anywhere; font-size: 18px; font-variant-numeric: tabular-nums; }
 .option-stat span { display: block; font-size: 12px; color: var(--oci-color-text-secondary); }
+.option-stat .quota-values { font-size: 18px; }
+.option-stat small .quota-values { display: inline; font-size: inherit; }
+.option-stat .quota-values strong, .option-stat .quota-values span { display: inline; font-size: inherit; color: inherit; }
+.insufficient, .option-stat .quota-values .insufficient { color: #B3261E; }
 .option-body { padding: 24px; }
 .option-body .facts { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .option-body > section { margin: 0 0 24px; }
@@ -61,7 +65,7 @@ input { width: 360px; }
 .action-links { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; margin: 12px 0; }
 .action-primary { display: inline-flex; min-height: 38px; align-items: center; padding: 8px 14px; text-decoration: none; color: var(--oci-component-button-primary-text-color); background: var(--oci-component-button-primary-background-color); border-radius: var(--oci-rounded-sm); font-weight: 600; }
 .action-primary:hover { background: var(--oci-component-button-primary-hover-background-color); }
-.table-wrap { max-height: 38rem; overflow: auto; border: 1px solid var(--oci-color-divider); background: var(--oci-color-surface); }
+.table-wrap { position: relative; max-height: 38rem; overflow: auto; border: 1px solid var(--oci-color-divider); background: var(--oci-color-surface); }
 table { width: 100%; border-collapse: collapse; font-size: 13px; }
 th { position: sticky; top: 0; z-index: 1; background: var(--oci-color-neutral); text-align: left; font-size: 12px; }
 th, td { padding: 14px 16px; vertical-align: top; border-bottom: 1px solid var(--oci-color-divider); }

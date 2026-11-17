@@ -212,3 +212,12 @@ run "regional_capacity_preserves_incompatible_dtype_evidence" {
     error_message = "Incompatible dtype cannot erase physical capacity or fabricate a deployment option."
   }
 }
+
+run "gpu_lower_bound_keeps_whole_host_allocation_separate" {
+  command = plan
+  variables { profile = merge(var.profile, { memory = merge(var.profile.memory, { recommended_aggregate_bytes = 60000000000 }) }) }
+  assert {
+    condition     = output.summary.regional_capacity[0].minimum_model_gpus == 2 && output.summary.regional_capacity[0].minimum_model_hosts == 1 && output.summary.regional_capacity[0].gpus_per_host == 8
+    error_message = "The existing 60GB budget needs at least two 40GB GPUs after runtime allowance, while the eight-GPU shape still allocates one whole host."
+  }
+}
