@@ -59,7 +59,7 @@ test('in-progress and stale deletion observations are polled without repeated de
 });
 test('a repository that stays nonempty stops destroy after bounded retries',()=>{const r=run('forever');assert.notEqual(r.status,0);assert.equal(r.state.lists,12);assert.match(r.stderr,/deletion stopped/);});
 test('list/delete failures are fatal rather than treated as an empty repository',()=>{
- for(const [scenario,code] of [['list-failure',42],['delete-failure',43]]){const r=run(scenario);assert.equal(r.status,code);}
+ for(const [scenario,code] of [['list-failure',42],['delete-failure',43]]){const r=run(scenario);assert.equal(r.status,code);assert.ok(r.stderr.includes(`cleanup failed during ${scenario.startsWith("list")?"list":"delete"} (exit ${code}).`));}
 });
 test('foreign repository responses and malformed collections cannot trigger deletes',()=>{
  for(const scenario of ['foreign','malformed']){const r=run(scenario);assert.notEqual(r.status,0);assert.equal(r.state.deleted.length,0);}

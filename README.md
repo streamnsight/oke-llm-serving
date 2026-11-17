@@ -56,7 +56,7 @@ Small scripts, specifications and values use readable inline DevOps artifacts. R
 
 New model stacks use a state-persisted instance suffix for their notification topic, project, log group and artifact repositories, and a separate default namespace. Two stacks for the same model can coexist without sharing ownership. Existing stacks retain their legacy names on source upgrades; explicit namespace overrides remain unchanged.
 
-Undeploy removes only the owned model release and its model-specific resources. It preserves namespaces, retained data, shared controllers and GPU hosts. Revoke access before destroying the model's metadata/project. Terraform destruction of pipeline definitions alone does not uninstall an imperative Helm release; use the explicit guarded undeploy flow first.
+Undeploy removes only the owned model release and its model-specific resources. It preserves namespaces, retained data, shared controllers and GPU hosts. Revoke access before destroying the model's metadata/project. Destroy automatically empties the stack-owned software and results repositories, including historical versions, before deleting them. Benchmark exports stored in the results repository are deleted with it; retained model weights and PVCs are separate. Terraform destruction of pipeline definitions alone does not uninstall an imperative Helm release; use the explicit guarded undeploy flow first.
 
 ## Current validation limits
 

@@ -1,0 +1,11 @@
+<!-- Copyright (c) 2020-2022 Oracle and/or its affiliates. All rights reserved. -->
+<!-- Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl. -->
+# Automatic artifact repository cleanup
+
+Reuse the platform's existing exact-repository purge helper as a shared runtime asset. Attach destroy-time hooks to both model software and results repositories while preserving resource addresses and dependencies. Terraform removes dependent managed artifact/pipeline resources before their repository; the hook then removes historical/manual versions, polls to empty, and fails visibly if cleanup cannot complete. No new confirmation flag or pre-destroy Apply is required. Destroying an owned results repository deletes its benchmark/validation exports; model data in Object Storage/PVCs is separate.
+
+1. [x] Relocate the helper/tests, attach missing model hooks and update explicit publisher/package dependencies. Add executable coverage for model repository teardown and cleanup diagnostics.
+2. [ ] Run focused helper and Terraform regressions, Terraform 1.5.7 archive checks, and a disposable Generic Artifact repository lifecycle test with untracked historical versions. Use no GPU resources.
+3. [ ] Update existing model-stack source for future Destroy, refresh publication bundles, record validation, commit/merge and rebuild the release from main. Do not delete existing model results or run a live model-stack Destroy as a test.
+
+Focused checks passed: cleanup helper 10 tests; model project 5 Terraform tests (including executing destroy hooks during teardown); platform 16 Terraform tests; model publisher 8 tests; infrastructure publisher 13 tests. Both publishers assert the shared helper is included in delivered files. The native provider schema confirms no Generic Artifact force-delete flag; OCI Container Registry already removes images through its native repository delete operation, so no extra OCIR purge was added. Live RMS lifecycle and archive validation are in progress. Retain resource-owned hooks in configuration until destruction finishes; Terraform cannot execute a provisioner whose resource block was removed. The exact repository OCID and compartment come from self, not name matching or a tenancy-wide deletion scan.

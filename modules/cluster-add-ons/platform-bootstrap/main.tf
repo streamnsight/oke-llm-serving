@@ -48,7 +48,7 @@ resource "oci_artifacts_repository" "scripts" {
   is_immutable    = true
   provisioner "local-exec" {
     when    = destroy
-    command = "bash '${path.module}/scripts/cleanup-repository.sh'"
+    command = "bash '${path.module}/../../shared/artifact-repository-cleanup/scripts/cleanup-repository.sh'"
     environment = {
       REPOSITORY_ID  = self.id
       COMPARTMENT_ID = self.compartment_id

@@ -44,7 +44,14 @@ case "$mode" in
 esac
 cli() {
   # The CLI resolves both full region names and short region keys from OCIDs.
-  oci ${auth_args[@]+"${auth_args[@]}"} --region "$region" --output json --connection-timeout 10 --read-timeout 60 "$@"
+  local code
+  if oci ${auth_args[@]+"${auth_args[@]}"} --region "$region" --output json --connection-timeout 10 --read-timeout 60 "$@"; then
+    return 0
+  else
+    code=$?
+    printf 'Artifact repository cleanup failed during %s (exit %s).\n' "${4:-request}" "$code" >&2
+    return "$code"
+  fi
 }
 : > "$scratch/requested"
 for attempt in $(seq 1 12); do
@@ -55,10 +62,12 @@ for attempt in $(seq 1 12); do
     then error("Artifact response does not belong to the requested repository")
     else [.[] | select(."lifecycle-state" != "DELETED")] end
   ' "$scratch/list.json" > "$scratch/pending.json"
-  if [[ $(jq length "$scratch/pending.json") == 0 ]]; then
+  remaining=$(jq length "$scratch/pending.json")
+  if [[ $remaining == 0 ]]; then
     echo 'Artifact repository is empty; Terraform can delete it.'
     exit 0
   fi
+  printf 'Repository cleanup: %s artifact versions remain (pass %s/12).\n' "$remaining" "$attempt"
   while IFS= read -r artifact; do
     # A successful delete can remain visible while the service finishes it.
     if ! grep -Fxq "$artifact" "$scratch/requested"; then

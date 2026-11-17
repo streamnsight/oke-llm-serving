@@ -39,6 +39,10 @@ run "plan_does_not_require_a_generated_archive" {
     options = { plan_only = { region = "us-phoenix-1", availability_domain = "AD-1", gpu_shape = "BM.GPU.A10.4", node_count = 1, availability = "available_at_scan" } }
   }
   assert {
+    condition     = alltrue([for files in values(local.files) : files["modules/shared/artifact-repository-cleanup/scripts/cleanup-repository.sh"] == file("${var.modules_dir}/shared/artifact-repository-cleanup/scripts/cleanup-repository.sh")])
+    error_message = "Generated stacks must include their destroy-time repository cleanup runtime asset."
+  }
+  assert {
     condition     = !fileexists("${path.root}/.generated/infrastructure-plan_only.zip")
     error_message = "ZIP generation must happen at Apply, not in the Plan worker."
   }
@@ -172,7 +176,7 @@ run "packed_replicas_each_reserve_their_full_weight_workspace" {
 run "shared_KEDA_is_offered_even_when_the_model_uses_fixed_replicas" {
   command = apply
   assert {
-    condition = local.defaults.selected.keda_enabled && !contains(keys(local.defaults.selected),"autoscaling_enabled") && yamldecode(local.files.selected["schema.yaml"]).variables.keda_enabled.default && !contains(keys(yamldecode(local.files.selected["schema.yaml"]).variables),"autoscaling_enabled")
+    condition     = local.defaults.selected.keda_enabled && !contains(keys(local.defaults.selected), "autoscaling_enabled") && yamldecode(local.files.selected["schema.yaml"]).variables.keda_enabled.default && !contains(keys(yamldecode(local.files.selected["schema.yaml"]).variables), "autoscaling_enabled")
     error_message = "Infrastructure installs the shared KEDA capability by default without an input that enables model autoscaling."
   }
 }

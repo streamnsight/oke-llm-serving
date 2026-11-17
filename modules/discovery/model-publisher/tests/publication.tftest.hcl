@@ -35,6 +35,10 @@ run "no_model_or_publication_context_creates_no_resources" {
 run "plan_never_requires_a_previous_worker_archive" {
   command = plan
   assert {
+    condition     = local.files["modules/shared/artifact-repository-cleanup/scripts/cleanup-repository.sh"] == file("${var.modules_dir}/shared/artifact-repository-cleanup/scripts/cleanup-repository.sh")
+    error_message = "Generated stacks must include their destroy-time repository cleanup runtime asset."
+  }
+  assert {
     condition     = local.enabled && length(local.files) > 4 && strcontains(local.files["main.tf"], "./modules/llm-deployment/model-delivery") && contains(keys(local.files), "variables.tf") && local.files["variables.tf"] == file("${var.template_dir}/variables.tf") && contains(keys(local.files), "modules/llm-deployment/model-delivery/chart/templates/workload.yaml")
     error_message = "The model template must be rooted at the ZIP root with file-relative module paths."
   }

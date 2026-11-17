@@ -73,7 +73,7 @@ Sources: [PrivateEndpointChannel](https://docs.oracle.com/en-us/iaas/tools/pytho
 
 ## Artifact repository destruction
 
-Destroy empties the platform-owned source repository before deleting it, including historical file versions. Routine execution reports stay in DevOps Logging; no separate platform results repository is created. Cleanup runs on the Terraform/RMS host with that host's existing OCI principal/profile and requires permission to list and delete generic artifacts. A cleanup error stops repository deletion. The helper is packaged with the platform module; no Kubernetes API access is needed.
+Destroy empties the platform-owned source repository before deleting it, including historical file versions. Routine execution reports stay in DevOps Logging; no separate platform results repository is created. Cleanup runs on the Terraform/RMS host with that host's existing OCI principal/profile and requires permission to list and delete generic artifacts. A cleanup error stops repository deletion. The shared cleanup helper is packaged with both infrastructure and model bundles; no Kubernetes API access is needed. Model-owned software and results repositories use the same destroy-time cleanup, including historical benchmark exports.
 
 The hooks are attached directly to existing repository resources, so an updated stack source can retry a previously failed Destroy without an Apply to register another resource. Run the explicit component undeploy pipelines separately when removing releases; repository cleanup does not uninstall cluster components or change retained GPU protection.
 

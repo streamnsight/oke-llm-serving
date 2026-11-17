@@ -60,6 +60,14 @@ resource "oci_artifacts_repository" "scripts" {
   description     = "Immutable model pipeline scripts, chart inputs and frozen specifications; no model weights."
   repository_type = "GENERIC"
   is_immutable    = true
+  provisioner "local-exec" {
+    when    = destroy
+    command = "bash '${path.module}/../../shared/artifact-repository-cleanup/scripts/cleanup-repository.sh'"
+    environment = {
+      REPOSITORY_ID  = self.id
+      COMPARTMENT_ID = self.compartment_id
+    }
+  }
 }
 resource "oci_artifacts_repository" "results" {
   compartment_id  = var.compartment_id
@@ -67,6 +75,14 @@ resource "oci_artifacts_repository" "results" {
   description     = "Immutable validation and benchmark results for this independent model project."
   repository_type = "GENERIC"
   is_immutable    = true
+  provisioner "local-exec" {
+    when    = destroy
+    command = "bash '${path.module}/../../shared/artifact-repository-cleanup/scripts/cleanup-repository.sh'"
+    environment = {
+      REPOSITORY_ID  = self.id
+      COMPARTMENT_ID = self.compartment_id
+    }
+  }
 }
 resource "oci_devops_deploy_environment" "model" {
   project_id              = oci_devops_project.model.id
