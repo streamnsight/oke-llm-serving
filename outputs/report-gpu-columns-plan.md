@@ -13,6 +13,6 @@
 
 - [x] Run focused report rendering and Terraform regressions.
 - [x] Check desktop/mobile rendering and filtering in a real browser.
-- [ ] Commit, integrate and rebuild the discovery ZIP; preserve unrelated workspace edits.
+- [x] Commit, integrate and rebuild the discovery ZIP; preserve unrelated workspace edits. Merged into main after browser validation. The actual entry ZIP and both embedded stack roots pass Terraform 1.5.7 checks.
 
 Validation: 22 report rendering tests and 17 Terraform report tests passed. An isolated Chrome session verified the new order and red computed colors at desktop (1440px) and mobile (390px), collapsed options, expansion and capacity filtering. The accessible shortage labels stay inside the table scroll container; neither viewport has page-level horizontal overflow. No OCI scans or cloud changes were performed.
