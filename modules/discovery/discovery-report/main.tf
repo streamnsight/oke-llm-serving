@@ -1,6 +1,14 @@
 # Copyright (c) 2020-2022 Oracle and/or its affiliates. All rights reserved.
 # Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
 terraform { required_version = ">= 1.5.0" }
+module "cache_capabilities" {
+  for_each               = var.options
+  source                 = "../../llm-deployment/cache-capabilities"
+  profile                = var.profile
+  serving                = try(each.value.serving_configuration, var.serving_configuration, {})
+  hosts_per_replica      = try(each.value.hosts_per_replica, each.value.pipeline_parallel_size, 1)
+  pipeline_parallel_size = try(each.value.pipeline_parallel_size, 1)
+}
 locals {
   model_budgets      = [for value in [try(var.profile.memory.planning.payload_budget_bytes, null), try(var.profile.memory.recommended_aggregate_bytes, null), try(var.assessment.recipe_options.memory_budget_bytes, null)] : value if try(value > 0, false)]
   model_budget_bytes = length(local.model_budgets) > 0 ? max(local.model_budgets...) : null
@@ -137,6 +145,7 @@ locals {
     memory_method            = try(option.memory_status, "analytical_layout_estimate_not_runtime_proof"),
     configuration_status     = try(option.configuration_status, "requires_validation"),
     configuration_origin     = try(option.configuration_origin, "analytical_layout"),
+    cache_capabilities       = module.cache_capabilities[id].assessment,
     runtime_validation       = try(option.runtime_validation, "not_run"),
     tasks                    = try(option.serving_configuration.recipe.serving_tasks, []),
     components               = sort([for component, requirement in try(option.platform_plan.components, {}) : component if requirement.required]),

@@ -196,6 +196,15 @@ function renderOptions() {
     const config = add(body, "section"); add(config, "h3", "Serving configuration"); badge(config, label(row.configuration_status), true);
     add(config, "p", "Runtime validation: " + label(row.runtime_validation) + ". Memory method: " + label(row.memory_method) + ".", "muted");
     facts(add(config, "dl", undefined, "facts"), [["Serving framework / version", text(serving.framework) + " / " + text(serving.version)], ["Container platform", serving.platform], ["Recipe GPU family", serving.source_hardware], ["Planned GPU family", serving.selected_hardware]]);
+    if (row.cache_capabilities) {
+      const capabilities = row.cache_capabilities, features = details(config, "Cache and routing compatibility", "recipe-details");
+      for (const [title, feature] of [["KV-aware routing", capabilities.routing?.kvaware], ["LMCache MP", capabilities.lmcache?.mp], ["In-process LMCache", capabilities.lmcache?.inprocess]]) {
+        if (!feature) continue;
+        add(features, "p", title + ": " + label(feature.status) + ".");
+        if ((feature.reasons || []).length) list(features, feature.reasons);
+      }
+      add(features, "p", "Prefix-aware routing uses request affinity; KV-aware routing needs actual cache residency. LMCache MP adds CPU offloading. Image and runtime checks remain required.", "muted");
+    }
     add(config, "h4", "Serving image"); code(config, text(serving.image));
     const preview = plannedCommand(row);
     if (preview && serving.image) { add(config, "h4", "Planned engine command"); code(config, preview); }

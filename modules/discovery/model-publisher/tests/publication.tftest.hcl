@@ -141,15 +141,28 @@ run "cache_profile_defaults_remain_editable_in_rms" {
     error_message = "Recipe cache recommendations and readable runtime assets must survive publication, without model-specific branches or hidden tfvars."
   }
 }
-run "explicit_KV_routing_publishes_a_paired_controller_configuration" {
-  command = apply
+run "explicit_unavailable_KV_routing_is_rejected_before_publication" {
+  command = plan
   variables { model_spec = merge(var.model_spec, { model = merge(var.model_spec.model, { routing_mode = "kvaware" }) }) }
+  expect_failures = [terraform_data.publication]
+}
+run "hybrid_generated_schema_hides_inprocess_and_KV_options" {
+  command = plan
+  variables { model_spec = merge(var.model_spec, { profile = { architecture = { kind = "hybrid_dense" } } }) }
   assert {
-    condition     = local.defaults.replicas == 2 && local.defaults.router_enabled && local.defaults.routing_mode == "kvaware" && local.defaults.lmcache_mode == "inprocess" && alltrue([for key in ["replicas", "router_enabled", "routing_mode", "lmcache_mode"] : jsondecode(local.files["recommendations_override.tf.json"]).variable[key].default == local.defaults[key] && yamldecode(local.files["schema.yaml"]).variables[key].default == local.defaults[key]])
-    error_message = "KV-aware routing must enable its router and in-process LMCache controller in both editable Terraform and RMS defaults."
+    condition     = !contains(yamldecode(local.files["schema.yaml"]).variables.routing_mode.enum, "kvaware") && !contains(yamldecode(local.files["schema.yaml"]).variables.lmcache_mode.enum, "inprocess") && contains(yamldecode(local.files["schema.yaml"]).variables.lmcache_mode.enum, "mp") && contains(keys(local.files), "modules/llm-deployment/cache-capabilities/main.tf")
+    error_message = "Generated bundles must hide incompatible features and include the same capability module used by validation."
   }
   assert {
     condition     = jsondecode(local.files["inputs/model-spec.json"]).selection == var.model_spec.selection
-    error_message = "The explicit routing policy must not rewrite the assessed upstream recipe."
+    error_message = "Compatibility assessment must preserve the upstream recipe evidence."
+  }
+}
+run "uniform_generated_schema_retains_eligible_inprocess_cache" {
+  command = plan
+  variables { model_spec = merge(var.model_spec, { profile = { architecture = { kind = "dense" } } }) }
+  assert {
+    condition     = contains(yamldecode(local.files["schema.yaml"]).variables.lmcache_mode.enum, "inprocess") && !contains(yamldecode(local.files["schema.yaml"]).variables.routing_mode.enum, "kvaware")
+    error_message = "A conventional cache can remain eligible for in-process offload without incorrectly enabling KV-aware chat routing."
   }
 }

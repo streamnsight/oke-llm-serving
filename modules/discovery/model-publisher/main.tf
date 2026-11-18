@@ -9,7 +9,7 @@ terraform {
 }
 locals {
   enabled      = var.model_spec != null && var.publication != null
-  dependencies = toset(["llm-deployment/model-target", "llm-deployment/model-project", "llm-deployment/model-delivery", "llm-deployment/model-storage", "shared/component-delivery", "shared/inline-command-spec", "shared/artifact-repository-cleanup"])
+  dependencies = toset(["llm-deployment/model-target", "llm-deployment/model-project", "llm-deployment/model-delivery", "llm-deployment/model-storage", "llm-deployment/cache-capabilities", "shared/component-delivery", "shared/inline-command-spec", "shared/artifact-repository-cleanup"])
   module_files = local.enabled ? merge([for dependency in local.dependencies : {
     for relative in fileset("${var.modules_dir}/${dependency}", "**") : "modules/${dependency}/${relative}" => file("${var.modules_dir}/${dependency}/${relative}")
     if !startswith(relative, ".") && !startswith(relative, "tests/") && !strcontains(relative, "/tests/") && !startswith(relative, "work/") && !startswith(relative, "node_modules/") && !strcontains(relative, "/.") && !can(regex("\\.(tfstate(\\..*)?|tfvars(\\.json)?|tfplan)$", relative))
@@ -42,7 +42,7 @@ locals {
     monitoring_enabled       = try(local.selected.platform_plan.monitoring.enabled, true)
     workspace_gib            = local.snapshot_bytes == null ? 64 : max(20, ceil(local.snapshot_bytes * 2 / pow(1024, 3))),
     router_enabled           = contains(["prefixaware", "kvaware"], local.routing_policy) || try(local.selected.replicas > 1, false) || try(local.selected.platform_plan.autoscaling.enabled, false),
-    lmcache_mode             = local.routing_requested == "kvaware" ? "inprocess" : try(local.service_profile.lmcache.mode, "recipe"),
+    lmcache_mode             = try(local.service_profile.lmcache.mode, "recipe"),
     lmcache_cpu_memory_gb    = try(local.service_profile.lmcache.cpu_memory_gb, null),
     lmcache_chunk_size       = try(local.service_profile.lmcache.chunk_size, null),
     lmcache_mamba_cache_mode = try(local.service_profile.lmcache.mamba_cache_mode, null),
@@ -60,7 +60,7 @@ locals {
   object_name   = "models/${local.model_folder}/${local.region}/${replace(local.shape, "/[^A-Za-z0-9_.-]/", "-")}/${local.filename}"
   launch_name   = "rms/${local.run_id}-${substr(sha256("model/${jsonencode(var.model_spec)}"), 0, 16)}.zip"
   files = local.enabled ? merge(local.template_files, local.module_files, {
-    "schema.yaml"                      = "${local.header}${yamlencode(merge(local.schema, { variables = { for key, value in local.schema.variables : key => merge(value, try({ default = local.defaults[key] }, {})) } }))}",
+    "schema.yaml"                      = "${local.header}${yamlencode(merge(local.schema, { variables = { for key, value in local.schema.variables : key => merge(value, try({ default = local.defaults[key] }, {}), key == "routing_mode" ? { enum = module.cache_capabilities.assessment.routing_modes } : {}, key == "lmcache_mode" ? { enum = module.cache_capabilities.assessment.lmcache_modes } : {}) } }))}",
     "recommendations_override.tf.json" = jsonencode({ variable = { for key, value in local.defaults : key => { default = value } } }),
     "inputs/model-spec.json"           = jsonencode(var.model_spec),
     "LICENSE.txt"                      = file("${var.modules_dir}/../LICENSE.txt"),
@@ -72,11 +72,30 @@ locals {
     })
   }) : {}
 }
+module "cache_capabilities" {
+  source                 = "../../llm-deployment/cache-capabilities"
+  profile                = try(var.model_spec.profile, {})
+  serving                = try(local.selected.serving_configuration, var.model_spec.serving_configuration, {})
+  hosts_per_replica      = try(local.selected.hosts_per_replica, local.selected.pipeline_parallel_size, 1)
+  pipeline_parallel_size = try(local.selected.pipeline_parallel_size, 1)
+}
 resource "terraform_data" "publication" {
   count            = local.enabled ? 1 : 0
   triggers_replace = uuid()
   input            = local.published_at
   lifecycle {
+    precondition {
+      condition     = local.routing_policy != "kvaware" || module.cache_capabilities.assessment.routing.kvaware.selectable
+      error_message = "KV-aware routing is unavailable: ${join(" ", module.cache_capabilities.assessment.routing.kvaware.reasons)} Select an available routing policy before publishing a model stack."
+    }
+    precondition {
+      condition     = local.recommendation.lmcache_mode != "inprocess" || module.cache_capabilities.assessment.lmcache.inprocess.selectable
+      error_message = "In-process LMCache is unavailable: ${join(" ", module.cache_capabilities.assessment.lmcache.inprocess.reasons)}"
+    }
+    precondition {
+      condition     = local.recommendation.lmcache_mode != "mp" || module.cache_capabilities.assessment.lmcache.mp.selectable
+      error_message = "LMCache MP is unavailable: ${join(" ", module.cache_capabilities.assessment.lmcache.mp.reasons)}"
+    }
     precondition {
       condition     = try(local.selected.availability == "available_at_scan" && local.selected.node_count >= 1 && floor(local.selected.node_count) == local.selected.node_count && length(local.selected.region) > 0 && length(local.selected.gpu_shape) > 0, false)
       error_message = "Publish only a capacity/headroom-confirmed selection with region, shape and a positive whole-host count."

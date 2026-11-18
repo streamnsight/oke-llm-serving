@@ -58,6 +58,20 @@ function fixture(changes={}){
  writeFileSync(`${dir}/state.json`,JSON.stringify(state));
  return{dir,env,run(code){const r=spawnSync('bash',['-c',`set -euo pipefail; source runtime/common.sh; ${code}`],{cwd:dir,env,encoding:'utf8',timeout:15000});return{...r,state:JSON.parse(readFileSync(`${dir}/state.json`))};},close(){rmSync(dir,{recursive:true,force:true});}};
 }
+test('unassessed KV-aware routing is rejected before contacting the cluster',()=>{
+ const f=fixture({config:{routing_mode:'kvaware',lmcache:{enabled:true,mode:'inprocess'}}});
+ try{const r=f.run('model_inputs');assert.equal(r.status,2,r.stderr);assert.match(r.stderr,/KV-aware routing.*unavailable/);assert.deepEqual(r.state.calls,[]);}finally{f.close();}
+});
+test('in-process cache without compatibility evidence cannot bypass validation',()=>{
+ const f=fixture({config:{lmcache:{enabled:true,mode:'inprocess'}}});
+ try{const r=f.run('model_inputs');assert.equal(r.status,2,r.stderr);assert.match(r.stderr,/In-process LMCache is unavailable/);assert.deepEqual(r.state.calls,[]);}finally{f.close();}
+});
+test('cached model or image pipeline overrides require compatibility reassessment',()=>{
+ for(const env of [{MODEL_ID:'org/other'},{SERVING_IMAGE:`docker.io/vllm/vllm-openai@sha256:${'f'.repeat(64)}`}]){
+  const f=fixture({config:{lmcache:{enabled:true,mode:'mp'}},env});
+  try{const r=f.run('model_inputs');assert.equal(r.status,2,r.stderr);assert.match(r.stderr,/requires a stack Apply to reassess compatibility/);assert.deepEqual(r.state.calls,[]);}finally{f.close();}
+ }
+});
 test('model preflight accepts packed retained GPU slots and rejects missing allocation before native Helm',()=>{
  for(const [changes,expected] of [[{},0],[{config:{platform:{...config.platform,allocation:{gpu_pool_id:null}}}},2],[{env:{REPLICAS:'3'}},2],[{env:{TP:'1'}},2],[{env:{MODEL_NAMESPACE:'other'}},2],[{state:{nodes:[]}},2]]){
   const f=fixture(changes);try{const r=f.run('model_inputs; model_geometry; model_storage');assert.equal(r.status,expected,r.stderr);assert(!r.state.calls.some(c=>['create','apply','replace'].some(v=>c.args.includes(v))));}finally{f.close();}

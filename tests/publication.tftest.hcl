@@ -70,14 +70,19 @@ run "zero_options_still_publish_a_report" {
   }
 }
 
-run "routing_and_replica_requests_are_preserved_in_generated_model_inputs" {
+run "supported_routing_and_replica_requests_are_preserved_in_generated_model_inputs" {
   command = plan
   variables {
     replicas     = 2
-    routing_mode = "kvaware"
+    routing_mode = "prefixaware"
   }
   assert {
-    condition     = local.model_specifications.selected.model.requested_replicas == 2 && local.model_specifications.selected.model.routing_mode == "kvaware"
+    condition     = local.model_specifications.selected.model.requested_replicas == 2 && local.model_specifications.selected.model.routing_mode == "prefixaware"
     error_message = "The configured model bundle must preserve the user's replica quantity and explicit routing policy separately from raw recipe evidence."
   }
+}
+run "manual_unavailable_KV_request_fails_input_validation" {
+  command = plan
+  variables { routing_mode = "kvaware" }
+  expect_failures = [var.routing_mode]
 }

@@ -115,15 +115,16 @@ locals {
       backend  = try(local.selection.platform_plan.topology.backend, local.serving.engine.multi_node_backend, "mp"),
       strategy = try(local.selection.platform_plan.topology.strategy, local.runtime_hosts > 1 ? "multi_node_tp_pp" : "single_node_tp")
     } } } },
-    serving         = { recipe = { args = try(local.serving.recipe.args, []), env = merge(try(local.serving.recipe.env, {}), { VLLM_USE_RUST_FRONTEND = local.defaults.VLLM_USE_RUST_FRONTEND }), companions = try(local.serving.recipe.companions, []) } },
-    namespace       = local.namespace, release = local.name,
-    identity        = local.identity, ownership_token = local.owner, defaults = local.defaults,
-    storage         = merge(var.storage, { workspace_gib = local.workspace_gib, snapshot_bytes = local.snapshot_bytes, workspace_explicit = var.storage.workspace_gib != null }),
-    hf_token_secret = var.hf_token_secret,
-    lmcache         = merge(local.lmcache, { enabled = local.lmcache_enabled }), routing_mode = local.routing_mode,
-    router_enabled  = local.router_enabled, autoscaling = var.autoscaling, inference_probe = var.inference_probe,
-    timeout_seconds = var.timeout_seconds,
-    benchmark_image = "docker.io/vllm/vllm-openai-cpu@sha256:827ef38187f9b52f2bb838695ef815ec5b65f4bf3e4c061b002b2b0a19cb0701"
+    serving            = { recipe = { args = try(local.serving.recipe.args, []), env = merge(try(local.serving.recipe.env, {}), { VLLM_USE_RUST_FRONTEND = local.defaults.VLLM_USE_RUST_FRONTEND }), companions = try(local.serving.recipe.companions, []) } },
+    namespace          = local.namespace, release = local.name,
+    identity           = local.identity, ownership_token = local.owner, defaults = local.defaults,
+    storage            = merge(var.storage, { workspace_gib = local.workspace_gib, snapshot_bytes = local.snapshot_bytes, workspace_explicit = var.storage.workspace_gib != null }),
+    hf_token_secret    = var.hf_token_secret,
+    lmcache            = merge(local.lmcache, { enabled = local.lmcache_enabled }), routing_mode = local.routing_mode,
+    cache_capabilities = module.cache_capabilities.assessment,
+    router_enabled     = local.router_enabled, autoscaling = var.autoscaling, inference_probe = var.inference_probe,
+    timeout_seconds    = var.timeout_seconds,
+    benchmark_image    = "docker.io/vllm/vllm-openai-cpu@sha256:827ef38187f9b52f2bb838695ef815ec5b65f4bf3e4c061b002b2b0a19cb0701"
   }
   runtime_files = merge({ for asset in ["preflight.sh", "validate.sh", "retired.sh", "common.sh"] : asset => file("${path.module}/scripts/${asset}") }, { "config.json" = jsonencode(local.config) })
 }

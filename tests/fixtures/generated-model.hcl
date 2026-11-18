@@ -37,8 +37,8 @@ override_module {
 run "rendered_cluster_only_stack_autoruns_an_independent_model_project" {
   command = apply
   assert {
-    condition = try(local.model.model.routing_mode, "auto") != "kvaware" || (output.model_delivery.routing == "kvaware" && output.model_delivery.lmcache.enabled && output.model_delivery.lmcache.mode == "inprocess" && tonumber(output.model_delivery.defaults.REPLICAS) == local.model.selection.replicas && strcontains(output.model_delivery.endpoint, "-router-service."))
-    error_message = "A KV-aware generated ZIP must reach actual model delivery with matching replicas, LMCache controller mode and the router endpoint."
+    condition = !output.model_delivery.cache_capabilities.routing.kvaware.selectable && !contains(yamldecode(file("${path.root}/schema.yaml")).variables.routing_mode.enum, "kvaware") && output.model_delivery.routing != "kvaware"
+    error_message = "The actual generated ZIP must hide unavailable KV-aware routing and preserve the capability assessment through model delivery."
   }
   assert {
     condition     = length(module.project) == 1 && output.model_project.project_id == module.project[0].resources.project_id && output.model_delivery.project_id == output.model_project.project_id && output.model_project.project_id != null && output.model_project.script_repository_id != output.model_project.result_repository_id

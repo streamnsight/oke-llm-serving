@@ -44,6 +44,21 @@ function execute(overrides = {}) {
   const context = {document, URL}; vm.runInNewContext(script, context, {timeout: 1000});
   return {nodes, created, context};
 }
+test('unavailable cache features explain compatibility without hiding hardware or launch links',()=>{
+ const row=option('region-one');row.cache_capabilities={routing:{kvaware:{selectable:false,status:'unavailable',reasons:['Hybrid cache requires MP; the current router cannot consume MP events.']}},lmcache:{mp:{selectable:true,status:'requires_image_validation',reasons:[]},inprocess:{selectable:false,status:'unsupported',reasons:['Hybrid cache layout is unsupported.']}}};
+ const {nodes,created}=execute({options:{first:row},option_count:1});
+ assert.match(nodes.options.textContent,/KV-aware routing: unavailable/);
+ assert.match(nodes.options.textContent,/current router cannot consume MP events/);
+ assert.match(nodes.options.textContent,/In-process LMCache: unsupported/);
+ assert.equal(created.filter(n=>n.className==='option').length,1);
+ assert(created.some(n=>n.tag==='a'&&n.href.includes('zipUrl=model')));
+});
+test('RMS controls do not advertise unavailable KV-aware routing',()=>{
+ for(const path of ['../schema.yaml','../templates/llm-deployment/schema.yaml']){
+  const schema=parse(readFileSync(new URL(path,import.meta.url),'utf8'));
+  assert(!schema.variables.routing_mode.enum.includes('kvaware'));
+ }
+});
 test("option sections start collapsed and retain packing, both stack URLs and expiry", () => {
   const {nodes, created} = execute();
   assert.equal(nodes.options.children.length, 2);

@@ -249,16 +249,13 @@ run "lmcache_mp_is_local_and_budgeted" {
     error_message = "MP workers must use the explicitly selected external connector and local cache process."
   }
 }
-run "kvaware_controller_protocol" {
+run "legacy_controller_wiring_is_not_proof_of_KV_routing" {
   command = plan
   variables {
     lmcache_mode = "inprocess"
     routing_mode = "kvaware"
   }
-  assert {
-    condition     = local.values["vllm-stack"].routerSpec.routingLogic == "kvaware" && local.values["vllm-stack"].routerSpec.lmcacheControllerReplyPort == 9001 && length(local.values["vllm-stack"].routerSpec.extraPorts) == 2 && local.cache_env.LMCACHE_LMCACHE_WORKER_PORTS == "8001,8002" && local.values.memory == "36Gi"
-    error_message = "KV-aware routing must wire controller reply/heartbeat ports, worker reporting and per-rank host RAM."
-  }
+  expect_failures = [terraform_data.cache_contract]
 }
 run "mp_cannot_claim_legacy_controller_routing" {
   command = plan
@@ -363,6 +360,7 @@ run "hybrid_cache_requirement_is_derived_without_model_name_rules" {
     routing_mode = "kvaware"
     model        = merge(var.model, { profile = merge(var.model.profile, { architecture = { kind = "hybrid_dense", attention = { layer_types = ["full_attention", "linear_attention"] } } }) })
   }
+  expect_failures = [terraform_data.cache_contract]
   assert {
     condition     = local.values.lmcache.requires_hma && local.config.lmcache.requires_hma && local.values["vllm-stack"].routerSpec.startupProbe.periodSeconds * local.values["vllm-stack"].routerSpec.startupProbe.failureThreshold >= 180
     error_message = "The selected image must verify hybrid connector capability before loading weights, and the router needs a bounded cold-start budget."
@@ -372,10 +370,16 @@ run "ordinary_models_do_not_require_hybrid_connector_capability" {
   command = plan
   variables {
     lmcache_mode = "inprocess"
-    routing_mode = "kvaware"
+    routing_mode = "prefixaware"
+    model        = merge(var.model, { profile = merge(var.model.profile, { architecture = { kind = "dense" } }) })
   }
   assert {
     condition     = !local.values.lmcache.requires_hma
     error_message = "Ordinary models must not be rejected by hybrid-only capability checks."
   }
+}
+run "unknown_layout_cannot_select_inprocess_offload" {
+  command = plan
+  variables { lmcache_mode = "inprocess" }
+  expect_failures = [terraform_data.cache_contract]
 }

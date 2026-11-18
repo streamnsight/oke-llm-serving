@@ -1,9 +1,16 @@
 # Copyright (c) 2020-2022 Oracle and/or its affiliates. All rights reserved.
 # Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
+module "cache_capabilities" {
+  source                 = "../cache-capabilities"
+  profile                = local.profile
+  serving                = local.serving
+  hosts_per_replica      = tonumber(local.defaults.HOSTS_PER_REPLICA)
+  pipeline_parallel_size = tonumber(local.defaults.PP)
+}
 locals {
   # Deployment profiles extend the frozen upstream recipe without rewriting it.
   recipe_cache = try(local.serving.deployment_profile.lmcache, {})
-  requires_hma = try(startswith(var.model.profile.architecture.kind, "hybrid_"), false) || try(contains(var.model.profile.architecture.attention.layer_types, "linear_attention"), false)
+  requires_hma = module.cache_capabilities.assessment.requires_hma
   lmcache = {
     requires_hma     = local.requires_hma
     mode             = var.lmcache_mode == "recipe" ? try(local.recipe_cache.mode, lookup({ LMCacheMPConnector = "mp", LMCacheConnectorV1 = "inprocess" }, try(local.recipe_kv.kv_connector, ""), "disabled")) : var.lmcache_mode
@@ -50,6 +57,18 @@ locals {
 resource "terraform_data" "cache_contract" {
   input = { cache = local.lmcache, routing = local.routing_mode }
   lifecycle {
+    precondition {
+      condition     = local.routing_mode != "kvaware" || module.cache_capabilities.assessment.routing.kvaware.selectable
+      error_message = "KV-aware routing is unavailable: ${join(" ", module.cache_capabilities.assessment.routing.kvaware.reasons)} Select an available routing policy; no automatic downgrade is performed."
+    }
+    precondition {
+      condition     = local.lmcache.mode != "inprocess" || module.cache_capabilities.assessment.lmcache.inprocess.selectable
+      error_message = "In-process LMCache is unavailable: ${join(" ", module.cache_capabilities.assessment.lmcache.inprocess.reasons)}"
+    }
+    precondition {
+      condition     = local.lmcache.mode != "mp" || module.cache_capabilities.assessment.lmcache.mp.selectable
+      error_message = "LMCache MP is unavailable: ${join(" ", module.cache_capabilities.assessment.lmcache.mp.reasons)}"
+    }
     precondition {
       condition     = var.lmcache_mode != "disabled" || !contains(["LMCacheMPConnector", "LMCacheConnectorV1"], try(local.recipe_kv.kv_connector, ""))
       error_message = "The recipe itself enables LMCache. Remove its KV-transfer setting or select a complete alternate recipe before disabling the adapter."

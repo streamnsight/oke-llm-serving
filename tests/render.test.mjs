@@ -35,9 +35,9 @@ test('discovery asks for model assessment, while generated model forms own runti
  for(const name of['engine_image','engine_version','engine_platform','recipe_features','kv_dtype'])assert.equal(discovery.variables[name],undefined);
  for(const name of['serving_image','tensor_parallel_size','pipeline_parallel_size','context_length','concurrency'])assert(Object.hasOwn(model.variables,name));
 });
-test('discovery exposes replica quantity and KV-aware routing alongside per-replica workload',()=>{
+test('discovery exposes replica quantity and supported routing alongside per-replica workload',()=>{
  const schema=parse(readFileSync(`${root}/schema.yaml`,'utf8'));
  assert.equal(schema.variables.replicas.type,'integer');assert.equal(schema.variables.replicas.default,1);assert.equal(schema.variables.replicas.minimum,1);
  assert(schema.variableGroups.find(g=>g.title==='Model and workload').variables.includes('replicas'));
- assert(schema.variables.routing_mode.enum.includes('kvaware'));assert.equal(schema.variables.routing_mode.default,'auto');
+ assert(schema.variables.routing_mode.enum.includes('prefixaware'));assert(!schema.variables.routing_mode.enum.includes('kvaware'));assert.equal(schema.variables.routing_mode.default,'auto');
 });

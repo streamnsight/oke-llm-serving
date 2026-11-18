@@ -55,7 +55,7 @@ This object belongs under `serving_configuration.deployment_profile`; it extends
 rather than rewrites the upstream recipe. `lmcache_mode=mp|inprocess|disabled`
 and the optional `lmcache_cpu_memory_gb`, `lmcache_chunk_size` and
 `lmcache_mamba_cache_mode` stack inputs override those recommendations. Routing
-can be overridden with an explicit `direct|prefixaware|kvaware` selection. An
+can be overridden with an explicit `direct|prefixaware` selection. An
 `auto` setting honors the frozen routing recommendation when present. Reject
 unsupported profile values, conflicting raw cache flags/environment and unknown
 companions before executing Helm. A declared `{"adapter":"lmcache_mp"}`
@@ -71,14 +71,25 @@ owns a disposable CPU cache, so replacement loses cache contents. There is no
 disk/shared cache, cache persistence or conversation history in this adapter.
 No runtime package installation or serving-image substitution is performed.
 
-Use `lmcache_mode=inprocess` with `routing_mode=kvaware` for the pinned
-production-stack router's controller protocol. The router starts its controller;
-workers report unique Pod identities and Pod IPs. Pull, reply and heartbeat
-ports are exposed through the router Service. This protocol is different from
-the MP coordinator: `mp + kvaware` is rejected, not silently downgraded. Verify
-the exact serving/router/LMCache protocol versions before enabling in-process
-controller routing for a new recipe. A modern hybrid model's MP support does
-not establish in-process support.
+The shared `cache-capabilities` assessment uses structured cache layout and
+host/PP geometry to restrict generated RMS choices. The current in-process
+adapter is eligible only for a known uniform attention cache on one host;
+hybrid and unknown layouts are excluded. MP eligibility still requires actual
+image and cache store/retrieve validation. A recipe or image selection alone
+does not prove compatibility. Hardware options remain visible independently.
+
+KV-aware routing is unavailable with the pinned Production Stack 0.1.14
+integration. Its controller requires the legacy in-process protocol, does not
+consume MP events and does not correctly tokenize chat messages in the
+KV-aware path. Therefore even a conventional model's cache eligibility does
+not establish general KV-aware routing. RMS controls omit the policy;
+discovery, publication, Terraform and pipeline preflight reject explicit or
+stale selections without silently substituting prefix-aware routing. Existing
+controller wiring is retained for a future validated integration.
+
+Cache-enabled pipeline runs must retain the assessed model ID, image and TP.
+Change these through stack inputs and Apply to regenerate compatibility,
+memory budgets and worker settings together.
 
 Both adapters currently require single-host TP. The cache budget is added to
 the existing worker memory request/limit, once per Pod for MP and per TP rank for
@@ -110,4 +121,9 @@ Disabled caches keep the existing serving command, resources and Service ports.
 
 For multi-host releases, the private HTTP Service is `<release>-http`; single-host releases retain `<release>`. LeaderWorkerSet owns the separate headless `<release>` Service and publishes leader/worker DNS before readiness, allowing distributed initialization. Validation and benchmarks select the HTTP Service from the effective host count; router endpoints are unchanged. Upgrading a previously failing multi-host release removes the old colliding HTTP Service so the LWS controller can create its headless Service.
 
-Discovery can explicitly recommend `routing_mode=kvaware`; the generated model ZIP pairs that choice with `router_enabled=true` and `lmcache_mode=inprocess`, preserving raw recipe evidence. The existing controller ports, Pod-specific identities, host-memory budget and connector checks apply. Changing only the replica quantity retains auto routing defaults; select KV-aware explicitly when testing real KV-cache affinity. A rendered KV-aware chart is not proof that the chosen serving image supports its connector or that two live replicas register and report cache hits.
+Discovery preserves compatible routing/cache recipe recommendations and raw
+recipe evidence. It no longer forces an in-process connector for a KV-aware
+request. The report includes feature-specific compatibility reasons alongside
+the same capacity-backed hardware choices. Changing replica quantity retains
+auto routing defaults. Prefix-aware affinity remains an approximation; a
+rendered router or healthy Pod is not proof of cache-aware worker selection.

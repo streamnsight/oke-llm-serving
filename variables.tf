@@ -40,13 +40,13 @@ variable "replicas" {
   }
 }
 variable "routing_mode" {
-  description = "Editable model-stack routing recommendation. KV-aware selects the paired in-process LMCache controller; compatible serving-image libraries and single-host replicas are required."
+  description = "Editable model-stack routing recommendation. The current router supports direct and approximate prefix-aware routing; KV-aware routing requires a separately validated integration."
   type        = string
   default     = "auto"
   nullable    = false
   validation {
-    condition     = contains(["auto", "direct", "prefixaware", "kvaware"], var.routing_mode)
-    error_message = "Choose auto, direct, prefixaware or kvaware routing."
+    condition     = contains(["auto", "direct", "prefixaware"], var.routing_mode)
+    error_message = "Choose auto, direct or prefixaware routing. KV-aware routing is unavailable with the pinned router: chat tokenization and MP cache-event consumption require a validated integration."
   }
 }
 variable "observation_id" {

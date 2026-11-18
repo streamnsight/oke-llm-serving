@@ -73,8 +73,8 @@ variables:
   model_path: { type: string, default: /models/model, title: Model path inside the mounted PVC }
   workspace_gib: { type: integer, minimum: 1, title: Local workspace GiB per serving pod }
   router_enabled: { type: boolean, default: false, title: Prefix-aware router, description: Automatically enabled for multiple replicas or an autoscaling maximum above one. }
-  routing_mode: { type: enum, enum: [ auto, direct, prefixaware, kvaware ], default: auto, title: Routing policy }
-  lmcache_mode: { type: enum, enum: [ recipe, disabled, mp, inprocess ], default: recipe, title: LMCache adapter, description: MP starts a local CPU cache process. KV-aware routing requires the in-process controller protocol. }
+  routing_mode: { type: enum, enum: [ auto, direct, prefixaware ], default: auto, title: Routing policy, description: KV-aware routing is unavailable with the pinned router. Generated model options include compatibility reasons. }
+  lmcache_mode: { type: enum, enum: [ recipe, disabled, mp ], default: recipe, title: LMCache adapter, description: MP starts a local CPU cache process and requires a compatible image. Generated model bundles offer in-process mode only for assessed uniform attention layouts. }
   lmcache_cpu_memory_gb: { type: number, minimum: 1, title: LMCache CPU buffer GB, description: Optional override. Defaults to recipe setting or 8 GB. In-process buffers are budgeted per TP worker. }
   lmcache_chunk_size: { type: integer, minimum: 1, title: LMCache chunk size, description: Optional override. Defaults to recipe setting or 256 tokens; validate hybrid block geometry. }
   lmcache_mamba_cache_mode: { type: enum, enum: [ none, align ], title: Mamba cache policy, description: Optional recipe override for hybrid models. }

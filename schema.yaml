@@ -123,10 +123,10 @@ variables:
     description: Capacity and quota must cover this many replicas. Spare GPU slots on allocated hosts may add complete replicas; review the recommended count in the report.
   routing_mode:
     type: enum
-    enum: [ auto, direct, prefixaware, kvaware ]
+    enum: [ auto, direct, prefixaware ]
     default: auto
     title: Model routing policy
-    description: KV-aware generates an enabled router and in-process LMCache controller configuration for compatible single-host replicas. Auto preserves recipe defaults and uses prefix-aware routing for multiple replicas.
+    description: Auto preserves compatible recipe defaults and uses prefix-aware routing for multiple replicas. KV-aware routing is unavailable with the pinned router; the report explains model and cache compatibility.
   observation_id:
     type: string
     title: Capacity observation identifier

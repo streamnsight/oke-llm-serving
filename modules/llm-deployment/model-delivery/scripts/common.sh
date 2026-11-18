@@ -40,7 +40,18 @@ model_inputs() {
     jq -e .router_enabled "$model_config" >/dev/null || model_fail 'Multiple replicas require a router; select prefixaware or compatible kvaware routing before increasing REPLICAS' || return
   fi
   [[ $INFERENCE_PROBE == none || $INFERENCE_PROBE == completions || $INFERENCE_PROBE == chat ]] || model_fail 'Unsupported inference probe; select none or an explicit text probe' || return
+  if [[ $(jq -r '.routing_mode // "auto"' "$model_config") == kvaware ]]; then
+    # Refuse old/manual configurations too; the pinned router cannot provide
+    # general KV-aware routing even when a recipe claims the policy is enabled.
+    model_fail 'KV-aware routing is unavailable with the pinned Production Stack router: chat tokenization and MP cache-event consumption require a validated router integration' || return
+  fi
   if jq -e '.lmcache.enabled // false' "$model_config" >/dev/null; then
+    if [[ $(jq -r .lmcache.mode "$model_config") == inprocess ]]; then
+      jq -e '.cache_capabilities.lmcache.inprocess.selectable == true' "$model_config" >/dev/null || model_fail 'In-process LMCache is unavailable for this cache layout or has no compatibility assessment; regenerate the model stack' || return
+    fi
+    for key in MODEL_ID SERVING_IMAGE; do
+      [[ ${!key} == "$(jq -r --arg key "$key" '.defaults[$key]' "$model_config")" ]] || model_fail "Changing $key with LMCache requires a stack Apply to reassess compatibility" || return
+    done
     (( HOSTS_PER_REPLICA == 1 )) || model_fail 'LMCache currently supports single-host TP only' || return
     # The buffer and controller worker ports are fixed in the frozen profile.
     [[ $TP == "$(jq -r .defaults.TP "$model_config")" ]] || model_fail 'Changing TP with LMCache requires a stack Apply to resize host memory and worker ports' || return

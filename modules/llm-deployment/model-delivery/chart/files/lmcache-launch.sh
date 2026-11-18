@@ -41,7 +41,7 @@ if os.environ.get('LMCACHE_REQUIRES_HMA', 'false') == 'true':
         raise SystemExit(
             f'{config.kv_connector} in this serving image does not support the hybrid memory allocator required by this model. '
             'Select a compatible connector/model/image before loading weights. '
-            'The current KV-aware router requires the in-process connector; MP uses a different coordinator protocol.'
+            'KV-aware routing is unavailable with the current router; MP offload and routing require separate compatibility checks.'
         )
 PY
 if [[ $LMCACHE_ADAPTER == mp ]]; then
