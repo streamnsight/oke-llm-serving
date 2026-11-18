@@ -70,6 +70,7 @@ locals {
       routerSpec = {
         enableRouter                   = true, serviceAccountName = "oke-llm-router", serviceDiscovery = "k8s", k8sServiceDiscoveryType = "pod-ip",
         routingLogic                   = local.routing_mode, replicaCount = 1, serviceType = "ClusterIP",
+        startupProbe                   = { httpGet = { path = "/health", port = "router-port" }, initialDelaySeconds = 5, periodSeconds = 5, timeoutSeconds = 2, failureThreshold = 36 },
         repository                     = "docker.io/lmcache/lmstack-router", tag = "v0.1.14@sha256:7107e6a17740478749ef28c812df48f405ccfab8d92f40372a50ef678b6c6b63",
         extraArgs                      = ["--k8s-label-selector", "oke-llm/model=${local.identity},oke-llm/endpoint=true"],
         lmcacheControllerPort          = local.routing_mode == "kvaware" ? 9000 : null,

@@ -79,6 +79,7 @@ containers:
       {{- end }}
       {{- if and $root.Values.lmcache $root.Values.lmcache.enabled }}
       - {name: LMCACHE_ADAPTER, value: {{ $root.Values.lmcache.mode | quote }}}
+      - {name: LMCACHE_REQUIRES_HMA, value: {{ $root.Values.lmcache.requires_hma | default false | toString | quote }}}
       - {name: LMCACHE_CPU_MEMORY_GB, value: {{ $root.Values.lmcache.cpu_memory_gb | toString | quote }}}
       {{- if $root.Values.lmcache.controller }}
       - name: LMCACHE_LMCACHE_INSTANCE_ID

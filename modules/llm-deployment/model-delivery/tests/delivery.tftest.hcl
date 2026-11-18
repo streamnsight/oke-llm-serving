@@ -356,3 +356,26 @@ run "disabled_does_not_silently_leave_recipe_lmcache_running" {
   }
   expect_failures = [terraform_data.cache_contract]
 }
+run "hybrid_cache_requirement_is_derived_without_model_name_rules" {
+  command = plan
+  variables {
+    lmcache_mode = "inprocess"
+    routing_mode = "kvaware"
+    model        = merge(var.model, { profile = merge(var.model.profile, { architecture = { kind = "hybrid_dense", attention = { layer_types = ["full_attention", "linear_attention"] } } }) })
+  }
+  assert {
+    condition     = local.values.lmcache.requires_hma && local.config.lmcache.requires_hma && local.values["vllm-stack"].routerSpec.startupProbe.periodSeconds * local.values["vllm-stack"].routerSpec.startupProbe.failureThreshold >= 180
+    error_message = "The selected image must verify hybrid connector capability before loading weights, and the router needs a bounded cold-start budget."
+  }
+}
+run "ordinary_models_do_not_require_hybrid_connector_capability" {
+  command = plan
+  variables {
+    lmcache_mode = "inprocess"
+    routing_mode = "kvaware"
+  }
+  assert {
+    condition     = !local.values.lmcache.requires_hma
+    error_message = "Ordinary models must not be rejected by hybrid-only capability checks."
+  }
+}

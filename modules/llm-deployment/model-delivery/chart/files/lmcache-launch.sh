@@ -18,13 +18,31 @@ trap cleanup EXIT
 trap 'exit 143' TERM
 trap 'exit 130' INT
 python3 - "$LMCACHE_ADAPTER" <<'PY'
-import importlib, sys
+import importlib, os, sys
 module = ('lmcache.integration.vllm.lmcache_mp_connector' if sys.argv[1]=='mp'
           else 'lmcache.integration.vllm.vllm_v1_adapter')
 try:
     importlib.import_module(module)
 except Exception as exc:
     raise SystemExit(f'LMCache adapter {module} cannot load in the selected serving image: {type(exc).__name__}: {exc}')
+if os.environ.get('LMCACHE_REQUIRES_HMA', 'false') == 'true':
+    try:
+        from vllm.config import KVTransferConfig
+        from vllm.distributed.kv_transfer.kv_connector.factory import KVConnectorFactory
+        config = KVTransferConfig(
+            kv_connector='LMCacheMPConnector' if sys.argv[1] == 'mp' else 'LMCacheConnectorV1',
+            kv_role='kv_both',
+            kv_connector_module_path=module if sys.argv[1] == 'mp' else None,
+        )
+        compatible = KVConnectorFactory.supports_hma_config(config)
+    except Exception as exc:
+        raise SystemExit(f'Cannot verify hybrid-cache support in the selected serving image: {type(exc).__name__}: {exc}')
+    if not compatible:
+        raise SystemExit(
+            f'{config.kv_connector} in this serving image does not support the hybrid memory allocator required by this model. '
+            'Select a compatible connector/model/image before loading weights. '
+            'The current KV-aware router requires the in-process connector; MP uses a different coordinator protocol.'
+        )
 PY
 if [[ $LMCACHE_ADAPTER == mp ]]; then
   lmcache server --host 127.0.0.1 --port 5555 --l1-size-gb "$LMCACHE_CPU_MEMORY_GB" \

@@ -32,7 +32,8 @@ test('MP chart delivers readable launcher and keeps one GPU allocation per TP Po
  assert.equal(pod.containers.length,1);assert(docs.find(d=>d.kind==='Service').spec.ports.some(p=>p.name==='cache-metrics'&&p.port===9090));assert.deepEqual(c.command,['bash','/lmcache/launch.sh']);assert.equal(c.resources.requests['nvidia.com/gpu'],2);assert(c.volumeMounts.some(v=>v.name==='lmcache'));assert.match(docs.find(d=>d.kind==='ConfigMap').data['launch.sh'],/lmcache server --host 127.0.0.1/);
 });
 test('controller worker identities and addresses use Pod fields; disabled cache is unchanged',()=>{
- const v=structuredClone(values);v.lmcache.controller=true;v.lmcache.mode='inprocess';let docs=render(v),env=docs.find(d=>d.kind==='Deployment').spec.template.spec.containers[0].env;
+ const v=structuredClone(values);v.lmcache.controller=true;v.lmcache.mode='inprocess';v.lmcache.requires_hma=true;let docs=render(v),env=docs.find(d=>d.kind==='Deployment').spec.template.spec.containers[0].env;
+ assert.equal(env.find(e=>e.name==='LMCACHE_REQUIRES_HMA').value,'true');
  assert.equal(env.find(e=>e.name==='LMCACHE_LMCACHE_INSTANCE_ID').valueFrom.fieldRef.fieldPath,'metadata.name');assert.equal(env.find(e=>e.name==='LMCACHE_P2P_HOST').valueFrom.fieldRef.fieldPath,'status.podIP');
  v.lmcache.enabled=false;docs=render(v);assert(!docs.some(d=>d.kind==='ConfigMap'));assert.deepEqual(docs.find(d=>d.kind==='Deployment').spec.template.spec.containers[0].command,['vllm','serve']);
 });

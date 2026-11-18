@@ -3,7 +3,9 @@
 locals {
   # Deployment profiles extend the frozen upstream recipe without rewriting it.
   recipe_cache = try(local.serving.deployment_profile.lmcache, {})
+  requires_hma = try(startswith(var.model.profile.architecture.kind, "hybrid_"), false) || try(contains(var.model.profile.architecture.attention.layer_types, "linear_attention"), false)
   lmcache = {
+    requires_hma     = local.requires_hma
     mode             = var.lmcache_mode == "recipe" ? try(local.recipe_cache.mode, lookup({ LMCacheMPConnector = "mp", LMCacheConnectorV1 = "inprocess" }, try(local.recipe_kv.kv_connector, ""), "disabled")) : var.lmcache_mode
     cpu_memory_gb    = coalesce(var.lmcache_cpu_memory_gb, try(local.recipe_cache.cpu_memory_gb, null), 8)
     chunk_size       = coalesce(var.lmcache_chunk_size, try(local.recipe_cache.chunk_size, null), 256)
