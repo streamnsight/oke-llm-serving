@@ -23,7 +23,7 @@ The user requested feature options limited to compatible model/runtime combinati
 
 - [x] Demonstrate failing regressions for hidden options, immutable recipe provenance, topology/layout rejection, pipeline bypass and report rendering; then pass focused executable/Terraform tests.
 - [x] Validate committed discovery, standalone model and generated model ZIPs, including Terraform 1.5.7 relocation checks. Verify actual generated schema enums and module dependencies.
-- [ ] Commit the feature and validation record; merge according to the repository workflow after relevant validation. Rebuild packages after merging. A local package does not update old RMS/report ZIP sources.
+- [x] Commit the feature and validation record; merge according to the repository workflow after relevant validation. Rebuild packages after merging. A local package does not update old RMS/report ZIP sources.
 
 No GPU allocations, pool changes, model redeployments or platform migrations are needed to validate these compatibility controls.
 
@@ -48,3 +48,4 @@ Acceptance for any candidate: run two replicas; confirm actual GPU/CPU cache sto
 - Exact router image CPU-only reproduction: `docker.io/lmcache/lmstack-router:v0.1.14@sha256:7107e6a17740478749ef28c812df48f405ccfab8d92f40372a50ef678b6c6b63`. Using its actual `/opt/venv/bin/python` and `KvawareRouter.route_request`, chat tokenized `""` and sent `[]` to the cache lookup, while a completion prompt produced tokens. No Hub/model/GPU work was performed. Both disposable probe Pods and the ConfigMap were removed. Evidence: `/tmp/cache-routing-router-probe-v2.log`. The initial system-Python probe could not import the package; no claim is based on it.
 - Playwright browser validation: expanded a hardware option and its compatibility section; verified KV-aware unavailable, MP requiring image validation, hybrid in-process unsupported, and retained infrastructure/model launch links. Screenshot: `/tmp/cache-routing-browser/compatibility.png`. No application console errors; the fixture's missing favicon returned 404.
 - No serving image, live workload, GPU allocation or RMS source was changed. Existing immutable report/model bundles require a new discovery run with updated source to receive the controls. MP completion and an event-based router remain separate follow-up implementation; this change makes their present compatibility limits explicit.
+- Source and validation were fast-forwarded from `fix/cache-routing-capabilities` into local `main` at `3a3aad8`; no `dev` branch exists. Main packages are rebuilt under `/tmp/cache-routing-main-{discovery,model}.zip`. The remote branch and existing RMS sources are not updated by this local integration.
