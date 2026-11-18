@@ -9,6 +9,14 @@ mock_provider "oci" {
   mock_data "oci_identity_regions" { defaults = { regions = [{ key = "ORD", name = "us-chicago-1" }] } }
 }
 mock_provider "oci" { alias = "home" }
+override_resource {
+  target = module.project[0].oci_artifacts_repository.scripts
+  values = { id = "ocid1.artifactrepository.oc1.test.fixture-scripts" }
+}
+override_resource {
+  target = module.project[0].oci_artifacts_repository.results
+  values = { id = "ocid1.artifactrepository.oc1.test.fixture-results" }
+}
 variables {
   tenancy_ocid     = "tenancy"
   compartment_ocid = "stack-compartment"
@@ -28,6 +36,10 @@ override_module {
 }
 run "rendered_cluster_only_stack_autoruns_an_independent_model_project" {
   command = apply
+  assert {
+    condition = try(local.model.model.routing_mode, "auto") != "kvaware" || (output.model_delivery.routing == "kvaware" && output.model_delivery.lmcache.enabled && output.model_delivery.lmcache.mode == "inprocess" && tonumber(output.model_delivery.defaults.REPLICAS) == local.model.selection.replicas && strcontains(output.model_delivery.endpoint, "-router-service."))
+    error_message = "A KV-aware generated ZIP must reach actual model delivery with matching replicas, LMCache controller mode and the router endpoint."
+  }
   assert {
     condition     = length(module.project) == 1 && output.model_project.project_id == module.project[0].resources.project_id && output.model_delivery.project_id == output.model_project.project_id && output.model_project.project_id != null && output.model_project.script_repository_id != output.model_project.result_repository_id
     error_message = "The actual configured ZIP must create its own model project/environment/repositories rather than require another stack's project IDs."

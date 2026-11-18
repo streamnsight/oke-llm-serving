@@ -10,7 +10,7 @@ locals {
       revision                  = try(module.model_profile.profile.model.resolved_revision, null),
       checkpoint_download_bytes = try(module.model_profile.profile.weights.checkpoint_download_bytes, null),
       staging_files             = try(module.model_profile.profile.weights.staging_files, []),
-      context_length            = var.context_length, concurrency = var.concurrency
+      context_length            = var.context_length, concurrency = var.concurrency, requested_replicas = var.replicas, routing_mode = var.routing_mode
     },
     profile               = module.model_profile.profile, selection = option,
     serving_configuration = try(option.serving_configuration, module.serving_resolution.resolution),

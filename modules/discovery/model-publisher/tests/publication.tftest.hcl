@@ -141,3 +141,15 @@ run "cache_profile_defaults_remain_editable_in_rms" {
     error_message = "Recipe cache recommendations and readable runtime assets must survive publication, without model-specific branches or hidden tfvars."
   }
 }
+run "explicit_KV_routing_publishes_a_paired_controller_configuration" {
+  command = apply
+  variables { model_spec = merge(var.model_spec, { model = merge(var.model_spec.model, { routing_mode = "kvaware" }) }) }
+  assert {
+    condition     = local.defaults.replicas == 2 && local.defaults.router_enabled && local.defaults.routing_mode == "kvaware" && local.defaults.lmcache_mode == "inprocess" && alltrue([for key in ["replicas", "router_enabled", "routing_mode", "lmcache_mode"] : jsondecode(local.files["recommendations_override.tf.json"]).variable[key].default == local.defaults[key] && yamldecode(local.files["schema.yaml"]).variables[key].default == local.defaults[key]])
+    error_message = "KV-aware routing must enable its router and in-process LMCache controller in both editable Terraform and RMS defaults."
+  }
+  assert {
+    condition     = jsondecode(local.files["inputs/model-spec.json"]).selection == var.model_spec.selection
+    error_message = "The explicit routing policy must not rewrite the assessed upstream recipe."
+  }
+}

@@ -1,0 +1,15 @@
+<!-- Copyright (c) 2020-2022 Oracle and/or its affiliates. All rights reserved. -->
+<!-- Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl. -->
+# Replica inputs and KV-aware deployment defaults
+
+Expose the planner's replica quantity through the discovery root and RMS schema. Forward the positive integer into capacity/headroom and host-allocation sizing; concurrency remains per replica. Preserve the existing whole-host packing policy unless the user requests exact replica counts. Explain the requested minimum versus packed deployment count.
+
+Expose an explicit discovery routing policy using the existing deployment choices. Preserve auto/direct/prefix-aware behavior by default. A KV-aware selection must generate an enabled router plus the in-process LMCache controller configuration, rather than silently deploying a prefix-aware router. Keep the raw assessed recipe immutable; existing incompatible-connector and single-host cache-layout checks still apply. KV-aware request routing requires the image's compatible LMCache integration; choosing a mode is not runtime proof of cache affinity.
+
+1. [x] Trace root inputs, planner quantities and configured ZIP recommendations. Add regressions for replica input forwarding/validation and paired KV-aware defaults without changing live model workloads.
+2. [x] Implement discovery controls and generated-stack settings; verify exact pinned router chart, client/controller endpoints, unique worker identity, existing single-replica behavior and incompatible layouts.
+3. [ ] Run focused Terraform/rendering regressions and Terraform 1.5.7 release/generated-archive checks. Commit, integrate only after relevant validation, rebuild from main and update discovery source for the next user run, preserving saved inputs. Record that real two-replica KV-affinity validation remains the user's model test; do not deploy/undeploy or resize GPUs for this feature.
+
+Implementation: root `replicas` reaches the actual planner; `routing_mode` and requested replica quantity are preserved in generated model input evidence. An explicit KV-aware request publishes paired editable router/in-process-cache defaults. Existing auto defaults, source recipe data, image/model pins and cache compatibility guards remain intact. User model/packing preferences were requested asynchronously; until a response, preserve existing minimum-plus-packing semantics and document how to request exactly two replicas in the generated model stack.
+
+Focused checks: the new form regression failed on baseline and passes with the controls. Root Terraform 20 passed, publisher 9 passed, model delivery 45 passed, form/pinned-router rendering JS 14 passed (no skips). Real planner tests reject insufficient replica capacity and invalid quantities. The real pinned router chart renders KV-aware arguments, controller/reply/heartbeat ports, the matching hash seed and two serving replicas. Generated-archive root validation is in progress. No live GPU/model operations were performed.

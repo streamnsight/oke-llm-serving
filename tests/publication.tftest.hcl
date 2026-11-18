@@ -69,3 +69,15 @@ run "zero_options_still_publish_a_report" {
     error_message = "With no viable options the only output must still open a report explaining exclusions and regional evidence."
   }
 }
+
+run "routing_and_replica_requests_are_preserved_in_generated_model_inputs" {
+  command = plan
+  variables {
+    replicas     = 2
+    routing_mode = "kvaware"
+  }
+  assert {
+    condition     = local.model_specifications.selected.model.requested_replicas == 2 && local.model_specifications.selected.model.routing_mode == "kvaware"
+    error_message = "The configured model bundle must preserve the user's replica quantity and explicit routing policy separately from raw recipe evidence."
+  }
+}

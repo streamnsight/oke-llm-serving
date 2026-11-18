@@ -18,7 +18,7 @@ outputs:
 primaryOutputButton: ${comparison_report_url}
 variableGroups:
   - title: Model and workload
-    variables: [model, revision, context_length, concurrency, max_hosts_per_replica]
+    variables: [model, revision, context_length, concurrency, replicas, routing_mode, max_hosts_per_replica]
   - title: Memory planning assumptions
     variables: [checkpoint_file, weight_budget_gb, planning_budget_gb, unknown_cache_fraction, workspace_fraction]
   - title: Capacity observation
@@ -115,6 +115,18 @@ variables:
     type: integer
     title: Concurrent sequences per replica
     minimum: 1
+  replicas:
+    type: integer
+    title: Minimum complete model replicas
+    default: 1
+    minimum: 1
+    description: Capacity and quota must cover this many replicas. Spare GPU slots on allocated hosts may add complete replicas; review the recommended count in the report.
+  routing_mode:
+    type: enum
+    enum: [ auto, direct, prefixaware, kvaware ]
+    default: auto
+    title: Model routing policy
+    description: KV-aware generates an enabled router and in-process LMCache controller configuration for compatible single-host replicas. Auto preserves recipe defaults and uses prefix-aware routing for multiple replicas.
   observation_id:
     type: string
     title: Capacity observation identifier

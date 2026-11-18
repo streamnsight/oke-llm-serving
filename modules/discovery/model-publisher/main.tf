@@ -26,6 +26,10 @@ locals {
   model_name      = "m-${substr(replace(lower(local.repository), "/[^a-z0-9-]/", "-"), 0, 13)}-${substr(sha256(local.repository), 0, 6)}"
   snapshot_bytes  = try(coalesce(try(var.model_spec.model.checkpoint_download_bytes, null), try(var.model_spec.profile.weights.checkpoint_download_bytes, null)), null)
   service_profile = try(local.selected.serving_configuration.deployment_profile, var.model_spec.serving_configuration.deployment_profile, {})
+
+  routing_requested = try(var.model_spec.model.routing_mode, "auto")
+  routing_policy    = local.routing_requested == "auto" ? try(local.service_profile.routing.mode, "auto") : local.routing_requested
+
   recommendation = {
     model_name               = local.model_name,
     model_id                 = local.repository, model_revision = try(coalesce(try(var.model_spec.model.revision, null), try(var.model_spec.profile.model.resolved_revision, null)), ""),
@@ -37,12 +41,12 @@ locals {
     concurrency              = try(coalesce(try(var.model_spec.model.concurrency, null), try(var.model_spec.profile.memory.assumptions.concurrency, null)), 1)
     monitoring_enabled       = try(local.selected.platform_plan.monitoring.enabled, true)
     workspace_gib            = local.snapshot_bytes == null ? 64 : max(20, ceil(local.snapshot_bytes * 2 / pow(1024, 3))),
-    router_enabled           = try(local.selected.replicas > 1, false) || try(local.selected.platform_plan.autoscaling.enabled, false),
-    lmcache_mode             = try(local.service_profile.lmcache.mode, "recipe"),
+    router_enabled           = contains(["prefixaware", "kvaware"], local.routing_policy) || try(local.selected.replicas > 1, false) || try(local.selected.platform_plan.autoscaling.enabled, false),
+    lmcache_mode             = local.routing_requested == "kvaware" ? "inprocess" : try(local.service_profile.lmcache.mode, "recipe"),
     lmcache_cpu_memory_gb    = try(local.service_profile.lmcache.cpu_memory_gb, null),
     lmcache_chunk_size       = try(local.service_profile.lmcache.chunk_size, null),
     lmcache_mamba_cache_mode = try(local.service_profile.lmcache.mamba_cache_mode, null),
-    routing_mode             = try(local.service_profile.routing.mode, "auto"),
+    routing_mode             = local.routing_policy,
     autoscaling_enabled      = try(local.selected.platform_plan.autoscaling.enabled, false),
     min_replicas             = try(local.selected.requested_minimum_replicas, local.selected.replicas, 1),
     max_replicas             = try(local.selected.replicas, 1)

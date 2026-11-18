@@ -13,6 +13,10 @@ A model-first workflow for an existing OKE cluster: discover the model and avail
 
 Enter a public Hugging Face model URL/ID, context length and concurrent sequences per replica. Empty region/shape filters scan READY subscribed regions and visible GPU shapes. Discovery allocates no GPUs. Optional monitoring, autoscaling and model distribution are deployment-stage choices: shared components in infrastructure, model monitoring/scaling and weight delivery in the model stack.
 
+Discovery exposes `replicas` (default 1) as the minimum number of complete model replicas used for host-capacity and quota checks. Concurrency remains per replica. Existing whole-host packing can recommend additional replicas to use spare GPUs; review the report's actual replica count, and set the generated model stack's `replicas` to 2 when an exact two-replica test is wanted.
+
+For KV-aware routing, select `routing_mode=kvaware` in discovery. The generated model stack recommends an enabled router and `lmcache_mode=inprocess` together. Defaults remain editable in Terraform and RMS. The current cache adapter requires single-host TP replicas and compatible LMCache libraries in the selected serving image; it does not install packages or rewrite conflicting upstream recipe flags. `routing_mode=auto` preserves recipe policy and the existing prefix-aware default for multiple replicas.
+
 The only RMS output is **Open discovery report**, a link to a self-contained HTML page in the private discovery bucket:
 
 - Model identity/revision, type, layers/attention dimensions, parameter/dtype counts, checkpoint formats and weight size.

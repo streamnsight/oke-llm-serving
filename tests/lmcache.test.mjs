@@ -41,6 +41,10 @@ test('pinned router renders reachable controller reply and heartbeat service por
  const v=structuredClone(values);v.router.enabled=true;v.lmcache.mode='inprocess';v.lmcache.controller=true;
  v['vllm-stack']={servingEngineSpec:{enableEngine:false,modelSpec:[]},routerSpec:{enableRouter:true,routingLogic:'kvaware',repository:'docker.io/lmcache/lmstack-router',tag:'v0.1.14',lmcacheControllerPort:9000,lmcacheControllerReplyPort:9001,lmcacheControllerHeartbeatPort:9002,extraArgs:['--k8s-label-selector','oke-llm/model=fixture,oke-llm/endpoint=true'],extraPorts:[{name:'cache-reply',port:9001,targetPort:9001,protocol:'TCP'},{name:'cache-heartbeat',port:9002,targetPort:9002,protocol:'TCP'}]},cacheserverSpec:{enabled:false},loraController:{enableLoraController:false},sharedPvcStorage:{enabled:false},grafanaDashboards:{enabled:false},'kube-prometheus-stack':{enabled:false},'prometheus-adapter':{enabled:false},'k8s-aibom':{enabled:false}};
  const docs=render(v),service=docs.find(d=>d.kind==='Service'&&d.metadata.name.endsWith('-router-service')),router=docs.find(d=>d.kind==='Deployment'&&d.metadata.name.endsWith('-deployment-router'));
+ const container=router.spec.template.spec.containers[0];
+ assert.equal(container.env.find(e=>e.name==='PYTHONHASHSEED').value,'123');
+ for(const [flag,port] of [['--lmcache-controller-port','9000'],['--lmcache-controller-reply-port','9001'],['--lmcache-controller-heartbeat-port','9002']])assert.equal(container.args[container.args.indexOf(flag)+1],port);
+ assert.equal(docs.find(d=>d.kind==='Deployment'&&d.metadata.name==='model').spec.replicas,2);
  assert(service.spec.ports.some(p=>p.port===9000));assert(service.spec.ports.some(p=>p.port===9001&&p.targetPort===9001));assert(service.spec.ports.some(p=>p.port===9002&&p.targetPort===9002));assert(router.spec.template.spec.containers[0].args.includes('kvaware'));assert(!docs.some(d=>d.kind==='CustomResourceDefinition'));assert.equal(docs.filter(d=>d.kind==='Deployment').length,2);
  v.router.enabled=false;v.lmcache.enabled=false;assert.equal(render(v).filter(d=>d.kind==='Deployment').length,1);
 });

@@ -29,6 +29,26 @@ variable "concurrency" {
   type        = number
   default     = 1
 }
+variable "replicas" {
+  description = "Minimum complete model replicas. Each replica repeats the context/concurrency memory budget; spare GPU slots on allocated hosts may add replicas."
+  type        = number
+  default     = 1
+  nullable    = false
+  validation {
+    condition     = var.replicas >= 1 && floor(var.replicas) == var.replicas
+    error_message = "replicas must be a positive integer."
+  }
+}
+variable "routing_mode" {
+  description = "Editable model-stack routing recommendation. KV-aware selects the paired in-process LMCache controller; compatible serving-image libraries and single-host replicas are required."
+  type        = string
+  default     = "auto"
+  nullable    = false
+  validation {
+    condition     = contains(["auto", "direct", "prefixaware", "kvaware"], var.routing_mode)
+    error_message = "Choose auto, direct, prefixaware or kvaware routing."
+  }
+}
 variable "observation_id" {
   description = "Snapshot label. Discovery requests fresh reports whenever its data source is read."
   type        = string
