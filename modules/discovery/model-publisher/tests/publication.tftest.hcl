@@ -147,7 +147,7 @@ run "explicit_unavailable_KV_routing_is_rejected_before_publication" {
   expect_failures = [terraform_data.publication]
 }
 run "hybrid_generated_schema_hides_inprocess_and_KV_options" {
-  command = plan
+  command = apply
   variables { model_spec = merge(var.model_spec, { profile = { architecture = { kind = "hybrid_dense" } } }) }
   assert {
     condition     = !contains(yamldecode(local.files["schema.yaml"]).variables.routing_mode.enum, "kvaware") && !contains(yamldecode(local.files["schema.yaml"]).variables.lmcache_mode.enum, "inprocess") && contains(yamldecode(local.files["schema.yaml"]).variables.lmcache_mode.enum, "mp") && contains(keys(local.files), "modules/llm-deployment/cache-capabilities/main.tf")
