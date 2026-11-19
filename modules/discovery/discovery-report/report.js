@@ -146,16 +146,58 @@ function limitSummary(parent, limits, field, selectedAD, required) {
     add(summary, "span", " " + text(limit.unit));
   });
 }
+const servingLayouts = report.serving_layouts || {
+  aggregated: {title: "Combined prefill + decode", description: "Each instance handles prefill and decode. Whole-host packing can add complete replicas.", options: report.options || {}, recommended_option_id: report.recommended_option_id},
+  disaggregated: {title: "Separate prefill / decode (P/D)", status: "not_assessed", reasons: ["P/D eligibility and its combined role capacity were not assessed in this report. Rerun discovery with the current stack."], options: {}}
+};
+const layoutIDs = ["aggregated", "disaggregated"];
+let activeLayout = "aggregated";
+function selectLayout(id, focus = false) {
+  activeLayout = id;
+  for (const layoutID of layoutIDs) {
+    const tab = $("layout-tab-" + layoutID), selected = layoutID === id;
+    tab.setAttribute("aria-selected", String(selected)); tab.tabIndex = selected ? 0 : -1;
+    if (selected && focus) tab.focus();
+  }
+  $("layout-panel").setAttribute("aria-labelledby", "layout-tab-" + id);
+  renderOptions();
+}
+for (const id of layoutIDs) {
+  const tab = $("layout-tab-" + id);
+  tab.addEventListener("click", () => selectLayout(id));
+  tab.addEventListener("keydown", event => {
+    let index = layoutIDs.indexOf(id);
+    if (event.key === "ArrowRight") index = (index + 1) % layoutIDs.length;
+    else if (event.key === "ArrowLeft") index = (index + layoutIDs.length - 1) % layoutIDs.length;
+    else if (event.key === "Home") index = 0;
+    else if (event.key === "End") index = layoutIDs.length - 1;
+    else return;
+    event.preventDefault(); selectLayout(layoutIDs[index], true);
+  });
+}
 function renderOptions() {
+  const layout = servingLayouts[activeLayout] || {options: {}, status: "not_assessed", reasons: ["This serving layout has not been assessed."]};
+  const allRows = Object.entries(layout.options || {}), pd = activeLayout === "disaggregated";
+  const recommended = layout.recommended_option_id ?? (pd ? null : report.recommended_option_id);
+  $("layout-description").textContent = layout.description || (pd ? "Separate role pools use native KV transfer. Each role holds its own model weights; counts below include both pools." : "Each serving instance handles prefill and decode.");
+  $("layout-status").replaceChildren();
+  if ((layout.reasons || []).length || !allRows.length) {
+    const note = add($("layout-status"), "div", undefined, "callout");
+    add(note, "strong", allRows.length ? label(layout.status) : "No confirmed " + (pd ? "P/D" : "combined serving") + " option");
+    if ((layout.reasons || []).length) list(note, layout.reasons);
+    else add(note, "p", "No complete allocation has confirmed model eligibility, physical supply and entitlement for this layout. Review the assessment and regional capacity below.");
+  }
+  $("recommendation-policy").hidden = pd;
   const filter = $("search").value.toLowerCase(), mode = $("sort").value;
-  const rows = Object.entries(report.options).filter(([id, row]) => [id, row.region, row.availability_domain, row.gpu_shape].join(" ").toLowerCase().includes(filter));
+  const rows = allRows.filter(([id, row]) => [id, row.region, row.availability_domain, row.gpu_shape].join(" ").toLowerCase().includes(filter));
   rows.sort((a, b) => {
     if (mode === "allocated") return (a[1].allocation.allocated_gpus ?? Infinity) - (b[1].allocation.allocated_gpus ?? Infinity) || a[0].localeCompare(b[0]);
     if (mode === "capacity") return (b[1].capacity.ad_available_gpus ?? -1) - (a[1].capacity.ad_available_gpus ?? -1) || a[0].localeCompare(b[0]);
     return [a[1].region, a[1].gpu_shape, a[1].availability_domain, a[0]].join(" ").localeCompare([b[1].region, b[1].gpu_shape, b[1].availability_domain, b[0]].join(" "));
   });
   $("options").replaceChildren(); $("option-empty").hidden = rows.length > 0;
-  $("option-count").textContent = number(rows.length) + " of " + number(report.option_count) + " options";
+  $("option-count").textContent = number(rows.length) + " of " + number(allRows.length) + " " + (pd ? "P/D" : "combined serving") + " options";
+  $("option-empty").textContent = allRows.length ? "No matching deployment options." : "No capacity-confirmed deployment options for this serving layout.";
   const groups = new Map();
   for (const [id, row] of rows) {
     if (!groups.has(row.region)) {
@@ -167,9 +209,9 @@ function renderOptions() {
     const option = add(groups.get(row.region), "details", undefined, "option");
     const summary = add(option, "summary"), title = add(summary, "div", undefined, "option-title");
     add(title, "strong", row.gpu_shape); add(title, "span", row.availability_domain, "muted oci-caption");
-    if (id === report.recommended_option_id) add(title, "span", "Recommended starting point", "oci-status-active");
+    if (id === recommended) add(title, "span", "Recommended starting point", "oci-status-active");
     if (row.runtime_validation !== "passed") badge(title, "Runtime unvalidated", true);
-    for (const [value, caption, packing] of [[number(a.required_gpus_per_replica), "GPUs needed per replica"], [number(a.required_hosts), "Hosts · " + number(a.gpus_per_host) + " GPUs each", number(a.replicas) + " replicas · " + number(a.allocated_gpus) + " GPUs allocated"]]) {
+    for (const [value, caption, packing] of [[number(a.required_gpus_per_replica), pd ? "GPUs per role instance" : "GPUs needed per replica"], [number(a.required_hosts), "Hosts · " + number(a.gpus_per_host) + " GPUs each", (pd ? number(row.prefill_replicas) + " prefill + " + number(row.decode_replicas) + " decode" : number(a.replicas) + " replicas") + " · " + number(a.allocated_gpus) + " GPUs allocated"]]) {
       const metric = add(summary, "div", undefined, "option-stat"); add(metric, "strong", value); add(metric, "span", caption);
       if (packing) add(metric, "small", packing);
     }
@@ -179,35 +221,42 @@ function renderOptions() {
     const available = add(summary, "div", undefined, "option-stat");
     quantity(available, c.ad_available_gpus, a.allocated_gpus); add(available, "span", "GPUs physically available in selected AD");
     const body = add(option, "div", undefined, "option-body"), allocation = add(body, "section");
-    add(allocation, "h3", "Allocation and replica packing");
-    facts(add(allocation, "dl", undefined, "facts"), [["Shape / GPU type", row.gpu_shape + " / " + text(row.gpu_type)], ["Hosts / allocated GPUs", number(a.required_hosts) + " / " + number(a.allocated_gpus)], ["GPUs per replica · TP × PP", number(a.required_gpus_per_replica) + " · " + number(a.tensor_parallel_size) + " × " + number(a.pipeline_parallel_size)], ["Replicas / replicas per host", number(a.replicas) + " / " + number(a.replicas_per_host)], ["Unused GPUs", number(a.unused_gpus)], ["GPU memory per device", gb(row.memory_gb.per_gpu)], ["Estimated memory per rank", gb(row.memory_gb.estimated_per_gpu)], ["Transport", row.requires_rdma ? "RDMA required" : "Ethernet / within-host interconnect"]]);
+    add(allocation, "h3", pd ? "Allocation and role pools" : "Allocation and replica packing");
+    facts(add(allocation, "dl", undefined, "facts"), [["Shape / GPU type", row.gpu_shape + " / " + text(row.gpu_type)], ["Hosts / allocated GPUs", number(a.required_hosts) + " / " + number(a.allocated_gpus)], [pd ? "GPUs per role instance · TP × PP" : "GPUs per replica · TP × PP", number(a.required_gpus_per_replica) + " · " + number(a.tensor_parallel_size) + " × " + number(a.pipeline_parallel_size)], [pd ? "Prefill / decode instances" : "Replicas / replicas per host", pd ? number(row.prefill_replicas) + " / " + number(row.decode_replicas) : number(a.replicas) + " / " + number(a.replicas_per_host)], ["Unused GPUs", number(a.unused_gpus)], ["GPU memory per device", gb(row.memory_gb.per_gpu)], ["Estimated memory per rank", gb(row.memory_gb.estimated_per_gpu)], ["Transport", row.requires_rdma ? "RDMA required" : "Ethernet / within-host interconnect"]]);
     add(allocation, "p", "Selected AD: " + number(c.ad_available_gpus) + " GPUs / " + number(c.ad_available_hosts) + " hosts reported; entitlement covers " + number(c.entitled_hosts) + " hosts. Observed: " + text(c.observed_at) + ".", "muted");
     for (const limit of limits) {
       add(allocation, "p", text(limit.name) + " · " + limitScope(limit) + " · configured limit: " + limitQuantity(limit, "current_limit") + " · remaining compartment headroom: " + limitQuantity(limit, "remaining_headroom") + (limit.effective_quota == null ? "." : " · effective compartment quota: " + limitQuantity(limit, "effective_quota") + "."), "muted");
     }
-    if (row.recommendation) {
+    if (pd) add(allocation, "p", "Role pods request " + number((row.prefill_replicas + row.decode_replicas) * a.required_gpus_per_replica) + " GPUs across both pools. Each role instance holds a complete model, sharded across its TP GPUs. Spare host slots can hold additional decode instances.");
+    if (row.recommendation && !pd) {
       const r = row.recommendation;
       add(allocation, "p", "Growth at scan time: capacity and entitlement cover " + number(r.ad_max_replicas) + " replicas with this layout in the selected AD (" + number(r.ad_additional_replicas) + " beyond this allocation). RDMA capability: " + (r.rdma_capable ? "supported by the shape; fabric placement still requires validation" : "not established") + ". Supply and limits are shared snapshots, not future reservations.", "muted");
     }
     const steps = add(body, "div", undefined, "deployment-steps");
-    deploymentStep(steps, "1. GPU pool and shared components", "Create this stack when you need a pool or shared controllers. Reuse an existing compatible platform for additional models.", row.links.launch_url, row.links.download_url, row.links.expires_at);
+    deploymentStep(steps, "1. GPU pool and shared components", (pd ? "Size the retained pool for both role pools using this allocation. " : "Create this stack when you need a pool or shared controllers. ") + "Reuse an existing compatible platform for additional models.", row.links.launch_url, row.links.download_url, row.links.expires_at);
     const modelLinks = row.links.model_deployment || {};
-    deploymentStep(steps, "2. Model project and pipelines", "Create an independent DevOps project for this model. Select the cluster; matching pool, networking and shared components are inferred. After infrastructure is ready, Apply runs namespace onboarding, deployment and validation. Benchmarking is manual.", modelLinks.launch_url, modelLinks.download_url, modelLinks.expires_at);
+    deploymentStep(steps, "2. Model project and pipelines", (pd ? "The launch link preselects separate prefill/decode roles and the counts shown above. " : "") + "Create an independent DevOps project for this model. Select the cluster; matching pool, networking and shared components are inferred. After infrastructure is ready, Apply runs namespace onboarding, deployment and validation. Benchmarking is manual.", modelLinks.launch_url, modelLinks.download_url, modelLinks.expires_at);
+    if (pd && row.launch_variables) {
+      const manual = details(body, "Settings for a manual ZIP upload", "recipe-details");
+      add(manual, "p", "Both tabs reuse the same ZIPs. Create RMS stack links prefill the selected layout settings and leave them editable. For a downloaded ZIP, enter these settings in the corresponding stack form; its packaged defaults describe combined serving.");
+      code(manual, JSON.stringify(row.launch_variables, null, 2));
+    }
     const config = add(body, "section"); add(config, "h3", "Serving configuration"); badge(config, label(row.configuration_status), true);
     add(config, "p", "Runtime validation: " + label(row.runtime_validation) + ". Memory method: " + label(row.memory_method) + ".", "muted");
     facts(add(config, "dl", undefined, "facts"), [["Serving framework / version", text(serving.framework) + " / " + text(serving.version)], ["Container platform", serving.platform], ["Recipe GPU family", serving.source_hardware], ["Planned GPU family", serving.selected_hardware]]);
     if (row.cache_capabilities) {
       const capabilities = row.cache_capabilities, features = details(config, "Cache and routing compatibility", "recipe-details");
-      for (const [title, feature] of [["KV-aware routing", capabilities.routing?.kvaware], ["LMCache MP", capabilities.lmcache?.mp], ["In-process LMCache", capabilities.lmcache?.inprocess]]) {
+      for (const [title, feature] of (pd ? [["KV-aware routing", capabilities.routing?.kvaware]] : [["KV-aware routing", capabilities.routing?.kvaware], ["LMCache MP", capabilities.lmcache?.mp], ["In-process LMCache", capabilities.lmcache?.inprocess]])) {
         if (!feature) continue;
         add(features, "p", title + ": " + label(feature.status) + ".");
         if ((feature.reasons || []).length) list(features, feature.reasons);
       }
-      add(features, "p", "Prefix-aware routing uses request affinity; KV-aware routing needs actual cache residency. LMCache MP adds CPU offloading. Image and runtime checks remain required.", "muted");
+      add(features, "p", pd ? "This layout uses native KV transfer with LMCache disabled. Engine prefix caching can remain enabled; P/D does not require KV-aware routing. Image and runtime checks remain required." : "Prefix-aware routing uses request affinity; KV-aware routing needs actual cache residency. LMCache MP adds CPU offloading. Image and runtime checks remain required.", "muted");
     }
     add(config, "h4", "Serving image"); code(config, text(serving.image));
-    const preview = plannedCommand(row);
-    if (preview && serving.image) { add(config, "h4", "Planned engine command"); code(config, preview); }
+    const preview = pd ? null : plannedCommand(row);
+    if (pd) add(config, "p", "Each role instance uses TP=" + number(a.tensor_parallel_size) + " and PP=1. Deployment supplies role-specific native NIXL transfer settings and the orchestrating router; transfer effectiveness is checked after serving starts.");
+    else if (preview && serving.image) { add(config, "h4", "Planned engine command"); code(config, preview); }
     else add(config, "p", "No complete engine command is available for this option; expert configuration is required.");
     if (a.pipeline_parallel_size > 1) add(config, "p", "Multi-node execution also requires per-node ranks and leader addresses supplied by orchestration. This preview does not replace the leader/worker deployment.", "muted");
     if ((serving.original_argv || []).length) {
@@ -272,4 +321,4 @@ for (const notice of report.notices || []) add($("notices"), "li", notice);
 $("search").addEventListener("input", renderOptions);
 $("sort").addEventListener("change", renderOptions);
 $("capacity-search").addEventListener("input", renderCapacity);
-renderOptions(); renderCapacity();
+selectLayout("aggregated"); renderCapacity();

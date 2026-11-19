@@ -101,7 +101,7 @@ run "connection_region_is_optional_for_local_discovery" {
 run "normal_discovery_is_embedded_in_the_report" {
   command = plan
   assert {
-    condition     = module.discovery_report.summary.schema_version == "4.0" && !contains(keys(module.discovery_report.summary), "diagnostics") && !contains(keys(module.discovery_report.summary), "profile") && !contains(keys(module.discovery_report.summary), "assessment") && module.discovery_report.summary.option_count == 0 && length(module.discovery_report.summary.failure_summary) > 0
+    condition     = module.discovery_report.summary.schema_version == "5.0" && contains(keys(module.discovery_report.summary.serving_layouts), "aggregated") && contains(keys(module.discovery_report.summary.serving_layouts), "disaggregated") && !contains(keys(module.discovery_report.summary), "diagnostics") && !contains(keys(module.discovery_report.summary), "profile") && !contains(keys(module.discovery_report.summary), "assessment") && module.discovery_report.summary.option_count == 0 && length(module.discovery_report.summary.failure_summary) > 0
     error_message = "The HTML embeds a useful report without exposing duplicate root JSON outputs."
   }
 }

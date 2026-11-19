@@ -9,6 +9,13 @@ module "cache_capabilities" {
   hosts_per_replica      = try(each.value.hosts_per_replica, each.value.pipeline_parallel_size, 1)
   pipeline_parallel_size = try(each.value.pipeline_parallel_size, 1)
 }
+module "serving_layouts" {
+  source                = "../serving-layouts"
+  profile               = var.profile
+  options               = var.options
+  assessment            = var.assessment
+  serving_configuration = var.serving_configuration
+}
 locals {
   model_budgets      = [for value in [try(var.profile.memory.planning.payload_budget_bytes, null), try(var.profile.memory.recommended_aggregate_bytes, null), try(var.assessment.recipe_options.memory_budget_bytes, null)] : value if try(value > 0, false)]
   model_budget_bytes = length(local.model_budgets) > 0 ? max(local.model_budgets...) : null
@@ -172,8 +179,36 @@ locals {
       }
     }
   } }
+  layout_presets = { for mode, layout in module.serving_layouts.layouts : mode => {
+    for id, option in layout.options : id => {
+      infrastructure = option.infrastructure_variables,
+      model          = option.model_variables
+    }
+  } }
+  # Quick-create presets are small editable scalars, not separate archives or
+  # tfvars. Keep zipUrl itself unchanged: Console persists it as ZipOrigin.
+  layout_launch_urls = { for mode, presets in local.layout_presets : mode => {
+    for id, preset in presets : id => {
+      infrastructure = try(local.choices[id].links.launch_url, null) == null ? null : length(preset.infrastructure) == 0 ? local.choices[id].links.launch_url : "${local.choices[id].links.launch_url}${strcontains(local.choices[id].links.launch_url, "?") ? "&" : "?"}zipUrlVariables=${urlencode(jsonencode(preset.infrastructure))}"
+      model          = try(local.choices[id].links.model_deployment.launch_url, null) == null ? null : length(preset.model) == 0 ? local.choices[id].links.model_deployment.launch_url : "${local.choices[id].links.model_deployment.launch_url}${strcontains(local.choices[id].links.model_deployment.launch_url, "?") ? "&" : "?"}zipUrlVariables=${urlencode(jsonencode(preset.model))}"
+    }
+  } }
+  serving_layouts = { for mode, layout in module.serving_layouts.layouts : mode => merge(layout, {
+    title                 = mode == "aggregated" ? "Combined prefill + decode" : "Separate prefill / decode (P/D)",
+    description           = mode == "aggregated" ? "Each model instance handles the prompt and generates its response. TP/PP can shard that instance; replicas are independent full-model copies." : "Separate full-weight prefill and decode pools exchange KV state. This adapter uses matching TP with PP=1, one host per instance and one prefill instance; complete spare GPU slots serve additional decode instances.",
+    recommended_option_id = try(contains(keys(layout.options), var.assessment.recommended_selection_id), false) ? var.assessment.recommended_selection_id : null,
+    options = { for id, option in layout.options : id => merge(local.choices[id], {
+      serving_mode   = option.serving_mode, prefill_replicas = option.prefill_replicas, decode_replicas = option.decode_replicas,
+      allocation     = option.allocation, launch_variables = local.layout_presets[mode][id],
+      recommendation = mode == "aggregated" ? local.choices[id].recommendation : null,
+      links = merge(local.choices[id].links, {
+        launch_url       = local.layout_launch_urls[mode][id].infrastructure,
+        model_deployment = merge(local.choices[id].links.model_deployment, { launch_url = local.layout_launch_urls[mode][id].model })
+      })
+    }) }
+  }) }
   summary = {
-    schema_version = "4.0", scan = var.scan, publication = var.publication,
+    schema_version = "5.0", scan = var.scan, publication = var.publication,
     model = {
       repository              = try(var.profile.model.repository, null), revision = try(var.profile.model.resolved_revision, null),
       architecture            = try(var.profile.architecture.kind, null),
@@ -201,6 +236,7 @@ locals {
     recommendation_policy = try(var.assessment.recommendation_policy, null),
     option_count          = length(local.choices), published_option_count = length(var.publications),
     options               = local.choices,
+    serving_layouts       = local.serving_layouts,
     regional_capacity     = [for key in sort(keys(local.regional_capacity)) : { for field, value in local.regional_capacity[key] : field => value if field != "gpu_counts" } if local.regional_capacity[key].known_reported_hosts > 0],
     status                = length(local.choices) > 0 ? "confirmed_capacity_options_available" : "no_confirmed_options",
     failure_summary = length(local.choices) > 0 ? [] : distinct(concat(
