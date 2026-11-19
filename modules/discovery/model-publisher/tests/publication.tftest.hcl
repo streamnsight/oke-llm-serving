@@ -40,7 +40,7 @@ run "unknown_PD_metadata_hides_the_serving_layout" {
   }
 }
 run "eligible_PD_metadata_exposes_an_explicit_experimental_layout" {
-  command = plan
+  command = apply
   variables {
     model_spec = merge(var.model_spec, {
       profile = { architecture = { kind = "dense", text_only = true, causal_generation = true, attention = { layout = "uniform_attention", layer_types = ["full_attention"] } } },

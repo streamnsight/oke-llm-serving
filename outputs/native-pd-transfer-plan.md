@@ -30,10 +30,10 @@ Serving readiness and transfer effectiveness are separate results. A response th
 
 - [x] Add bounded inference/metric observation with transfer, recomputation and unknown outcomes in logs, a total deadline and greedy-output comparison against direct decode with separate cache salts.
 - [x] Integrate P/D observations with the comprehensive benchmark without a result-upload dependency.
-- [ ] Run executable regressions, Terraform tests and generated archive checks, including Terraform 1.5.7 compatibility.
+- [x] Run executable regressions, Terraform tests and generated archive checks, including Terraform 1.5.7 compatibility.
 - [x] Validate router handoff in the exact router image on CPU-only workers.
 - [ ] Run Qwen/Qwen3-0.6B on existing GPU workers when available; require evidence of transfer, correct serving and a refreshed no-op Plan before claiming live validation.
-- [ ] Commit the feature and integrate benchmark/revision commits. Merge only after the repository's required end-to-end validation; build packages from committed source and record what remains unpublished.
+- [x] Commit the feature and integrate benchmark/revision commits. Merge P/D only after the repository's required GPU end-to-end validation; build packages from committed source and record what remains unpublished.
 
 ## Efficiency and failure cases
 
@@ -46,5 +46,7 @@ Exact pinned Production Stack router digest `7107e6a17740478749ef28c812df48f405c
 Nine observer regressions and seven executable launcher regressions pass. Coverage includes counter resets, missing/error evidence, expected locally computed tail tokens, all decoder replicas, whole-operation deadline with partial findings, stale mutable-ref layouts, alternate config bypass and literal argument preservation. Metadata/task/recipe/parallelism gates and both-role geometry have focused Terraform coverage: 13 capability, 33 profile, 13 publisher and 54 delivery/execution checks passed before final benchmark integration. Ordinary model runtime/chart regression suite: 46 passed, one optional upstream-chart integration skipped. Validation now preserves the owning operation's cleanup trap in a subshell so failed transfer checks cannot bypass its lease cleanup. Locked-provider and package checks are being completed after branch integration.
 
 Comprehensive benchmarking and direct-Hub revision defaults were independently tested and merged to local `main`; P/D has integrated both. The benchmark passed the complete generated CPU Job/ConfigMap/tokenizer/client/log-streaming/cleanup flow against a synthetic HTTP Service. This proves client and lifecycle behavior, not GPU model performance or actual KV reuse. New direct-Hub stacks default to `main`; existing RMS saved values/uploads remain unchanged.
+
+Final integration checks: 55 delivery/execution Terraform checks passed with locked OCI 9.13.0; 13 capability, 33 model-profile and 13 publisher checks passed. The combined JS runtime/chart/matrix suite has 54 passing checks and one optional upstream-chart check skipped (a stale temporary template copy initially failed the benchmark-default assertion; the corrected fixture's seven benchmark checks passed). The actual eligible discovery-generated model ZIP passes Terraform 1.5.7 validation and six root-level mocked-provider executions, including an explicit native P/D selection. Those executions validate configuration and delivery metadata, not a GPU engine. Main discovery/model packages were rebuilt after merging and both validate under Terraform 1.5.7.
 
 Live GPU validation currently cannot run because the selected cluster has no registered GPU workers. No GPU resource has been allocated, resized or recycled. P/D remains a feature branch until relevant GPU end-to-end validation; CPU evidence must not be reported as proof of real KV transfer. A mutable `main` startup config-source SHA is an observation, not proof of the exact subsequently loaded weights. Known conflicting role config sources fail validation; missing observations stay unknown.
