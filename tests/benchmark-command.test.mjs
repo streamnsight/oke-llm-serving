@@ -7,7 +7,7 @@ import {mkdtempSync,mkdirSync,writeFileSync,readFileSync,copyFileSync,rmSync} fr
 import {tmpdir} from 'node:os';
 import {resolve} from 'node:path';
 const root=resolve(import.meta.dirname,'..'),scripts=`${root}/modules/llm-deployment/model-delivery/scripts`,runner=`${scripts}/benchmark.py`;
-const env={...process.env,CONTEXT_LENGTH:'4096',CONCURRENCY:'4',REPLICAS:'2',BENCHMARK_MODE:'quick',BENCHMARK_REQUESTS:'auto',BENCHMARK_INPUT_TOKENS:'auto',BENCHMARK_OUTPUT_TOKENS:'128',BENCHMARK_PREFIX_TOKENS:'auto',BENCHMARK_MAX_CONCURRENCY:'auto',BENCHMARK_MAX_SECONDS:'auto'};
+const env={...process.env,PYTHONDONTWRITEBYTECODE:'1',CONTEXT_LENGTH:'4096',CONCURRENCY:'4',REPLICAS:'2',BENCHMARK_MODE:'quick',BENCHMARK_REQUESTS:'auto',BENCHMARK_INPUT_TOKENS:'auto',BENCHMARK_OUTPUT_TOKENS:'128',BENCHMARK_PREFIX_TOKENS:'auto',BENCHMARK_MAX_CONCURRENCY:'auto',BENCHMARK_MAX_SECONDS:'auto'};
 const plan=overrides=>JSON.parse(execFileSync('python3',[runner,'--plan'],{env:{...env,...overrides},encoding:'utf8'}));
 test('quick/full matrices respect context, compare equal total inputs, and bound client work',()=>{
  const quick=plan({});assert.deepEqual(quick.input_tokens,[1024,3840]);assert.deepEqual(quick.shared_prefix_tokens,[768,2880]);assert.equal(quick.requests,64);assert.equal(quick.concurrency,8);assert.equal(quick.measured_requests,256);
@@ -93,7 +93,7 @@ test('P/D observations are emitted per case without changing success into a tran
 });
 test('empty distributions and counter resets stay unknown rather than showing fabricated performance',()=>{
  const code=`import importlib.util,json\ns=importlib.util.spec_from_file_location('bench',${JSON.stringify(runner)});m=importlib.util.module_from_spec(s);s.loader.exec_module(m)\nprint(json.dumps([m.summarize({'completed':0,'failed':4,'mean_ttft_ms':0},4),m.counter_delta([{'queries':10,'hits':5}],[{'queries':2,'hits':1}]),m.counter_delta([{'queries':10,'hits':5}],[{'queries':20,'hits':13}])]))`;
- const [empty,reset,observed]=JSON.parse(execFileSync('python3',['-c',code],{encoding:'utf8'}));assert.equal(empty.latency.ttft_ms.mean,null);assert.equal(empty.requests_per_second,null);assert.equal(reset.status,'reset');assert.equal(observed.queries,10);assert.equal(observed.hits,8);assert.equal(observed.hit_ratio,.8);
+ const [empty,reset,observed]=JSON.parse(execFileSync('python3',['-c',code],{env,encoding:'utf8'}));assert.equal(empty.latency.ttft_ms.mean,null);assert.equal(empty.requests_per_second,null);assert.equal(reset.status,'reset');assert.equal(observed.queries,10);assert.equal(observed.hits,8);assert.equal(observed.hit_ratio,.8);
 });
 test('Terraform and RMS expose quick/full while retaining the text task adapter',()=>{
  for(const file of ['modules/llm-deployment/model-delivery/variables.tf','templates/llm-deployment/variables.tf']){const source=readFileSync(`${root}/${file}`,'utf8');assert.match(source,/variable "benchmark_backend" \{[^}]*default\s*=\s*"openai-chat"/);assert.match(source,/variable "benchmark_mode" \{[^}]*default\s*=\s*"quick"/);}
