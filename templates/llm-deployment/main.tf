@@ -119,6 +119,7 @@ module "model" {
   lmcache_mamba_cache_mode = var.lmcache_mamba_cache_mode
   inference_probe          = var.inference_probe
   benchmark_backend        = var.benchmark_backend
+  benchmark_mode           = var.benchmark_mode
   autoscaling              = { enabled = var.autoscaling_enabled, min_replicas = var.min_replicas, max_replicas = var.max_replicas, prometheus_url = local.prometheus_url, target_inflight = var.target_inflight }
   depends_on               = [terraform_data.binding]
 }

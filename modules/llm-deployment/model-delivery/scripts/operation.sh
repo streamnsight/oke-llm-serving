@@ -11,7 +11,9 @@ source runtime/lock.sh
 source runtime/tools.sh
 lock_name="oke-llm-$(printf '%s' "$cluster/$namespace/$release" | sha256sum | cut -c1-40)"
 lock_namespace=$namespace
-lock_duration=$((3 * timeout + 1800))
+operation_timeout=${DELIVERY_OPERATION_TIMEOUT_SECONDS:-3600}
+[[ $operation_timeout =~ ^[1-9][0-9]*$ ]] || { echo 'Invalid operation timeout' >&2; exit 2; }
+lock_duration=$((operation_timeout + 600))
 lock_held=false
 status=failed
 operation_cleanup() {

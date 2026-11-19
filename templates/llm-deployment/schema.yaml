@@ -19,7 +19,7 @@ variableGroups:
     variables: [ storage_mode, model_pvc_name, model_path, workspace_gib, router_enabled, routing_mode, lmcache_mode, lmcache_cpu_memory_gb, lmcache_chunk_size, lmcache_mamba_cache_mode ]
     visible: advanced_settings
   - title: Optional validation, benchmarking and scaling
-    variables: [ monitoring_enabled, inference_probe, benchmark_backend, autoscaling_enabled, min_replicas, max_replicas, prometheus_url, target_inflight ]
+    variables: [ monitoring_enabled, inference_probe, benchmark_mode, benchmark_backend, autoscaling_enabled, min_replicas, max_replicas, prometheus_url, target_inflight ]
     visible: advanced_settings
   - title: Optional network and staging configuration
     variables:
@@ -79,6 +79,7 @@ variables:
   lmcache_chunk_size: { type: integer, minimum: 1, title: LMCache chunk size, description: Optional override. Defaults to recipe setting or 256 tokens; validate hybrid block geometry. }
   lmcache_mamba_cache_mode: { type: enum, enum: [ none, align ], title: Mamba cache policy, description: Optional recipe override for hybrid models. }
   inference_probe: { type: enum, enum: [ none, completions, chat ], default: none, title: Optional inference probe, description: Health and model identity are always checked. Other modalities need task-specific payloads. }
+  benchmark_mode: { type: enum, enum: [ quick, full ], default: quick, title: Manual benchmark scope }
   benchmark_backend: { type: enum, enum: [ unsupported, openai, openai-chat ], default: openai-chat, title: Benchmark task adapter }
   autoscaling_enabled: { type: boolean, default: false, title: Enable request-based autoscaling, description: Uses retained KEDA/Prometheus and cannot grow beyond complete model slots in the retained GPU allocation. }
   monitoring_enabled: { type: boolean, default: true, title: Publish model monitoring resources, description: Uses retained Prometheus and ServiceMonitor support; does not install shared components. Autoscaling still requires platform metrics when this is off. }
