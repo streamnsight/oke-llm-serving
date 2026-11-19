@@ -34,7 +34,14 @@ try:
     KVConnectorFactory.get_connector_class(config)
 except Exception as exc:
     raise SystemExit(f"Native P/D connector cannot load in this image: {type(exc).__name__}: {exc}. Select a complete compatible upstream image.")
-print(f"Native P/D startup: vllm={metadata.version('vllm')} nixl={metadata.version('nixl')} connector=NixlConnector failure_policy=recompute; transfer is not yet validated", flush=True)
+def package_version(*names):
+    for name in names:
+        try:
+            return metadata.version(name)
+        except metadata.PackageNotFoundError:
+            continue
+    return "unreported"
+print(f"Native P/D startup: vllm={package_version('vllm')} nixl={package_version('nixl', 'nixl-cu12', 'nixl-cu13')} connector=NixlConnector failure_policy=recompute; transfer is not yet validated", flush=True)
 
 # main can change after discovery. Inspect the actual raw configuration without
 # loading custom model code or assuming that the discovery SHA is still current.

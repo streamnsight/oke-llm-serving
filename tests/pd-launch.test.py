@@ -153,6 +153,15 @@ class LauncherTests(unittest.TestCase):
         self.assertFalse((fixture.path / "download.json").exists())
         self.assertFalse((fixture.path / "argv.json").exists())
 
+    def test_cuda_named_nixl_distribution_is_diagnostic_not_a_false_failure(self):
+        fixture = LauncherFixture(DENSE)
+        self.addCleanup(fixture.close)
+        distribution = fixture.path / "site/nixl-1.0.0.dist-info"
+        distribution.rename(distribution.with_name("nixl_cu13-1.0.0.dist-info"))
+        result = fixture.run()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue((fixture.path / "argv.json").exists())
+
     def test_sdk_failure_does_not_expose_private_error_details(self):
         fixture = LauncherFixture(DENSE)
         self.addCleanup(fixture.close)
