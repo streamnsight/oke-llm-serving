@@ -35,6 +35,10 @@ run "no_model_or_publication_context_creates_no_resources" {
 run "plan_never_requires_a_previous_worker_archive" {
   command = plan
   assert {
+    condition     = !contains(keys(local.defaults), "model_revision") && !contains(keys(jsondecode(local.files["recommendations_override.tf.json"]).variable), "model_revision") && yamldecode(local.files["schema.yaml"]).variables.model_revision.default == "main" && jsondecode(local.files["inputs/model-spec.json"]).model.revision == var.model_spec.model.revision
+    error_message = "Direct-Hub Terraform and Console defaults must both use main while retaining discovery's immutable assessed commit as evidence."
+  }
+  assert {
     condition     = local.files["modules/shared/artifact-repository-cleanup/scripts/cleanup-repository.sh"] == file("${var.modules_dir}/shared/artifact-repository-cleanup/scripts/cleanup-repository.sh")
     error_message = "Generated stacks must include their destroy-time repository cleanup runtime asset."
   }
