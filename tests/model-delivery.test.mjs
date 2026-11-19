@@ -135,6 +135,19 @@ test('health/model identity validation makes no text-inference claim for arbitra
 });
 const values={identity:'model-fixture',model:'org/model',revision:'a'.repeat(40),image,tensorParallel:'2',pipelineParallel:'1',hosts:'1',gpusPerPod:'2',replicas:'2',contextLength:'4096',concurrency:'8',recipeArgs:['--tool-call-parser','qwen3_coder','--reasoning-parser','qwen3','--kv-cache-dtype','fp8','--dtype','bfloat16'],recipeEnv:{VLLM_USE_RUST_FRONTEND:'1'},nodeSelector:{'oke-llm/allocation':'fixture'},cpu:'2',memory:'16Gi',shm:'8Gi',workspace:'32Gi',hfTokenSecret:'hf-token',pvcName:'',modelPath:'',rdmaResource:'',router:{enabled:false},monitoring:{enabled:false},autoscaling:{enabled:false}};
 function chartFixture(full=false){const dir=mkdtempSync(`${tmpdir()}/model-chart-`);cpSync(`${modulePath}/chart`,dir,{recursive:true});const metadata={apiVersion:'v2',name:'oke-llm-model',version:'0.1.0-test'};if(full){metadata.dependencies=[{name:'vllm-stack',version:'0.1.14',repository:'https://vllm-project.github.io/production-stack',condition:'router.enabled'}];mkdirSync(`${dir}/charts`);copyFileSync(process.env.MODEL_ROUTER_CHART_FILE,`${dir}/charts/vllm-stack-0.1.14.tgz`);}writeFileSync(`${dir}/Chart.yaml`,stringify(metadata));return{dir,render(overrides={}){writeFileSync(`${dir}/test-values.yaml`,stringify({...values,...overrides}));return parseAllDocuments(execFileSync('helm',['template','model',dir,'--namespace','fixture-model-test','-f',`${dir}/test-values.yaml`],{encoding:'utf8',maxBuffer:16*1024*1024})).map(d=>{assert.equal(d.errors.length,0);return d.toJSON();}).filter(Boolean);},close(){rmSync(dir,{recursive:true,force:true});}};}
+test('model Deployment progress deadline follows the configured bounded startup budget',()=>{
+ const c=chartFixture();try{
+  for(const pd of [false,true])for(const budget of [undefined,300,901,1800]){
+   const docs=c.render({...(budget===undefined?{}:{startupTimeoutSeconds:budget}),disaggregation:{enabled:pd,prefillReplicas:1}});
+   const deployments=docs.filter(d=>d.kind==='Deployment');assert.equal(deployments.length,pd?2:1);
+   for(const d of deployments){
+    const expected=budget??1800,probe=d.spec.template.spec.containers[0].startupProbe;
+    assert.equal(d.spec.progressDeadlineSeconds,expected);assert.equal(probe.periodSeconds,10);assert.equal(probe.failureThreshold,Math.ceil(expected/10));
+    if(expected===1800)assert.deepEqual(probe,{httpGet:{path:'/health',port:'http'},periodSeconds:10,failureThreshold:180});
+   }
+  }
+ }finally{c.close();}
+});
 test('native P/D chart separates role pools and services and configures native handoff',()=>{
  const c=chartFixture();try{
   const docs=c.render({disaggregation:{enabled:true,prefillReplicas:1},replicas:'2',recipeArgs:['--dtype','bfloat16']}),deployments=docs.filter(d=>d.kind==='Deployment');

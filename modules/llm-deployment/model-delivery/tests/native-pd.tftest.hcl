@@ -12,6 +12,14 @@ run "native_PD_renders_role_configuration_without_LMCache" {
     error_message = "Explicit native P/D must create role pools and orchestration independently from the LMCache controller."
   }
 }
+run "native_PD_startup_budget_reaches_chart_and_runtime" {
+  command = plan
+  variables { timeout_seconds = 901 }
+  assert {
+    condition     = local.values.startupTimeoutSeconds == 901 && local.config.timeout_seconds == 901
+    error_message = "The configured readiness budget must reach both the model chart and runtime validation."
+  }
+}
 run "native_PD_counts_both_role_pools" {
   command = plan
   variables {
