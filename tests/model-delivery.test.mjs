@@ -58,6 +58,21 @@ function fixture(changes={}){
  writeFileSync(`${dir}/state.json`,JSON.stringify(state));
  return{dir,env,run(code){const r=spawnSync('bash',['-c',`set -euo pipefail; source runtime/common.sh; ${code}`],{cwd:dir,env,encoding:'utf8',timeout:15000});return{...r,state:JSON.parse(readFileSync(`${dir}/state.json`))};},close(){rmSync(dir,{recursive:true,force:true});}};
 }
+test('native P/D rejects stale model or geometry overrides before cluster access',()=>{
+ const pd={disaggregation:{enabled:true,prefill_replicas:1},cache_capabilities:{disaggregation:{selectable:true}},routing_mode:'disaggregated_prefill_orchestrated',lmcache:{enabled:false}};
+ for(const env of [{MODEL_ID:'org/other'},{TP:'1',GPUS_PER_POD:'1'},{PP:'2',HOSTS_PER_REPLICA:'2'}]){
+  const f=fixture({config:pd,env});try{const r=f.run('model_inputs');assert.equal(r.status,2,r.stderr);assert.match(r.stderr,/requires a stack Apply|requires single-host/);assert.deepEqual(r.state.calls,[]);}finally{f.close();}
+ }
+});
+test('native P/D geometry includes prefill GPU and workspace slots',()=>{
+ const pd={disaggregation:{enabled:true,prefill_replicas:2},cache_capabilities:{disaggregation:{selectable:true}},routing_mode:'disaggregated_prefill_orchestrated',lmcache:{enabled:false}};
+ const f=fixture({config:pd,env:{REPLICAS:'1'}});try{const r=f.run('model_inputs; model_geometry');assert.equal(r.status,2,r.stderr);assert.match(r.stderr,/exceed total model slots/);}finally{f.close();}
+});
+test('model validation preserves the operation owner cleanup trap',()=>{
+ for(const healthFailure of [false,true]){
+  const f=fixture({state:{healthFailure}});try{const r=f.run("trap 'echo OUTER_OPERATION_CLEANUP' EXIT; model_inputs; model_validate");assert.equal(r.status===0,!healthFailure,r.stderr);assert.match(r.stdout,/OUTER_OPERATION_CLEANUP/);}finally{f.close();}
+ }
+});
 test('unassessed KV-aware routing is rejected before contacting the cluster',()=>{
  const f=fixture({config:{routing_mode:'kvaware',lmcache:{enabled:true,mode:'inprocess'}}});
  try{const r=f.run('model_inputs');assert.equal(r.status,2,r.stderr);assert.match(r.stderr,/KV-aware routing.*unavailable/);assert.deepEqual(r.state.calls,[]);}finally{f.close();}
@@ -120,6 +135,19 @@ test('health/model identity validation makes no text-inference claim for arbitra
 });
 const values={identity:'model-fixture',model:'org/model',revision:'a'.repeat(40),image,tensorParallel:'2',pipelineParallel:'1',hosts:'1',gpusPerPod:'2',replicas:'2',contextLength:'4096',concurrency:'8',recipeArgs:['--tool-call-parser','qwen3_coder','--reasoning-parser','qwen3','--kv-cache-dtype','fp8','--dtype','bfloat16'],recipeEnv:{VLLM_USE_RUST_FRONTEND:'1'},nodeSelector:{'oke-llm/allocation':'fixture'},cpu:'2',memory:'16Gi',shm:'8Gi',workspace:'32Gi',hfTokenSecret:'hf-token',pvcName:'',modelPath:'',rdmaResource:'',router:{enabled:false},monitoring:{enabled:false},autoscaling:{enabled:false}};
 function chartFixture(full=false){const dir=mkdtempSync(`${tmpdir()}/model-chart-`);cpSync(`${modulePath}/chart`,dir,{recursive:true});const metadata={apiVersion:'v2',name:'oke-llm-model',version:'0.1.0-test'};if(full){metadata.dependencies=[{name:'vllm-stack',version:'0.1.14',repository:'https://vllm-project.github.io/production-stack',condition:'router.enabled'}];mkdirSync(`${dir}/charts`);copyFileSync(process.env.MODEL_ROUTER_CHART_FILE,`${dir}/charts/vllm-stack-0.1.14.tgz`);}writeFileSync(`${dir}/Chart.yaml`,stringify(metadata));return{dir,render(overrides={}){writeFileSync(`${dir}/test-values.yaml`,stringify({...values,...overrides}));return parseAllDocuments(execFileSync('helm',['template','model',dir,'--namespace','fixture-model-test','-f',`${dir}/test-values.yaml`],{encoding:'utf8',maxBuffer:16*1024*1024})).map(d=>{assert.equal(d.errors.length,0);return d.toJSON();}).filter(Boolean);},close(){rmSync(dir,{recursive:true,force:true});}};}
+test('native P/D chart separates role pools and services and configures native handoff',()=>{
+ const c=chartFixture();try{
+  const docs=c.render({disaggregation:{enabled:true,prefillReplicas:1},replicas:'2',recipeArgs:['--dtype','bfloat16']}),deployments=docs.filter(d=>d.kind==='Deployment');
+  assert.deepEqual(deployments.map(d=>d.metadata.name).sort(),['model-decode','model-prefill']);assert(!docs.some(d=>d.kind==='LeaderWorkerSet'||d.kind==='DisaggregatedSet'));
+  for(const role of ['prefill','decode']){
+   const d=deployments.find(d=>d.metadata.name===`model-${role}`),pod=d.spec.template,container=pod.spec.containers[0];
+   assert.equal(d.spec.replicas,role==='prefill'?1:2);assert.equal(pod.metadata.labels.model,role);assert.equal(pod.metadata.labels['oke-llm/role'],role);assert.equal(d.spec.selector.matchLabels['oke-llm/role'],role);
+   assert.deepEqual(container.command,['bash','/pd/launch.sh']);const kv=JSON.parse(container.args[container.args.indexOf('--kv-transfer-config')+1]);assert.equal(kv.kv_connector,'NixlConnector');assert.equal(kv.kv_role,role==='prefill'?'kv_producer':'kv_consumer');assert.equal(kv.kv_load_failure_policy,'recompute');
+   assert.deepEqual(container.env.find(e=>e.name==='VLLM_NIXL_SIDE_CHANNEL_HOST').valueFrom,{fieldRef:{fieldPath:'status.podIP'}});assert.equal(container.env.find(e=>e.name==='UCX_TLS').value,'tcp,cuda_copy');
+  }
+  assert.equal(docs.find(d=>d.kind==='Service'&&d.metadata.name==='model').spec.selector['oke-llm/role'],'decode');assert.equal(docs.find(d=>d.kind==='Service'&&d.metadata.name==='model-prefill').spec.selector['oke-llm/role'],'prefill');assert.match(docs.find(d=>d.kind==='ConfigMap').data['launch.sh'],/get_connector_class/);
+ }finally{c.close();}
+});
 test('single-host chart preserves recipe flags and packs replicas without universal anti-affinity',()=>{
  const c=chartFixture();try{const docs=c.render(),d=docs.find(d=>d.kind==='Deployment'),pod=d.spec.template.spec,args=pod.containers[0].args;assert.equal(d.spec.replicas,2);assert.deepEqual(d.spec.strategy,{type:'RollingUpdate',rollingUpdate:{maxSurge:0,maxUnavailable:1}});assert.equal(pod.affinity,undefined);assert.deepEqual(args.slice(1,1+values.recipeArgs.length),values.recipeArgs);assert.equal(args[args.indexOf('--dtype')+1],'bfloat16');assert.equal(args[args.indexOf('--kv-cache-dtype')+1],'fp8');assert.deepEqual(pod.nodeSelector,values.nodeSelector);assert.equal(pod.containers[0].resources.requests['nvidia.com/gpu'],2);assert.equal(d.spec.template.metadata.labels['oke-llm/endpoint'],'true');assert(!docs.some(d=>d.kind==='PersistentVolumeClaim'||d.kind==='CustomResourceDefinition'||d.kind==='ScaledObject'));}finally{c.close();}
 });

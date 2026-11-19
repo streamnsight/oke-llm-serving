@@ -16,7 +16,7 @@ variableGroups:
     variables: [ model_name, namespace, model_id, model_revision, serving_image, api_frontend, tensor_parallel_size, pipeline_parallel_size, hosts_per_replica, gpus_per_pod, replicas, context_length, concurrency, hf_token_secret ]
     visible: advanced_settings
   - title: Storage and routing
-    variables: [ storage_mode, model_pvc_name, model_path, workspace_gib, router_enabled, routing_mode, lmcache_mode, lmcache_cpu_memory_gb, lmcache_chunk_size, lmcache_mamba_cache_mode ]
+    variables: [ storage_mode, model_pvc_name, model_path, workspace_gib, serving_mode, prefill_replicas, router_enabled, routing_mode, lmcache_mode, lmcache_cpu_memory_gb, lmcache_chunk_size, lmcache_mamba_cache_mode ]
     visible: advanced_settings
   - title: Optional validation, benchmarking and scaling
     variables: [ monitoring_enabled, inference_probe, benchmark_mode, benchmark_backend, autoscaling_enabled, min_replicas, max_replicas, prometheus_url, target_inflight ]
@@ -73,6 +73,8 @@ variables:
   model_path: { type: string, default: /models/model, title: Model path inside the mounted PVC }
   workspace_gib: { type: integer, minimum: 1, title: Local workspace GiB per serving pod }
   router_enabled: { type: boolean, default: false, title: Prefix-aware router, description: Automatically enabled for multiple replicas or an autoscaling maximum above one. }
+  serving_mode: { type: enum, enum: [ aggregated, disaggregated ], default: aggregated, title: Serving layout, description: Experimental P/D uses native NIXL with PP=1 and eligible text-only uniform attention. Requires a compatible image and observed transfer validation. }
+  prefill_replicas: { type: integer, minimum: 1, default: 1, title: Prefill instances, description: Used only for disaggregated serving. The replicas setting controls decode instances; both pools require GPUs and model weights. }
   routing_mode: { type: enum, enum: [ auto, direct, prefixaware ], default: auto, title: Routing policy, description: KV-aware routing is unavailable with the pinned router. Generated model options include compatibility reasons. }
   lmcache_mode: { type: enum, enum: [ recipe, disabled, mp ], default: recipe, title: LMCache adapter, description: MP starts a local CPU cache process and requires a compatible image. Generated model bundles offer in-process mode only for assessed uniform attention layouts. }
   lmcache_cpu_memory_gb: { type: number, minimum: 1, title: LMCache CPU buffer GB, description: Optional override. Defaults to recipe setting or 8 GB. In-process buffers are budgeted per TP worker. }

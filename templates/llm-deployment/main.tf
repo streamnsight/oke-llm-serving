@@ -112,6 +112,8 @@ module "model" {
   hf_token_secret          = var.hf_token_secret
   api_frontend             = var.api_frontend
   router_enabled           = var.router_enabled
+  serving_mode             = var.serving_mode
+  prefill_replicas         = var.prefill_replicas
   routing_mode             = var.routing_mode
   lmcache_mode             = var.lmcache_mode
   lmcache_cpu_memory_gb    = var.lmcache_cpu_memory_gb

@@ -1,0 +1,49 @@
+# Copyright (c) 2020-2022 Oracle and/or its affiliates. All rights reserved.
+# Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
+{{- if and .Values.disaggregation .Values.disaggregation.enabled }}
+{{- range $role := list "prefill" "decode" }}
+{{- $values := deepCopy $.Values }}
+{{- $_ := set $values "role" $role }}
+{{- $root := dict "Values" $values "Release" $.Release }}
+{{- $name := printf "%s-%s" $.Release.Name $role }}
+{{- $service := ternary $name $.Release.Name (eq $role "prefill") }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $name }}
+  labels: {{- include "model.labels" $root | nindent 4 }}
+spec:
+  replicas: {{ if eq $role "prefill" }}{{ int $.Values.disaggregation.prefillReplicas }}{{ else }}{{ int $.Values.replicas }}{{ end }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate: {maxSurge: 0, maxUnavailable: 1}
+  selector:
+    matchLabels: {app.kubernetes.io/instance: {{ $.Release.Name }}, oke-llm/role: {{ $role }}}
+  template:
+    metadata:
+      labels:
+        {{- include "model.labels" $root | nindent 8 }}
+        oke-llm/endpoint: "true"
+    spec: {{- include "model.podSpec" (dict "root" $root "worker" false) | nindent 6 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $service }}
+  labels: {{- include "model.labels" $root | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector: {app.kubernetes.io/instance: {{ $.Release.Name }}, oke-llm/role: {{ $role }}}
+  ports:
+    - {name: http, port: 8000, targetPort: http}
+{{- end }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-pd
+data:
+  launch.sh: |
+{{ .Files.Get "files/pd-launch.sh" | indent 4 }}
+{{- end }}

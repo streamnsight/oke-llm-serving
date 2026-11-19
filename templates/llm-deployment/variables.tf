@@ -128,6 +128,14 @@ variable "router_enabled" {
   type    = bool
   default = false
 }
+variable "serving_mode" {
+  type    = string
+  default = "aggregated"
+}
+variable "prefill_replicas" {
+  type    = number
+  default = 1
+}
 variable "inference_probe" {
   type    = string
   default = "none"
@@ -147,8 +155,8 @@ variable "benchmark_backend" {
 }
 variable "autoscaling_enabled" {
   description = "Opt this model into request-based scaling using existing KEDA/Prometheus. Installing those controllers alone does not enable this policy."
-  type    = bool
-  default = false
+  type        = bool
+  default     = false
 }
 variable "monitoring_enabled" {
   description = "Publish model metrics/ServiceMonitor resources against retained platform monitoring; does not install Prometheus."

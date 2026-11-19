@@ -36,6 +36,39 @@ run "dense_native_estimate" {
     error_message = "Config must be SHA-pinned and Hub counts must not be called independently measured."
   }
 }
+run "causal_Qwen3_without_layer_types_has_uniform_PD_metadata" {
+  command = plan
+  override_data {
+    target = data.http.config
+    values = { status_code = 200, response_body = "{\"model_type\":\"qwen3\",\"architectures\":[\"Qwen3ForCausalLM\"],\"num_hidden_layers\":28,\"num_attention_heads\":16,\"num_key_value_heads\":8,\"head_dim\":128,\"hidden_size\":1024,\"max_position_embeddings\":40960}" }
+  }
+  assert {
+    condition     = output.profile.architecture.text_only && output.profile.architecture.causal_generation && output.profile.architecture.attention.layout == "uniform_attention"
+    error_message = "Ordinary Qwen3 declares uniform causal attention without an explicit layer_types list."
+  }
+}
+run "text_classifier_is_not_causal_generation" {
+  command = plan
+  override_data {
+    target = data.http.config
+    values = { status_code = 200, response_body = "{\"model_type\":\"llama\",\"architectures\":[\"LlamaForSequenceClassification\"],\"num_hidden_layers\":2,\"num_attention_heads\":4,\"hidden_size\":16}" }
+  }
+  assert {
+    condition     = output.profile.architecture.text_only && !output.profile.architecture.causal_generation
+    error_message = "A familiar transformer family is not proof of the serving task."
+  }
+}
+run "unknown_MoE_cache_is_not_uniform_attention" {
+  command = plan
+  override_data {
+    target = data.http.config
+    values = { status_code = 200, response_body = "{\"model_type\":\"future_latent_moe\",\"architectures\":[\"FutureForCausalLM\"],\"num_experts\":8,\"num_hidden_layers\":2,\"num_attention_heads\":4,\"hidden_size\":16,\"kv_lora_rank\":512}" }
+  }
+  assert {
+    condition     = output.profile.architecture.kind == "moe" && output.profile.architecture.attention.layout == "unverified"
+    error_message = "MoE parameter structure does not establish the KV layout."
+  }
+}
 
 run "moe_counts_all_experts" {
   command = plan

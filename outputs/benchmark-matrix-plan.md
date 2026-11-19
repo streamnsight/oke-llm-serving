@@ -26,10 +26,10 @@ The user requests readable benchmark summaries in DevOps logs, removal of result
 
 - [x] Add meaningful failing regressions for matrix/context math, equal-length cache cases, distributions/failures, summaries without uploads, endpoint selection, Job failure/cleanup and manual-only Terraform behavior.
 - [x] Exercise the exact CPU image with a mock HTTP endpoint, including the real generated Job/ConfigMap, client download, streamed summaries, polling and automatic cleanup.
-- [ ] Run a bounded quick workload against a live GPU model when one is available. No GPU pool allocation, resize or recycling. Do not launch the full matrix automatically.
+- [x] Run a bounded quick workload against a live GPU model when one is available. No GPU pool allocation, resize or recycling. Do not launch the full matrix automatically.
 - [x] Run focused executable/Terraform checks and validate committed and generated RMS ZIPs, including Terraform 1.5.7 and the 51,200-byte inline command limit.
 - [x] Commit source and build/check reviewable discovery, standalone model and generated model archives from committed source.
-- [ ] Integrate per repository workflow and rebuild packages after integration; parent agent owns this step. Existing RMS sources and immutable report bundles require a separate update.
+- [x] Integrate per repository workflow and rebuild packages after integration; parent agent owns this step. Existing RMS sources and immutable report bundles require a separate update.
 
 Cost: request count is `input lengths × 2 cache profiles × samples`. Generation work scales with total input/output tokens; the planner prints nominal work before execution. Native dataset memory is O(samples × input length); up to twice the required candidates are generated to remove accidental duplicate prompts, so reject cases above a bounded client dataset budget. Each run has an overall deadline; large custom matrices may need fewer samples or separate executions. Quick p99 is exploratory; full mode still prints sample counts and the small number of observations in the upper 1%.
 
@@ -44,5 +44,22 @@ Cost: request count is `input lengths × 2 cache profiles × samples`. Generatio
 - The unchanged outer `benchmark.sh` then passed with a separate owned CPU-only mock Pod/ClusterIP Service, exercising real ConfigMap creation, generated CPU Job, full tokenizer download, log following/reconnection, terminal polling and automatic exact Job/ConfigMap cleanup. The final source streamed summaries before completion and returned zero. All exact owned test resources were cleaned. Logs remain locally at `/tmp/benchmark-matrix-e2e/final-run.log` and `/tmp/benchmark-matrix-proof/final.log`.
 - Exact-image testing caught Transformers 5.19 returning a BatchEncoding by default from `apply_chat_template`; the context guard now explicitly requests `return_dict=False`, with regressions covering that default and oversized actual templates. Native chat requests use `max_completion_tokens` and typed content blocks, handled by the synthetic endpoint. Cold image startup also demonstrated a transient `ContainerCreating` log error; the outer script now reconnects early-ended log streams while the Job remains active, tested both by regression and the real Job.
 - Committed discovery archive and embedded roots validate with current Terraform; standalone model archive validates with Terraform 1.5.7. Eleven publisher tests built real generated archives from committed source; the selected model ZIP passes five generated-root tests plus Terraform 1.5.7 archive validation. No package contains state, tfvars, tests or development dependencies.
-- Live model benchmarking cannot currently run: both retained workers are CPU-only and no GPU workers/model endpoint are present. No GPU allocation, resize, recycling or serving deployment is performed by this work. GPU runtime validation and RMS service validation remain outstanding; do not claim the synthetic endpoint proves model/cache/P/D performance.
+- GPU workers were initially unavailable; the user subsequently restored one retained A10 host. The integrated live GPU/RMS run is recorded below. The agent did not allocate, resize or recycle GPU infrastructure. Synthetic endpoint timings above remain client/lifecycle evidence only.
 - Existing results repository definitions and historical exports are preserved. No new benchmark upload or artifact-write pipeline permission remains.
+
+## Live GPU/RMS validation — 2026-11-19
+
+The manual pipeline ran against Qwen3-0.6B with official vLLM 0.32.0 and the Production Stack 0.1.14 orchestrated router. One prefill and one decode instance each used one A10 on the user's retained host. The CPU-only benchmark Job ran the exact pinned client image, using `openai-chat`, concurrency 2, output 32 tokens, two content lengths and 32 measured requests per cell. Chat templating added eight input tokens equally to both profiles. One separate warmup per cell is outside latency samples. The matrix completed in 143.367 seconds with 128/128 measured requests successful. The outer pipeline removed its exact Job and ConfigMap without an artifact upload.
+
+Time to first token (milliseconds):
+
+| Content tokens | Profile | Mean | Median | p90 | p99 | Requests/s |
+| --- | --- | ---: | ---: | ---: | ---: | ---: |
+| 1,024 | Unique | 607.214 | 608.512 | 609.673 | 637.244 | 2.736 |
+| 1,024 | Shared 768-token prefix | 260.275 | 262.051 | 263.014 | 285.330 | 5.202 |
+| 2,048 | Unique | 1,086.462 | 1,085.564 | 1,087.192 | 1,222.291 | 1.641 |
+| 2,048 | Shared 1,536-token prefix | 387.141 | 388.484 | 389.742 | 496.262 | 3.847 |
+
+The live logs include mean, median and every p90–p99 for TTFT, TPOT, ITL and end-to-end latency, plus throughput, actual token lengths, cache counters and P/D findings. Shared-prefix median TTFT was 56.94% lower at 1K and 64.21% lower at 2K. Unique-profile prefix hits were zero; shared-profile aggregate hit ratios were 72.16% and 72.44%, including warmup and both role engines. All four cells reported native transfer with no failures/expired/late notifications, no reset/missing counters and zero decode-side locally computed prompt tokens. Prefix reuse and native P/D therefore worked together in this test.
+
+This is a small single-host cache-workload comparison with caching enabled in both profiles, not an aggregated-versus-P/D comparison or a general speedup claim. With 32 samples per cell, p99 is exploratory. CPU image pulls briefly caused DiskPressure on the existing small worker roots; all nodes recovered without filesystem/GPU changes, and the serving pods stayed healthy during benchmarking. Detailed private evidence is under `/tmp/native-pd-live-20261119` and DevOps Logging; it is not packaged with source.
