@@ -11,6 +11,8 @@ import tempfile
 import time
 import unittest
 
+sys.dont_write_bytecode = True
+
 path = pathlib.Path(__file__).resolve().parents[1] / "modules/llm-deployment/model-delivery/scripts/pd_observe.py"
 spec = importlib.util.spec_from_file_location("pd_observe", path)
 observer = importlib.util.module_from_spec(spec)
