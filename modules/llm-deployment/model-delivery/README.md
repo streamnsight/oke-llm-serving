@@ -10,7 +10,7 @@ OCI Generic Artifact permissions apply to the model project's workload compartme
 1. Deploy the required retained GPU infrastructure and shared controllers first. Open the model ZIP link produced by discovery, choose the existing cluster, and Apply. Native metadata lookup infers the runner network, a unique compatible managed pool/platform and its trusted onboarding pipeline; missing or ambiguous prerequisites fail with an actionable error. A retained same-shape pool can be in another AD; discovery AD constrains new allocation. This lookup does not promise free GPUs.
 2. Apply first executes the trusted `<platform>-model-onboarding` pipeline with the exact model project, namespace, pool and complete pipeline-ID set. It verifies these fixed defaults before granting namespace-scoped Kubernetes RBAC. The model project cannot grant itself cluster administration.
 3. Apply then executes model deployment: owned namespace/allocation/storage preflight, deterministic chart import, native OCI Helm stage, rollout/image/health/model identity validation. A separate validation execution follows. Any failure fails Apply. Settings remain visible pipeline parameters for independent reruns; namespace and local chart source/version are immutable boundaries. Small sources, specifications, Helm values and command specs are readable inline artifacts. Large runtime/chart inputs remain Registry files; no command decodes an encoded script payload.
-4. Benchmarking stays manual. Independent validation and benchmarking take the same model lease. Each operation inlines only its required sources and reuses the existing model-config input rather than uploading duplicate scripts/configuration. Routine status, validation evidence and failure logs are printed in the DevOps deployment log. Benchmarking uses the official digest-pinned vLLM CPU client and `vllm bench serve`, with downloadable native JSON results in Generic Artifact Registry. Text benchmarking defaults to `openai-chat` (`/v1/chat/completions`); select `openai` for `/v1/completions`, or `unsupported` to disable text benchmarking for another modality that needs its own dataset/probe adapter. Override `BENCHMARK_BACKEND` when starting the manual pipeline, or set `benchmark_backend` in the model stack to retain the default. Health checks alone never claim successful inference.
+4. Benchmarking stays manual. Independent validation and benchmarking take the same model lease. Each operation inlines only its required sources and reuses the existing model-config input rather than uploading duplicate scripts/configuration. Routine status, validation evidence and failure logs are printed in the DevOps deployment log. Benchmarking uses the official digest-pinned vLLM CPU client and `vllm bench serve`, with aggregate summaries streamed to DevOps logs and no benchmark result upload. Historical exports remain owned by the existing results repository until explicitly removed or the stack is destroyed. Text benchmarking defaults to `openai-chat` (`/v1/chat/completions`); select `openai` for `/v1/completions`, or `unsupported` to disable text benchmarking for another modality that needs its own dataset/probe adapter. Override `BENCHMARK_BACKEND` when starting the manual pipeline, or set `benchmark_backend` in the model stack to retain the default. Health checks alone never claim successful inference.
 5. Run the separate undeploy pipeline before destroying its definitions. Terraform Destroy then empties and deletes the owned software/results repositories, including historical artifact versions and benchmark exports. It preserves model weights/PVCs and retained GPU infrastructure. The undeploy pipeline's `CONFIRM_UNINSTALL` parameter defaults to `true`, so no confirmation override is needed. It removes only the owned Helm release. CRDs, existing model PVCs, namespace, GPU pool and shared controllers remain. A failed native stage retains its lease; deliberate recovery requires the expired previous execution to be terminal.
 
 Automatic execution uses native `oci_devops_deployment` resources with success postconditions. Its revision covers effective model settings, immutable runtime/chart sources, pipeline delivery code, the trusted onboarding definition and actual selected pool. Capacity snapshots, add-on inventory and observed retained pool size do not trigger another deployment. An unchanged Apply reuses its completed execution records; run the standalone validation pipeline for a fresh health check. A meaningful change replaces the executions in order. Failed executions can be retried through Apply after inspecting their DevOps diagnostics and any retained lease. Terraform metadata destruction never substitutes for explicit undeploy.
@@ -107,13 +107,41 @@ a generic random-prompt benchmark or `/health` response is insufficient. Routing
 needs multiple actual replicas to establish backend selection. No GPU pool is
 allocated, resized or recycled by these changes.
 
-The existing manual benchmark pipeline accepts `BENCHMARK_PREFIX_TOKENS` (default
-0) to generate requests sharing a prefix. Prefix + random input + output lengths
-and template allowance must fit the context window. Choose a shared prefix above
-the runtime's negotiated chunk/block size, then inspect native prefix and LMCache
-store/retrieve counters separately. Repeated requests served from the GPU prefix
-cache do not establish host-tier retrieval. This option does not clear live caches
-or change the serving model automatically.
+The manual pipeline runs a paired benchmark matrix through the live endpoint.
+Select `benchmark_mode=quick|full` in the model stack or override `BENCHMARK_MODE`
+when starting the pipeline. This changes the manual operation only, without
+redeploying serving workloads. Quick uses 64 measured requests per cell at 1K and
+up to 4K input tokens; full uses 512 at 512/1K/2K/4K/8K/16K, bounded by the deployed
+context. Each length runs unique content and a warmed 75% shared prefix at the
+same total content length. One separate unmeasured request warms each cell;
+measured prompts are distinct. The native client's own repeated-prompt warmup is
+disabled. Chat scaffolding may still be shared in both profiles. This compares
+reuse through the live router, with caching left enabled throughout.
+
+Editable pipeline parameters are `BENCHMARK_REQUESTS=auto`,
+`BENCHMARK_INPUT_TOKENS=auto` (or comma-separated total content lengths),
+`BENCHMARK_OUTPUT_TOKENS=128`, `BENCHMARK_PREFIX_TOKENS=auto` (75% of input, or an
+explicit positive shared-prefix length), `BENCHMARK_MAX_CONCURRENCY=auto`
+(serving concurrency times fixed replicas), and `BENCHMARK_MAX_SECONDS=auto`
+(1,800 quick / 18,000 full; explicit maximum 20,000). Input includes the prefix;
+output plus a 128-token template allowance must fit context. Actual tokenized
+lengths are checked again with the serving tokenizer before traffic. Large
+custom datasets are capped at 64 million candidate input tokens per cell.
+
+Logs include mean, median and every p90–p99 for TTFT, TPOT, ITL and end-to-end
+latency, throughput, failures, actual lengths and paired median-TTFT changes.
+Percentiles stay per cell; they are never averaged across workloads. Quick p99 is
+exploratory, and every run prints the approximate number of upper-tail samples.
+Native detailed results and diagnostics stay temporary in the disposable CPU
+client; prompts, generated text and raw error payloads are not printed or
+uploaded. Partial case summaries remain in logs if a later case fails.
+
+Available per-replica prefix counters are sampled around each case, including its
+warmup. Missing/reset counters remain unknown, and other client traffic may
+contribute. P/D deployments also report transfer/recomputation observations when
+the shared runtime observer is available. These are observed windows, not
+per-request attribution. Prefix hits do not establish LMCache host-tier retrieval
+or P/D transfer. The benchmark never clears live caches or changes model flags.
 
 MP cache Prometheus metrics are exposed on the model Service's `cache-metrics`
 port 9090 and scraped by the existing ServiceMonitor when monitoring is enabled.

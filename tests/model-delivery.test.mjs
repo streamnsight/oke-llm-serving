@@ -46,7 +46,7 @@ if(tool==='kubectl'){
 `;
 function fixture(changes={}){
  const dir=mkdtempSync(`${tmpdir()}/model-runtime-`);mkdirSync(`${dir}/runtime`);mkdirSync(`${dir}/bin`);
- for(const file of ['common.sh','preflight.sh','validate.sh','benchmark.sh'])copyFileSync(`${modulePath}/scripts/${file}`,`${dir}/runtime/${file}`);
+ for(const file of ['common.sh','preflight.sh','validate.sh','benchmark.sh','bench-client.sh','benchmark.py'])copyFileSync(`${modulePath}/scripts/${file}`,`${dir}/runtime/${file}`);
  for(const tool of ['kubectl','helm','curl','sleep','oci'])writeFileSync(`${dir}/bin/${tool}`,`#!${process.execPath}\n${mock}`,{mode:0o755});
  const current=structuredClone(config);if(changes.config)Object.assign(current,changes.config);
  writeFileSync(`${dir}/runtime/config.json`,JSON.stringify(current));
@@ -149,7 +149,7 @@ test('benchmark Jobs select the effective direct HTTP service or router',()=>{
   const f=fixture({config:{router_enabled:router,serving:{recipe:{args:[]}},benchmark_image:image},env:{HOSTS_PER_REPLICA:hosts,PP:hosts,OCI_DEPLOYMENT_ID:'deployment',BENCHMARK_BACKEND:'openai',BENCHMARK_REQUESTS:'2',BENCHMARK_INPUT_TOKENS:'256',BENCHMARK_OUTPUT_TOKENS:'64'}});
   try{
    writeFileSync(`${f.dir}/runtime/bench-client.sh`,'exit 0\n');
-   writeFileSync(`${f.dir}/bin/kubectl`,`#!${process.execPath}\nconst a=process.argv.slice(2);if(a.includes('wait'))process.exit(1);if(a.includes('apply'))process.stdin.resume();else if(a.includes('create'))console.log('{}');\n`,{mode:0o755});
+   writeFileSync(`${f.dir}/bin/kubectl`,`#!${process.execPath}\nconst a=process.argv.slice(2);if(a.includes('get'))console.log(JSON.stringify(a.includes('pods')?{items:[]}:{status:{failed:1}}));if(a.includes('apply'))process.stdin.resume();else if(a.includes('create'))console.log('{}');\n`,{mode:0o755});
    const r=f.run('bash runtime/benchmark.sh');assert.equal(r.status,2,r.stderr);
    const job=JSON.parse(readFileSync(`${f.dir}/benchmark-job.json`));
    assert.equal(job.spec.template.spec.containers[0].env.find(e=>e.name==='BASE_URL').value,`http://${endpoint}.fixture-model-test.svc:${router?'80':'8000'}`);
@@ -196,17 +196,18 @@ test('independent validation prints its evidence without uploading a routine art
 test('failed benchmark Job prints its logs without requiring a failure artifact upload',()=>{
  const f=fixture({config:{serving:{recipe:{args:[]}},benchmark_image:image},env:{OCI_DEPLOYMENT_ID:'deployment',BENCHMARK_BACKEND:'openai',BENCHMARK_REQUESTS:'32',BENCHMARK_INPUT_TOKENS:'256',BENCHMARK_OUTPUT_TOKENS:'64'}});
  try{
-  writeFileSync(`${f.dir}/bin/kubectl`,`#!${process.execPath}\nconst a=process.argv.slice(2);if(a.includes('wait'))process.exit(1);if(a.includes('logs'))console.log('fixture benchmark Job failure');if(a.includes('apply'))process.stdin.resume();else if(a.includes('create'))console.log('{}');\n`,{mode:0o755});
+  writeFileSync(`${f.dir}/bin/kubectl`,`#!${process.execPath}\nconst a=process.argv.slice(2);if(a.includes('get'))console.log(JSON.stringify(a.includes('pods')?{items:[]}:{status:{failed:1}}));if(a.includes('delete'))process.exit(9);if(a.includes('logs'))console.log('fixture benchmark Job failure');if(a.includes('apply'))process.stdin.resume();else if(a.includes('create'))console.log('{}');\n`,{mode:0o755});
   const r=f.run('bash runtime/benchmark.sh');assert.equal(r.status,2,r.stderr);assert.match(r.stderr,/fixture benchmark Job failure/);assert.match(r.stderr,/deployment log/);assert(!r.state.calls.some(c=>c.tool==='oci'));
  }finally{f.close();}
 });
 
-test('successful benchmark keeps downloadable native JSON results and prints them in the deployment log',()=>{
- const f=fixture({config:{serving:{recipe:{args:[]}},benchmark_image:image},env:{OCI_DEPLOYMENT_ID:'deployment',DELIVERY_RESULT_REPOSITORY:'benchmark-results',BENCHMARK_BACKEND:'openai',BENCHMARK_REQUESTS:'32',BENCHMARK_INPUT_TOKENS:'256',BENCHMARK_OUTPUT_TOKENS:'64'}});
+test('successful benchmark streams summaries and never uploads result artifacts',()=>{
+ const f=fixture({config:{serving:{recipe:{args:[]}},benchmark_image:image},env:{OCI_DEPLOYMENT_ID:'deployment',BENCHMARK_BACKEND:'openai',BENCHMARK_REQUESTS:'32',BENCHMARK_INPUT_TOKENS:'256',BENCHMARK_OUTPUT_TOKENS:'64'}});
  try{
-  writeFileSync(`${f.dir}/bin/kubectl`,`#!${process.execPath}\nconst a=process.argv.slice(2);if(a.includes('logs'))console.log('BENCHMARK_RESULT_BEGIN\\n{"completed":32}\\nBENCHMARK_RESULT_END');if(a.includes('apply'))process.stdin.resume();else if(a.includes('create'))console.log('{}');\n`,{mode:0o755});
-  writeFileSync(`${f.dir}/bin/oci`,`#!${process.execPath}\nconst fs=require('node:fs'),a=process.argv.slice(2);if(a.slice(0,4).join(' ')!=='artifacts generic artifact upload-by-path')process.exit(99);fs.writeFileSync('benchmark-export.json',JSON.stringify({repository:a[a.indexOf('--repository-id')+1],path:a[a.indexOf('--artifact-path')+1],result:JSON.parse(fs.readFileSync(a[a.indexOf('--content-body')+1]))}));\n`,{mode:0o755});
-  const r=f.run('bash runtime/benchmark.sh');assert.equal(r.status,0,r.stderr);assert.match(r.stdout,/vLLM benchmark result:/);const exported=JSON.parse(readFileSync(`${f.dir}/benchmark-export.json`));assert.equal(exported.repository,'benchmark-results');assert.match(exported.path,/vllm-benchmark.json$/);assert.equal(exported.result.completed,32);
+  writeFileSync(`${f.dir}/bin/kubectl`,`#!${process.execPath}\nconst a=process.argv.slice(2);if(a.includes('get'))console.log(JSON.stringify(a.includes('pods')?{items:[]}:{status:{conditions:[{type:'Complete',status:'True'}]}}));if(a.includes('logs'))console.log('fixture benchmark_case_summary completed=32 p99=20');if(a.includes('apply'))process.stdin.resume();else if(a.includes('create'))console.log('{}');\n`,{mode:0o755});
+  writeFileSync(`${f.dir}/bin/oci`,'#!/bin/bash\nexit 99\n',{mode:0o755});
+  const r=f.run('bash runtime/benchmark.sh');assert.equal(r.status,0,r.stderr);assert.match(r.stdout,/benchmark_case_summary completed=32 p99=20/);assert.match(r.stdout,/No result artifact uploaded/);assert(!r.state.calls.some(c=>c.tool==='oci'));
+  const job=JSON.parse(readFileSync(`${f.dir}/benchmark-job.json`));assert.equal(job.spec.activeDeadlineSeconds,2400);assert.equal(job.spec.template.spec.automountServiceAccountToken,false);assert.equal(job.spec.template.spec.containers[0].resources.requests['nvidia.com/gpu'],undefined);
  }finally{f.close();}
 });
 

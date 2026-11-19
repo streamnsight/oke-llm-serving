@@ -8,30 +8,30 @@ locals {
     "specification.json" = jsonencode({ cluster_id = var.platform.cluster_id, helm_version = "v3.19.2" })
   }
   operation_files = { for operation in ["validate", "benchmark"] : operation => merge(local.operation_shared_files, {
-    for asset in(operation == "validate" ? ["validate.sh"] : ["benchmark.sh", "bench-client.sh"]) : asset => file("${path.module}/scripts/${asset}")
+    for asset in(operation == "validate" ? ["validate.sh"] : ["benchmark.sh", "bench-client.sh", "benchmark.py"]) : asset => file("${path.module}/scripts/${asset}")
   }) }
   # These inputs already exist for model deployment; reuse their immutable
   # paths/versions instead of duplicating the large common library inline.
-  operation_input_files = { for path in ["common.sh", "config.json"] : path => local.runtime_files[path] }
+  operation_input_files = { for path in concat(["common.sh", "config.json"], contains(keys(local.runtime_files), "pd_observe.py") ? ["pd_observe.py"] : []) : path => local.runtime_files[path] }
   operation_parameters = merge(local.defaults, {
     CHART_VERSION     = local.chart_version, RECOVER_LOCK_HOLDER = "none",
-    BENCHMARK_BACKEND = var.benchmark_backend, BENCHMARK_REQUESTS = "64", BENCHMARK_INPUT_TOKENS = "256", BENCHMARK_OUTPUT_TOKENS = "64", BENCHMARK_PREFIX_TOKENS = "0"
+    BENCHMARK_BACKEND = var.benchmark_backend, BENCHMARK_MODE = var.benchmark_mode, BENCHMARK_REQUESTS = "auto", BENCHMARK_INPUT_TOKENS = "auto", BENCHMARK_OUTPUT_TOKENS = "128", BENCHMARK_PREFIX_TOKENS = "auto", BENCHMARK_MAX_CONCURRENCY = "auto", BENCHMARK_MAX_SECONDS = "auto"
   })
   operation_specs = { for operation in ["validate", "benchmark"] : operation => yamlencode({
-    version = "0.1", component = "command", shell = "bash", timeoutInSeconds = 3600, failImmediatelyOnError = true,
+    version = "0.1", component = "command", shell = "bash", timeoutInSeconds = operation == "benchmark" ? 21600 : 3600, failImmediatelyOnError = true,
     env = { variables = merge({ for key in keys(local.operation_parameters) : key => "$${${key}}" }, {
-      DELIVERY_OPERATION     = operation, DELIVERY_GENERATION = module.delivery.generations.workload,
+      DELIVERY_OPERATION     = operation, DELIVERY_OPERATION_TIMEOUT_SECONDS = tostring(operation == "benchmark" ? 21600 : 3600), DELIVERY_GENERATION = module.delivery.generations.workload,
       DELIVERY_REGION        = var.platform.region,
       DELIVERY_DEPLOYMENT_ID = "$${OCI_DEPLOYMENT_ID}", DELIVERY_PIPELINE_ID = "$${OCI_PIPELINE_ID}",
       OCI_CLI_AUTH           = "resource_principal", OCI_CLI_REGION = var.platform.region
-    }, operation == "benchmark" ? { DELIVERY_RESULT_REPOSITORY = var.platform.result_repository_id } : {}) },
+    }) },
     inputArtifacts = [for path in sort(keys(local.operation_input_files)) : {
       name       = "model-${replace(path, ".", "-")}", type = "GENERIC_ARTIFACT", location = "./runtime/${path}",
       registryId = var.platform.script_repository_id, path = module.delivery.runtime_artifacts[path].artifact_path, version = module.delivery.runtime_artifacts[path].version
     }],
-    steps = [{ type = "Command", name = "${operation}-current-model", timeoutInSeconds = 3600, command = join("\n", concat([
+    steps = [{ type = "Command", name = "${operation}-current-model", timeoutInSeconds = operation == "benchmark" ? 21600 : 3600, command = join("\n", concat([
       "set -euo pipefail",
-      "export ${join(" ", sort(concat(keys(local.operation_parameters), ["DELIVERY_OPERATION", "DELIVERY_GENERATION", "DELIVERY_REGION", "DELIVERY_DEPLOYMENT_ID", "DELIVERY_PIPELINE_ID", "OCI_DEPLOYMENT_ID", "OCI_PIPELINE_ID", "OCI_CLI_AUTH", "OCI_CLI_REGION"], operation == "benchmark" ? ["DELIVERY_RESULT_REPOSITORY"] : [])))}"
+      "export ${join(" ", sort(concat(keys(local.operation_parameters), ["DELIVERY_OPERATION", "DELIVERY_OPERATION_TIMEOUT_SECONDS", "DELIVERY_GENERATION", "DELIVERY_REGION", "DELIVERY_DEPLOYMENT_ID", "DELIVERY_PIPELINE_ID", "OCI_DEPLOYMENT_ID", "OCI_PIPELINE_ID", "OCI_CLI_AUTH", "OCI_CLI_REGION"])))}"
       ], [for path, content in merge(local.operation_files[operation], local.operation_input_files) : "printf '%s  runtime/${path}\\n' '${sha256(content)}' | sha256sum -c -"], [
       "cp runtime/specification.json specification.json", "bash runtime/operation.sh"
     ])) }]
@@ -77,7 +77,7 @@ resource "oci_devops_deploy_stage" "operation" {
   display_name                    = "${each.key}-current-model"
   deploy_stage_type               = "SHELL"
   command_spec_deploy_artifact_id = oci_devops_deploy_artifact.operation[each.key].id
-  timeout_in_seconds              = 3600
+  timeout_in_seconds              = each.key == "benchmark" ? 21600 : 3600
   deploy_stage_predecessor_collection {
     items { id = oci_devops_deploy_pipeline.operation[each.key].id }
   }
@@ -118,7 +118,6 @@ resource "oci_identity_policy" "model" {
     "Allow dynamic-group id ${oci_identity_dynamic_group.model.id} to use virtual-network-family in compartment id ${data.oci_core_subnet.runner.compartment_id}",
     "Allow dynamic-group id ${oci_identity_dynamic_group.model.id} to read artifact-repositories in compartment id ${var.compartment_id}",
     "Allow dynamic-group id ${oci_identity_dynamic_group.model.id} to read generic-artifacts in compartment id ${var.compartment_id}",
-    "Allow dynamic-group id ${oci_identity_dynamic_group.model.id} to manage generic-artifacts in compartment id ${var.compartment_id}",
     "Allow dynamic-group id ${oci_identity_dynamic_group.model.id} to use log-content in compartment id ${var.compartment_id}"
   ], [for repo in values(module.delivery.chart_repositories) : "Allow dynamic-group id ${oci_identity_dynamic_group.model.id} to manage repos in compartment id ${var.compartment_id} where target.repo.name = '${repo.name}'"])
 }
