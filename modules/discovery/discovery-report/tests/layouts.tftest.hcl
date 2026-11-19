@@ -127,3 +127,22 @@ run "unpublished_report_does_not_invent_pd_launch_links" {
     error_message = "An eligible layout without publication must not expose a fabricated create-stack URL."
   }
 }
+
+run "no_recommendation_keeps_both_empty_layout_tabs_valid" {
+  command = plan
+  variables {
+    options            = {}
+    publications       = {}
+    model_publications = {}
+    assessment         = { recommended_selection_id = null }
+  }
+  assert {
+    condition = (
+      output.summary.serving_layouts.aggregated.recommended_option_id == null &&
+      output.summary.serving_layouts.disaggregated.recommended_option_id == null &&
+      length(output.summary.serving_layouts.aggregated.options) == 0 &&
+      length(output.summary.serving_layouts.disaggregated.options) == 0
+    )
+    error_message = "A null recommendation is normal when no allocation fits; the report must still publish both explained empty tabs."
+  }
+}

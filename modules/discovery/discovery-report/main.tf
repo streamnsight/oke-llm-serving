@@ -196,7 +196,7 @@ locals {
   serving_layouts = { for mode, layout in module.serving_layouts.layouts : mode => merge(layout, {
     title                 = mode == "aggregated" ? "Combined prefill + decode" : "Separate prefill / decode (P/D)",
     description           = mode == "aggregated" ? "Each model instance handles the prompt and generates its response. TP/PP can shard that instance; replicas are independent full-model copies." : "Separate full-weight prefill and decode pools exchange KV state. This adapter uses matching TP with PP=1, one host per instance and one prefill instance; complete spare GPU slots serve additional decode instances.",
-    recommended_option_id = contains(keys(layout.options), try(var.assessment.recommended_selection_id, "")) ? var.assessment.recommended_selection_id : try(sort(keys(layout.options))[0], null),
+    recommended_option_id = try(contains(keys(layout.options), var.assessment.recommended_selection_id), false) ? var.assessment.recommended_selection_id : try(sort(keys(layout.options))[0], null),
     options = { for id, option in layout.options : id => merge(local.choices[id], {
       serving_mode   = option.serving_mode, prefill_replicas = option.prefill_replicas, decode_replicas = option.decode_replicas,
       allocation     = option.allocation, launch_variables = local.layout_presets[mode][id],
