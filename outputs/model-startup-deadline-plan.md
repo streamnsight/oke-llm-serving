@@ -14,11 +14,11 @@
 - [x] Pass the existing bounded timeout into chart values and use it for Deployment progress and startup probes. Preserve the default probe specification exactly; no image, model, memory, GPU or filesystem changes.
 - [x] Verify the actual old/new rendered PodTemplates are identical for the live default configuration, so the in-place Deployment-spec update does not restart weight downloads.
 - [x] Run focused chart/runtime and Terraform checks. The new rendered regression fails without the deadline, then passes for default/300/901/1800-second budgets in both layouts. All 48 ordinary runtime/chart checks pass with one optional upstream-chart test skipped; all 55 preexisting delivery/execution Terraform checks pass.
-- [ ] Commit the generic fix and rebuild the owned model stack from committed source.
+- [x] Commit the generic fix and rebuild the owned model stack from committed source.
 
 ## Phase 3 — live validation
 
-- [ ] Wait for the existing loading pods to become Ready rather than patching status or restarting them; ProgressDeadlineExceeded can remain until real progress occurs.
+- [x] Wait for the existing loading pods to become Ready rather than patching status or restarting them; ProgressDeadlineExceeded can remain until real progress occurs.
 - [ ] Inspect the updated RMS Plan for GPU/instance/pool/volume mutations and recover through the owned onboarding/deploy/independent-validation workflow with ownership checks.
 - [ ] Finish native-transfer observation, the bounded benchmark and a refreshed no-op Plan. Record cold download/loading separately from serving performance.
 
