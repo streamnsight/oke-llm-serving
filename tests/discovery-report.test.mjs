@@ -282,7 +282,7 @@ test("regional columns compare each GPU quantity with the full host allocation",
   const short = created.filter(node => node.className === "insufficient");
   assert.deepEqual(short.map(node => node.textContent), ["8", "8", "4"]);
   assert.ok(short.every(node => node.title.includes("16 GPUs")));
-  assert.match(template, /GPUs needed<\/th>.*GPUs per host<\/th>.*Current limit and headroom<\/th>.*Physical capacity per AD<\/th>/);
+  assert.match(template, /GPUs per model instance<\/th>.*GPUs per host<\/th>.*Current limit and headroom<\/th>.*Physical capacity per AD<\/th>/);
 });
 
 test("quota and capacity equality suffice; unknown sizing or quota units stay neutral", () => {
