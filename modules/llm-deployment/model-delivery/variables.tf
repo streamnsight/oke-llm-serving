@@ -114,6 +114,15 @@ variable "inference_probe" {
     error_message = "Use none for health/model identity only, or explicitly select a text completions/chat probe. Other modalities need a task-specific payload."
   }
 }
+variable "benchmark_mode" {
+  description = "Manual benchmark matrix: quick or full. Does not redeploy the model."
+  type        = string
+  default     = "quick"
+  validation {
+    condition     = contains(["quick", "full"], var.benchmark_mode)
+    error_message = "Select quick or full benchmark mode."
+  }
+}
 variable "benchmark_backend" {
   type    = string
   default = "openai-chat"

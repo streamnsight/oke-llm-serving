@@ -81,7 +81,10 @@ run "capacity_and_inventory_refresh_do_not_reexecute" {
 }
 run "benchmark_backend_is_manual_only" {
   command = plan
-  variables { benchmark_backend = "openai" }
+  variables {
+    benchmark_backend = "openai"
+    benchmark_mode = "full"
+  }
   assert {
     condition     = local.model_execution_revision == run.apply_onboards_deploys_then_validates.model_delivery.automatic_execution.revision
     error_message = "Changing a manual benchmark client adapter must not redeploy the model."

@@ -140,6 +140,15 @@ variable "inference_probe" {
   type    = string
   default = "none"
 }
+variable "benchmark_mode" {
+  description = "Manual benchmark matrix: quick or full. Does not redeploy the model."
+  type        = string
+  default     = "quick"
+  validation {
+    condition     = contains(["quick", "full"], var.benchmark_mode)
+    error_message = "Select quick or full benchmark mode."
+  }
+}
 variable "benchmark_backend" {
   type    = string
   default = "openai-chat"

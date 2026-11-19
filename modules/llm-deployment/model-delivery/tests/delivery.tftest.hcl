@@ -236,8 +236,8 @@ run "model_autoscaling_rejects_missing_shared_KEDA" {
 run "routine_validation_has_no_artifact_report_binding" {
   command = plan
   assert {
-    condition     = !contains(keys(yamldecode(local.operation_specs.validate).env.variables), "DELIVERY_RESULT_REPOSITORY") && yamldecode(local.operation_specs.benchmark).env.variables.DELIVERY_RESULT_REPOSITORY == "results"
-    error_message = "Routine validation uses DevOps logs; only downloadable benchmark exports require a result repository."
+    condition     = alltrue([for spec in values(local.operation_specs) : !contains(keys(yamldecode(spec).env.variables), "DELIVERY_RESULT_REPOSITORY")]) && yamldecode(local.operation_specs.benchmark).timeoutInSeconds == 21600 && yamldecode(local.operation_specs.validate).timeoutInSeconds == 3600 && local.operation_parameters.BENCHMARK_REQUESTS == "auto" && local.operation_parameters.BENCHMARK_PREFIX_TOKENS == "auto" && !anytrue([for statement in oci_identity_policy.model.statements : strcontains(statement, "manage generic-artifacts")])
+    error_message = "Validation and benchmark summaries use DevOps logs without result-repository bindings or artifact-write IAM; only manual benchmark receives the longer deadline."
   }
 }
 
