@@ -21,8 +21,10 @@ The prior direct-Hub recovery used `main` because the selected image's Hugging F
 
 - [x] Run focused publisher/delivery/execution tests and shell/runtime regressions.
 - [x] Validate an actual generated model ZIP, including Terraform 1.5.7 compatibility.
-- [ ] Commit the isolated revision change and report validation evidence to the integration agent.
+- [x] Commit the isolated revision change and report validation evidence to the integration agent.
 
 No live stack changes, model redeployments, or GPU operations are part of this fix.
 
 Validation: the new publisher assertion reproduced the stale SHA default before the fix. Publisher tests passed 11/11; model delivery/execution tests passed 49/49; runtime script/chart tests passed 42/42 with one optional upstream-router chart check skipped; the focused revision test also passed. An actual generated ZIP passed five generated-root tests with locked OCI 9.13.0 and validated with Terraform 1.5.7. These are metadata/runtime-script checks; no new live model deployment was necessary or performed.
+
+After implementation commit `9792afc`, the publisher rebuilt the configured archive from committed source. `/tmp/oke-revision-defaults-model.zip` passed all five generated-root tests with locked OCI 9.13.0 and Terraform 1.5.7 init/validate. Existing uploaded RMS sources and saved variable values were not changed.
