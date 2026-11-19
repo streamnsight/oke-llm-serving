@@ -20,16 +20,16 @@ The first P/D planning adapter uses one prefill instance and the requested minim
 
 ## Phase 2 — implementation
 
-- [ ] Add pure layout assessment with model/recipe gates, per-role counts, whole-host packing and exact-AD capacity/headroom checks.
-- [ ] Integrate layout rows and bounded quick-create presets into report data without increasing publication/archive counts.
-- [ ] Add accessible tabs and model-specific explanations; keep unavailable configurations visible with reasons.
-- [ ] Preserve correct combined behavior and make manual ZIP defaults/presets explicit.
+- [x] Add pure layout assessment with model/recipe gates, per-role counts, whole-host packing and exact-AD capacity/headroom checks.
+- [x] Integrate layout rows and bounded quick-create presets into report data without increasing publication/archive counts.
+- [x] Add accessible tabs and model-specific explanations; keep unavailable configurations visible with reasons.
+- [x] Preserve correct combined behavior and make manual ZIP defaults/presets explicit.
 
 ## Phase 3 — validation
 
-- [ ] Focused Terraform regressions for packing, quantity gates, unknown evidence, PP restrictions, compatible MoE and incompatible cache architectures.
-- [ ] Report/publisher regressions for shared ZIP identity, distinct editable presets, safe URL encoding and unchanged archive cardinality.
-- [ ] Browser-test actual tab, filter, sort and launch-link flows, including unavailable layouts.
+- [x] Focused Terraform regressions for packing, quantity gates, unknown evidence, PP restrictions, compatible MoE and incompatible cache architectures.
+- [x] Report/publisher regressions for shared ZIP identity, distinct editable presets, safe URL encoding and unchanged archive cardinality.
+- [x] Browser-test actual tab, filter, sort and launch-link flows, including unavailable layouts.
 - [ ] Run Qwen3-14B BF16 with TP=2 per role on the existing four-A10 host, using only the previous owned test's explicit undeploy to release its GPUs.
 - [ ] Require safe model-only Plan, trusted onboarding/deploy/independent validation, native transfer observations, bounded manual benchmark, owned cleanup and refreshed no-op Plan.
 - [ ] Commit and integrate only validated work; rebuild actual archives from merged committed source and verify Terraform 1.5.7/RMS compatibility. Report publication scope honestly.
@@ -40,6 +40,14 @@ Reuse one capacity scan and existing model/recipe metadata. Layout derivation is
 
 ## Validation record
 
-Pending implementation and execution. Private live model evidence belongs under `/tmp/native-pd-qwen14b-20261119`, outside source/packages. The prior small-model deployment belongs exclusively to the earlier validation stack and may be undeployed to make room; no user model or GPU host may be removed.
+The pure layout module passes 24 Terraform regressions; report data passes 22 and the root passes 21. All 29 executable report checks pass. The root regressions caught a null recommendation for empty reports; the guard and a focused report regression now cover that case. Headed Chromium checks passed desktop, 390px mobile without horizontal overflow, keyboard navigation, expanded role counts/manual presets and unsupported-layout reasons. Fixture browser evidence is under `/tmp/discovery-layout-tabs-preview`.
+
+The scoped Montreal/A10/Qwen3-14B RMS discovery Plan from committed source passed and its JSON was reviewed: 14 publication-only creates, including exactly one infrastructure archive and one model archive. There are no GPU/instance/node-pool/volume or IAM mutations. Apply succeeded. The actual published schema-5 HTML passed browser desktop/mobile, selected-AD counts, role counts, filtering/sorting, keyboard and manual-preset checks. Both tabs use the same downloadable archives and byte-identical short launch copies. Both raw ZIP origins are 208 characters; launch URLs including presets are 358/652 characters, preserving the separate ZipOrigin limit.
+
+The actual model archive passed five generated-root mock executions. The actual infrastructure archive passed four executions, including a two-host variable override and wrong-region rejection, with the existing fixed Phoenix test fixture scoped to the published Montreal region/selection/boot budget; checker/source logic stayed unchanged. Saved-Plan/fresh-worker archive creation also passed. A separate real RMS metadata-only Plan of the shared model ZIP with the P/D scalar presets succeeded: 50 model-owned creates, no hardware mutations, and materialized pipeline TP=4/PP=1/REPLICAS=1. It was not applied; the empty test stack metadata is cleaned after preserving the Plan. The authenticated Console quick-create form itself was not UI-tested: the isolated browser has no OCI session. URL parsing, documented parameter support and RMS variable/Plan behavior were checked separately.
+
+The published recipe's conservative sizing selects TP=4, so that report compares one combined four-GPU host with a P/D pair needing two hosts/eight GPUs. The separate GPU test deliberately assesses TP=2 per role with the previously validated official vLLM 0.32.0 image. A successful smaller runtime does not automatically retrain discovery's recipe memory budget or certify another image. Private discovery evidence is under `/tmp/discovery-serving-layouts-live-20261119`; logs/state/PARs are excluded from source/packages.
+
+Private live model evidence belongs under `/tmp/native-pd-qwen14b-20261119`, outside source/packages. The prior small-model deployment belonged exclusively to the earlier validation stack. Its owned undeploy succeeded. The 14B model-only Plan passed with no hardware changes, but its first Apply reached the tenancy's dynamic-group object quota before onboarding. After an actual reviewed local Destroy Plan and checks for absent workloads/released ownership/no active executions, that retired test stack's 50 model-owned resources were destroyed successfully to release its exact IAM group. Its owned repository cleanup hook deleted all 14 software artifact versions successfully. No user model, unrelated IAM group, retained GPU host or shared platform was removed. The reviewed partial-state 14B recovery Plan had five creates and 45 no-ops, with no hardware changes; its resumed Apply created the new model IAM normally and completed trusted onboarding.
 
 Primary reference: [OCI quick-create links and zipUrlVariables](https://docs.oracle.com/en-us/iaas/Content/ResourceManager/Tasks/create-quick-create-links-stacks.htm).
