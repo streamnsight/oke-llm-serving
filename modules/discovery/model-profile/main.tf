@@ -165,7 +165,7 @@ output "profile" {
       source                      = "SHA-pinned config.json"
       confidence                  = "declared_metadata"
       attention = {
-        layout      = local.qwen_hybrid ? "hybrid" : local.conventional && !anytrue([for key in ["kv_lora_rank", "qk_rope_head_dim", "linear_num_key_heads", "mamba_ssm_dtype"] : contains(keys(local.text), key)]) && try(alltrue([for type in coalesce(try(local.text.layer_types, null), []) : contains(["full_attention", "attention"], type)]), false) ? "uniform_attention" : "unverified"
+        layout      = local.qwen_hybrid ? "hybrid" : local.conventional && !anytrue([for key in ["kv_lora_rank", "qk_rope_head_dim", "linear_num_key_heads", "mamba_ssm_dtype"] : contains(keys(local.text), key)]) && try(alltrue([for type in coalesce(try(local.text.layer_types, null), []) : contains(["full_attention", "attention"], type)]), false) && try(length(local.text.layer_types) == local.layers, true) ? "uniform_attention" : "unverified"
         layers      = local.layers, heads = local.heads, kv_heads = local.kv_heads, head_dim = local.head_dim
         hidden_size = try(local.text.hidden_size, null), vocab_size = try(local.text.vocab_size, null)
         layer_types = try(local.text.layer_types, null)

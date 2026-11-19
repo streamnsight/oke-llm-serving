@@ -32,6 +32,28 @@ run "no_model_or_publication_context_creates_no_resources" {
     error_message = "Missing model evidence disables publication without requiring an infrastructure Apply output."
   }
 }
+run "unknown_PD_metadata_hides_the_serving_layout" {
+  command = plan
+  assert {
+    condition     = yamldecode(local.files["schema.yaml"]).variables.serving_mode.enum == ["aggregated"]
+    error_message = "An unassessed profile must not offer native P/D just because the template contains the switch."
+  }
+}
+run "eligible_PD_metadata_exposes_an_explicit_experimental_layout" {
+  command = plan
+  variables {
+    model_spec = merge(var.model_spec, {
+      profile = { architecture = { kind = "dense", text_only = true, causal_generation = true, attention = { layout = "uniform_attention", layer_types = ["full_attention"] } } },
+      selection = merge(var.model_spec.selection, {
+        serving_configuration = merge(var.model_spec.selection.serving_configuration, { engine = merge(var.model_spec.selection.serving_configuration.engine, { framework = "vllm" }) })
+      })
+    })
+  }
+  assert {
+    condition     = yamldecode(local.files["schema.yaml"]).variables.serving_mode.enum == ["aggregated", "disaggregated"] && yamldecode(local.files["schema.yaml"]).variables.serving_mode.default == "aggregated"
+    error_message = "Compatible metadata exposes P/D for explicit selection without changing the ordinary serving default."
+  }
+}
 run "plan_never_requires_a_previous_worker_archive" {
   command = plan
   assert {
