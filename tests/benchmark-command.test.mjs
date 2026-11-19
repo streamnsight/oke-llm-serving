@@ -13,6 +13,7 @@ test('quick/full matrices respect context, compare equal total inputs, and bound
  const quick=plan({});assert.deepEqual(quick.input_tokens,[1024,3840]);assert.deepEqual(quick.shared_prefix_tokens,[768,2880]);assert.equal(quick.requests,64);assert.equal(quick.concurrency,8);assert.equal(quick.measured_requests,256);
  const full=plan({BENCHMARK_MODE:'full',CONTEXT_LENGTH:'32768'});assert.deepEqual(full.input_tokens,[512,1024,2048,4096,8192,16384]);assert.equal(full.requests,512);assert.equal(full.max_seconds,18000);assert(full.job_seconds<21600);
  assert.deepEqual(plan({CONTEXT_LENGTH:'512'}).input_tokens,[256]);
+ assert.deepEqual(plan({CONTEXT_LENGTH:'4194304'}).input_tokens,[1024,4096],'A large serving context must not force a large workload or disable benchmarking');
  assert.deepEqual(plan({BENCHMARK_INPUT_TOKENS:'2000,1000,2000',BENCHMARK_PREFIX_TOKENS:'128'}).input_tokens,[1000,2000]);
  for(const value of [{BENCHMARK_INPUT_TOKENS:'4096'},{BENCHMARK_REQUESTS:'$(touch unwanted)'},{BENCHMARK_INPUT_TOKENS:'1,2'},{BENCHMARK_PREFIX_TOKENS:'0'},{BENCHMARK_PREFIX_TOKENS:'1024'},{BENCHMARK_MODE:'everything'},{BENCHMARK_MAX_SECONDS:'20001'},{BENCHMARK_MODE:'full',CONTEXT_LENGTH:'262144',BENCHMARK_INPUT_TOKENS:'65536',BENCHMARK_REQUESTS:'1024'}]){
   const r=spawnSync('python3',[runner,'--plan'],{env:{...env,...value},encoding:'utf8'});assert.equal(r.status,2,r.stderr);assert.match(r.stderr,/Benchmark failed:/);

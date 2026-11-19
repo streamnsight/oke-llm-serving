@@ -29,7 +29,7 @@ def plan():
     mode = os.environ.get('BENCHMARK_MODE', 'quick')
     if mode not in ('quick', 'full'):
         raise ValueError('BENCHMARK_MODE must be quick or full')
-    context = positive('CONTEXT_LENGTH', 4096)
+    context = positive('CONTEXT_LENGTH', 4096, 2147483647)
     output = positive('BENCHMARK_OUTPUT_TOKENS', 128)
     maximum = context - output - 128  # Reserve chat-template/scaffolding tokens.
     if maximum < 2:

@@ -211,6 +211,13 @@ test('successful benchmark streams summaries and never uploads result artifacts'
  }finally{f.close();}
 });
 
+test('benchmark reconnects a failed early log follower while the Job remains active',()=>{
+ const f=fixture({config:{serving:{recipe:{args:[]}},benchmark_image:image},env:{OCI_DEPLOYMENT_ID:'deployment',BENCHMARK_BACKEND:'openai',BENCHMARK_REQUESTS:'2',BENCHMARK_INPUT_TOKENS:'256',BENCHMARK_OUTPUT_TOKENS:'64'}});
+ try{
+  writeFileSync(`${f.dir}/bin/kubectl`,`#!${process.execPath}\nconst fs=require('node:fs'),a=process.argv.slice(2);function count(p){let n=fs.existsSync(p)?Number(fs.readFileSync(p)):0;fs.writeFileSync(p,String(++n));return n;}if(a.includes('get')){if(a.includes('pods'))console.log('{"items":[]}');else if(count('job-reads')===1)setTimeout(()=>console.log('{"status":{"active":1}}'),200);else console.log('{"status":{"conditions":[{"type":"Complete","status":"True"}]}}');}if(a.includes('logs')){if(count('log-reads')===1)process.exit(1);console.log('reconnected benchmark summary');}if(a.includes('apply'))process.stdin.resume();else if(a.includes('create'))console.log('{}');\n`,{mode:0o755});
+  const r=f.run('bash runtime/benchmark.sh');assert.equal(r.status,0,r.stderr);assert.match(r.stdout,/reconnecting/);assert.match(r.stdout,/reconnected benchmark summary/);assert(Number(readFileSync(`${f.dir}/log-reads`))>=2);
+ }finally{f.close();}
+});
 test('a permanent health failure cannot be hidden by a successful model identity response',()=>{
  const f=fixture({state:{healthFailure:true}});try{const r=f.run('model_validate');assert.notEqual(r.status,0);assert.match(r.stderr,/never passed \/health/);assert(!r.state.calls.some(c=>c.tool==='curl'&&c.args.at(-1).endsWith('/v1/models')));}finally{f.close();}
 });

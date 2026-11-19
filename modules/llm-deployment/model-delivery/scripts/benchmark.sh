@@ -54,6 +54,12 @@ while (( SECONDS < stop )); do
     echo 'Benchmark completed; aggregate results are retained in this deployment log. No result artifact uploaded.'
     exit 0
   fi
+  if ! kill -0 "$log_pid" 2>/dev/null; then
+    wait "$log_pid" 2>/dev/null || true
+    echo 'Benchmark log stream ended before Job completion; reconnecting (earlier lines may repeat).'
+    kubectl -n "$namespace" logs -f "job/$job" --pod-running-timeout=300s &
+    log_pid=$!
+  fi
   sleep 5
 done
 kubectl -n "$namespace" logs "job/$job" >&2 || true
