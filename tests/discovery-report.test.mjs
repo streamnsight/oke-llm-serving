@@ -9,13 +9,16 @@ const moduleRoot = new URL("../modules/discovery/discovery-report/", import.meta
 const template = readFileSync(new URL("report.html.tftpl", moduleRoot), "utf8");
 const script = readFileSync(new URL("report.js", moduleRoot), "utf8");
 class Element {
-  constructor(tag) { this.tag = tag; this.children = []; this.events = {}; this.value = ""; this._text = ""; this.open = false; this.hidden = false; }
+  constructor(tag) { this.tag = tag; this.children = []; this.events = {}; this.value = ""; this._text = ""; this.open = false; this.hidden = false; this.attributes = {}; this.focused = false; }
   set textContent(value) { this._text = String(value); this.children = []; }
   get textContent() { return this._text + this.children.map(child => child.textContent).join(" "); }
   set innerHTML(_) { throw new Error("Untrusted report values must never become HTML"); }
   appendChild(child) { this.children.push(child); return child; }
   replaceChildren(...children) { this.children = children; }
   addEventListener(event, callback) { this.events[event] = callback; }
+  setAttribute(name, value) { this.attributes[name] = String(value); }
+  getAttribute(name) { return this.attributes[name]; }
+  focus() { this.focused = true; }
 }
 function quota(scope = "REGION", current = 32, remaining = 16) {
   return {name: "gpu-count", scope, availability_domain: scope === "AD" ? "AD-1" : null, current_limit: current, remaining_headroom: remaining, unit: "GPUs"};
@@ -305,4 +308,90 @@ test("option quota and physical shortages are marked individually against alloca
   row.capacity = {...row.capacity, ad_available_gpus: 4, limits: [quota("REGION", 4, 8), {...quota("GLOBAL", 0, 0), unit: "units (unverified)"}]};
   const {created} = execute({options: {row}, option_count: 1});
   assert.deepEqual(created.filter(node => node.className === "insufficient").map(node => node.textContent), ["4", "4"]);
+});
+
+function servingLayouts() {
+  const combined = option("ca-montreal-1"), pd = option("ca-montreal-1");
+  combined.availability_domain = pd.availability_domain = "jVha:CA-MONTREAL-1-AD-1";
+  combined.allocation = {...combined.allocation, required_gpus_per_replica: 2, tensor_parallel_size: 2, gpus_per_host: 4, allocated_gpus: 4};
+  pd.allocation = {...combined.allocation, replicas: 1};
+  pd.serving_mode = "disaggregated"; pd.prefill_replicas = 1; pd.decode_replicas = 1;
+  pd.launch_variables = {infrastructure: {node_count: 1}, model: {serving_mode: "disaggregated", prefill_replicas: 1, replicas: 1}};
+  pd.links = {...combined.links, launch_url: combined.links.launch_url + "&zipUrlVariables=" + encodeURIComponent(JSON.stringify(pd.launch_variables.infrastructure)), model_deployment: {...combined.links.model_deployment, launch_url: combined.links.model_deployment.launch_url + "&zipUrlVariables=" + encodeURIComponent(JSON.stringify(pd.launch_variables.model))}};
+  return {
+    aggregated: {title: "Combined prefill + decode", status: "available", recommended_option_id: "base", options: {base: combined}},
+    disaggregated: {title: "Separate prefill / decode (P/D)", status: "eligible_for_testing", recommended_option_id: "base", options: {base: pd}}
+  };
+}
+test("serving tabs show actual role allocation and shared archives with distinct launch presets", () => {
+  const layouts = servingLayouts(), {nodes, created} = execute({serving_layouts: layouts});
+  assert.match(nodes.options.textContent, /2 replicas · 4 GPUs allocated/);
+  nodes["layout-tab-disaggregated"].events.click();
+  assert.equal(nodes["layout-tab-disaggregated"].getAttribute("aria-selected"), "true");
+  assert.equal(nodes["layout-tab-aggregated"].getAttribute("aria-selected"), "false");
+  assert.equal(nodes["layout-tab-disaggregated"].tabIndex, 0);
+  assert.equal(nodes["layout-tab-aggregated"].tabIndex, -1);
+  assert.equal(nodes["layout-panel"].getAttribute("aria-labelledby"), "layout-tab-disaggregated");
+  assert.match(nodes["option-count"].textContent, /1 of 1 P\/D options/);
+  assert.match(nodes.options.textContent, /2 GPUs per role instance/);
+  assert.match(nodes.options.textContent, /1 prefill \+ 1 decode · 4 GPUs allocated/);
+  assert.match(nodes.options.textContent, /Role pods request 4 GPUs/);
+  assert.match(nodes.options.textContent, /Prefill \/ decode instances 1 \/ 1/);
+  assert.match(nodes.options.textContent, /Settings for a manual ZIP upload/);
+  assert.match(nodes.options.textContent, /packaged defaults describe combined serving/);
+  assert.match(nodes.options.textContent, /role-specific native NIXL transfer/);
+  assert.doesNotMatch(nodes.options.textContent, /Planned engine command|Replicas \/ replicas per host|Growth at scan time/);
+  const cards=nodes.options.children.flatMap(group=>group.children).flatMap(group=>group.children).filter(n=>n.className==="option");
+  assert.equal(cards.length,1);
+  const pdLinks=created.filter(n=>n.tag==="a"&&n.href.includes("zipUrlVariables")).map(n=>new URL(n.href));
+  assert.equal(pdLinks.length,2);
+  assert.equal(pdLinks[0].searchParams.get("zipUrl"),new URL(layouts.aggregated.options.base.links.launch_url).searchParams.get("zipUrl"));
+  assert.deepEqual(JSON.parse(pdLinks[1].searchParams.get("zipUrlVariables")),layouts.disaggregated.options.base.launch_variables.model);
+});
+test("serving tabs retain filters, sorting, region groups and tab-specific recommendations", () => {
+  const layouts=servingLayouts();
+  layouts.disaggregated.recommended_option_id="other";
+  layouts.disaggregated.options.other={...layouts.disaggregated.options.base,region:"eu-frankfurt-1",availability_domain:"AD-2",allocation:{...layouts.disaggregated.options.base.allocation,required_hosts:2,allocated_gpus:8}};
+  const {nodes}=execute({serving_layouts:layouts});
+  nodes["layout-tab-disaggregated"].events.click();
+  assert.equal(nodes.options.children.length,2);
+  assert.match(nodes.options.children[1].textContent,/Recommended starting point/);
+  assert.doesNotMatch(nodes.options.children[0].textContent,/Recommended starting point/);
+  nodes.sort.value="allocated";nodes.sort.events.change();
+  assert.match(nodes.options.children[0].textContent,/ca-montreal-1/);
+  nodes.search.value="AD-2";nodes.search.events.input();
+  assert.equal(nodes.options.children.length,1);assert.match(nodes.options.textContent,/eu-frankfurt-1/);
+  nodes["layout-tab-aggregated"].events.click();
+  assert.equal(nodes.options.children.length,0);assert.equal(nodes["option-empty"].hidden,false);
+  assert.equal(nodes["option-empty"].textContent,"No matching deployment options.");
+});
+test("tab keyboard navigation moves focus and keeps the selected panel labelled", () => {
+  const {nodes}=execute({serving_layouts:servingLayouts()});let prevented=0;
+  const key=(id,key)=>nodes["layout-tab-"+id].events.keydown({key,preventDefault(){prevented++;}});
+  key("aggregated","ArrowRight");assert.equal(nodes["layout-tab-disaggregated"].focused,true);
+  assert.equal(nodes["layout-panel"].getAttribute("aria-labelledby"),"layout-tab-disaggregated");
+  key("disaggregated","Home");assert.equal(nodes["layout-tab-aggregated"].focused,true);
+  key("aggregated","ArrowLeft");assert.equal(nodes["layout-panel"].getAttribute("aria-labelledby"),"layout-tab-disaggregated");
+  key("disaggregated","End");assert.equal(prevented,4);
+  key("disaggregated","Tab");assert.equal(prevented,4);
+});
+test("unsupported or capacity-unconfirmed P/D remains visible with reasons and no launch actions", () => {
+  for (const reason of ["Mixed sliding/full attention is outside this adapter.","Only one host is confirmed; P/D needs two hosts.","Quantity-specific entitlement is unknown."]) {
+    const layouts=servingLayouts();layouts.disaggregated={...layouts.disaggregated,options:{},reasons:[reason],status:"not_available"};
+    const {nodes}=execute({serving_layouts:layouts});nodes["layout-tab-disaggregated"].events.click();
+    assert.match(nodes["layout-status"].textContent,/No confirmed P\/D option/);
+    assert(nodes["layout-status"].textContent.includes(reason));
+    assert.equal(nodes.options.children.length,0);
+    assert.match(nodes["option-count"].textContent,/0 of 0 P\/D/);
+  }
+});
+test("legacy reports expose an unassessed P/D tab without inventing eligibility", () => {
+  const {nodes}=execute();nodes["layout-tab-disaggregated"].events.click();
+  assert.match(nodes["layout-status"].textContent,/not assessed in this report/);
+  assert.equal(nodes.options.children.length,0);
+  nodes["layout-tab-aggregated"].events.click();assert.equal(nodes.options.children.length,2);
+  assert.match(template,/MoE models can support P\/D/);
+  assert.match(template,/twice the GPUs of one combined instance/);
+  assert.match(template,/does not always double an existing replicated fleet/);
+  assert.match(template,/KV-aware routing/);
 });
