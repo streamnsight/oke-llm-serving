@@ -62,6 +62,7 @@ locals {
     modelPath      = var.storage.mode == "direct_hf" ? "" : var.storage.model_path,
     rdmaResource   = try(var.platform.transport.requires_rdma, false) ? try(var.platform.transport.rdma_resource_name, "") : "",
     router         = { enabled = local.router_enabled },
+    disaggregation = { enabled = local.pd_enabled, prefillReplicas = var.prefill_replicas },
     lmcache        = merge(local.lmcache, { enabled = local.lmcache_enabled, controller = local.routing_mode == "kvaware" }),
     monitoring     = { enabled = try(var.platform.monitoring_enabled, false) || var.autoscaling.enabled, platform = var.platform.platform_name },
     autoscaling    = merge(var.autoscaling, { min_replicas = "$${MIN_REPLICAS}", max_replicas = "$${MAX_REPLICAS}", target_inflight = "$${TARGET_INFLIGHT}", prometheus_url = "$${PROMETHEUS_URL}" }),
@@ -72,7 +73,7 @@ locals {
         routingLogic                   = local.routing_mode, replicaCount = 1, serviceType = "ClusterIP",
         startupProbe                   = { httpGet = { path = "/health", port = "router-port" }, initialDelaySeconds = 5, periodSeconds = 5, timeoutSeconds = 2, failureThreshold = 36 },
         repository                     = "docker.io/lmcache/lmstack-router", tag = "v0.1.14@sha256:7107e6a17740478749ef28c812df48f405ccfab8d92f40372a50ef678b6c6b63",
-        extraArgs                      = ["--k8s-label-selector", "oke-llm/model=${local.identity},oke-llm/endpoint=true"],
+        extraArgs                      = concat(["--k8s-label-selector", "oke-llm/model=${local.identity},oke-llm/endpoint=true"], local.pd_enabled ? ["--prefill-model-labels", "prefill", "--decode-model-labels", "decode"] : []),
         lmcacheControllerPort          = local.routing_mode == "kvaware" ? 9000 : null,
         lmcacheControllerReplyPort     = local.routing_mode == "kvaware" ? 9001 : null,
         lmcacheControllerHeartbeatPort = local.routing_mode == "kvaware" ? 9002 : null,
@@ -93,7 +94,7 @@ locals {
   runtime_hosts          = max(1, tonumber(local.defaults.HOSTS_PER_REPLICA))
   runtime_replicas       = var.autoscaling.enabled ? var.autoscaling.max_replicas : tonumber(local.defaults.REPLICAS)
   runtime_slots_per_host = max(1, floor(var.platform.gpu_count_per_host / max(1, tonumber(local.defaults.GPUS_PER_POD))))
-  runtime_node_count     = ceil(max(local.runtime_hosts, ceil(local.runtime_replicas * local.runtime_hosts / local.runtime_slots_per_host)))
+  runtime_node_count     = ceil(max(local.runtime_hosts, ceil((local.runtime_replicas + local.pd.prefill_replicas) * local.runtime_hosts / local.runtime_slots_per_host)))
   runtime_platform = {
     binding_mode            = try(var.platform.binding_mode, "bound"), platform_name = var.platform.platform_name,
     region                  = var.platform.region, cluster_id = var.platform.cluster_id, project_id = var.platform.project_id,
@@ -113,7 +114,7 @@ locals {
     platform = local.runtime_platform,
     model = { selection = { platform_plan = { topology = {
       backend  = try(local.selection.platform_plan.topology.backend, local.serving.engine.multi_node_backend, "mp"),
-      strategy = try(local.selection.platform_plan.topology.strategy, local.runtime_hosts > 1 ? "multi_node_tp_pp" : "single_node_tp")
+      strategy = local.pd_enabled ? "native_pd" : try(local.selection.platform_plan.topology.strategy, local.runtime_hosts > 1 ? "multi_node_tp_pp" : "single_node_tp")
     } } } },
     serving            = { recipe = { args = try(local.serving.recipe.args, []), env = merge(try(local.serving.recipe.env, {}), { VLLM_USE_RUST_FRONTEND = local.defaults.VLLM_USE_RUST_FRONTEND }), companions = try(local.serving.recipe.companions, []) } },
     namespace          = local.namespace, release = local.name,
@@ -122,17 +123,18 @@ locals {
     hf_token_secret    = var.hf_token_secret,
     lmcache            = merge(local.lmcache, { enabled = local.lmcache_enabled }), routing_mode = local.routing_mode,
     cache_capabilities = module.cache_capabilities.assessment,
+    disaggregation     = local.pd,
     router_enabled     = local.router_enabled, autoscaling = var.autoscaling, inference_probe = var.inference_probe,
     timeout_seconds    = var.timeout_seconds,
     benchmark_image    = "docker.io/vllm/vllm-openai-cpu@sha256:827ef38187f9b52f2bb838695ef815ec5b65f4bf3e4c061b002b2b0a19cb0701"
   }
-  runtime_files = merge({ for asset in ["preflight.sh", "validate.sh", "retired.sh", "common.sh"] : asset => file("${path.module}/scripts/${asset}") }, { "config.json" = jsonencode(local.config) })
+  runtime_files = merge({ for asset in ["preflight.sh", "validate.sh", "retired.sh", "common.sh"] : asset => file("${path.module}/scripts/${asset}") }, local.pd_enabled ? { "pd_observe.py" = file("${path.module}/scripts/pd_observe.py") } : {}, { "config.json" = jsonencode(local.config) })
 }
 resource "terraform_data" "contract" {
   # Canonical text avoids dynamic-object type changes from discovery-only
   # attributes marking the entire delivery module as pending an update.
   input      = sha256(jsonencode(local.config))
-  depends_on = [terraform_data.cache_contract]
+  depends_on = [terraform_data.cache_contract, terraform_data.pd_contract]
   lifecycle {
     precondition {
       condition     = startswith(local.namespace, "${var.platform.platform_name}-model-") && length(local.namespace) <= 63
@@ -172,7 +174,7 @@ module "delivery" {
       chart                  = { name = "oke-llm-model", version = local.chart_version, files = local.chart_files },
       values_yaml            = yamlencode(local.values), parameters = local.defaults,
       non_release_parameters = ["INFERENCE_PROBE"],
-      deployment_names       = concat(tonumber(local.defaults.HOSTS_PER_REPLICA) == 1 ? [local.name] : [], local.router_enabled ? ["${local.name}-deployment-router"] : []),
+      deployment_names       = concat(local.pd_enabled ? ["${local.name}-prefill", "${local.name}-decode"] : tonumber(local.defaults.HOSTS_PER_REPLICA) == 1 ? [local.name] : [], local.router_enabled ? ["${local.name}-deployment-router"] : []),
       timeout_seconds        = var.timeout_seconds
     }
   }

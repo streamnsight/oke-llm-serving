@@ -153,6 +153,8 @@ output "profile" {
     }
     architecture = {
       model_type                  = local.model_type
+      text_only                   = !anytrue([for key in ["text_config", "vision_config", "audio_config", "encoder_config", "decoder_config"] : contains(keys(local.config), key)]) && !try(local.config.is_encoder_decoder, false)
+      causal_generation           = try(length(local.config.architectures) > 0 && alltrue([for architecture in local.config.architectures : endswith(architecture, "ForCausalLM")]), false)
       kind                        = local.qwen_hybrid ? (local.moe ? "hybrid_moe" : "hybrid_dense") : local.moe ? "moe" : local.conventional ? "dense" : "unknown"
       experts                     = local.experts
       experts_per_token           = try(local.text.num_experts_per_tok, null)
@@ -163,6 +165,7 @@ output "profile" {
       source                      = "SHA-pinned config.json"
       confidence                  = "declared_metadata"
       attention = {
+        layout      = local.qwen_hybrid ? "hybrid" : local.conventional && !anytrue([for key in ["kv_lora_rank", "qk_rope_head_dim", "linear_num_key_heads", "mamba_ssm_dtype"] : contains(keys(local.text), key)]) && try(alltrue([for type in coalesce(try(local.text.layer_types, null), []) : contains(["full_attention", "attention"], type)]), false) ? "uniform_attention" : "unverified"
         layers      = local.layers, heads = local.heads, kv_heads = local.kv_heads, head_dim = local.head_dim
         hidden_size = try(local.text.hidden_size, null), vocab_size = try(local.text.vocab_size, null)
         layer_types = try(local.text.layer_types, null)

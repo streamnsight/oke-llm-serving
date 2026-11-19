@@ -74,6 +74,24 @@ variable "router_enabled" {
   type    = bool
   default = false
 }
+variable "serving_mode" {
+  type        = string
+  default     = "aggregated"
+  description = "Aggregated serving, or experimental native NIXL prefill/decode with single-host TP per role."
+  validation {
+    condition     = contains(["aggregated", "disaggregated"], var.serving_mode)
+    error_message = "serving_mode must be aggregated or disaggregated."
+  }
+}
+variable "prefill_replicas" {
+  type        = number
+  default     = 1
+  description = "Prefill instances in disaggregated mode; replicas remains the decode instance count. Both pools consume model weights and GPUs."
+  validation {
+    condition     = var.prefill_replicas >= 1 && floor(var.prefill_replicas) == var.prefill_replicas
+    error_message = "prefill_replicas must be a positive integer."
+  }
+}
 variable "autoscaling" {
   type = object({
     enabled         = optional(bool, false)

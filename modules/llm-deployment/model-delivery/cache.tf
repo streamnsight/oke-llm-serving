@@ -33,7 +33,7 @@ locals {
   ) : local.recipe_kv.kv_connector == "LMCacheConnectorV1" && !can(local.recipe_kv.kv_connector_module_path)), false)
   lmcache_enabled   = local.lmcache.mode != "disabled"
   routing_requested = var.routing_mode == "auto" ? try(local.serving.deployment_profile.routing.mode, "auto") : var.routing_mode
-  routing_mode      = local.routing_requested == "auto" ? (var.router_enabled || tonumber(local.defaults.REPLICAS) > 1 || (var.autoscaling.enabled && var.autoscaling.max_replicas > 1) ? "prefixaware" : "direct") : local.routing_requested
+  routing_mode      = local.pd_enabled ? "disaggregated_prefill_orchestrated" : local.routing_requested == "auto" ? (var.router_enabled || tonumber(local.defaults.REPLICAS) > 1 || (var.autoscaling.enabled && var.autoscaling.max_replicas > 1) ? "prefixaware" : "direct") : local.routing_requested
   cache_memory_gib  = local.lmcache_enabled ? ceil(local.lmcache.cpu_memory_gb * 1e9 / pow(1024, 3)) * (local.lmcache.mode == "inprocess" ? tonumber(local.defaults.TP) : 1) + 4 : 0
   cache_args = !local.lmcache_enabled ? [] : concat(contains(try(local.serving.recipe.args, []), "--enable-prefix-caching") ? [] : ["--enable-prefix-caching"], length(local.recipe_kv_flags) > 0 ? [] : [
     "--kv-transfer-config", local.lmcache.mode == "mp" ? jsonencode({
@@ -86,7 +86,7 @@ resource "terraform_data" "cache_contract" {
       error_message = "The pinned KV-aware controller requires the same PYTHONHASHSEED=123 in serving workers and router."
     }
     precondition {
-      condition     = contains(["disabled", "mp", "inprocess"], local.lmcache.mode) && contains(["direct", "prefixaware", "kvaware"], local.routing_mode)
+      condition     = contains(["disabled", "mp", "inprocess"], local.lmcache.mode) && contains(["direct", "prefixaware", "kvaware", "disaggregated_prefill_orchestrated"], local.routing_mode)
       error_message = "Recipe deployment profile contains an unsupported LMCache or routing mode."
     }
     precondition {

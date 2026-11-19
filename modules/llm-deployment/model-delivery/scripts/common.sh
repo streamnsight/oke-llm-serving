@@ -11,6 +11,7 @@ owner=$(jq -er .ownership_token "$model_config")
 timeout=$(jq -er .timeout_seconds "$model_config")
 owner_name="oke-llm-owner-$(printf '%s' "$namespace/$release" | sha256sum | cut -c1-24)"
 model_fail() { echo "$*" >&2; return 2; }
+model_pd_enabled() { jq -e '.disaggregation.enabled // false' "$model_config" >/dev/null; }
 model_http_service() {
   if (( HOSTS_PER_REPLICA > 1 )); then printf '%s-http' "$release"; else printf '%s' "$release"; fi
 }
@@ -40,6 +41,13 @@ model_inputs() {
     jq -e .router_enabled "$model_config" >/dev/null || model_fail 'Multiple replicas require a router; select prefixaware or compatible kvaware routing before increasing REPLICAS' || return
   fi
   [[ $INFERENCE_PROBE == none || $INFERENCE_PROBE == completions || $INFERENCE_PROBE == chat ]] || model_fail 'Unsupported inference probe; select none or an explicit text probe' || return
+  if model_pd_enabled; then
+    jq -e '.cache_capabilities.disaggregation.selectable==true and (.lmcache.enabled!=true) and (.autoscaling.enabled!=true) and .routing_mode=="disaggregated_prefill_orchestrated" and (.disaggregation.prefill_replicas|type=="number" and .>=1 and floor==.)' "$model_config" >/dev/null || model_fail 'Native P/D requires eligible metadata, fixed role pools, native orchestration and LMCache disabled' || return
+    (( PP == 1 && HOSTS_PER_REPLICA == 1 && CONTEXT_LENGTH >= 256 )) && [[ $VLLM_USE_RUST_FRONTEND == 0 ]] || model_fail 'Native P/D requires single-host TP per role, PP=1, Python frontend and context >=256' || return
+    for key in MODEL_ID SERVING_IMAGE TP PP HOSTS_PER_REPLICA GPUS_PER_POD; do
+      [[ ${!key} == "$(jq -r --arg key "$key" '.defaults[$key]' "$model_config")" ]] || model_fail "Changing $key with native P/D requires a stack Apply to reassess compatibility" || return
+    done
+  fi
   if [[ $(jq -r '.routing_mode // "auto"' "$model_config") == kvaware ]]; then
     # Refuse old/manual configurations too; the pinned router cannot provide
     # general KV-aware routing even when a recipe claims the policy is enabled.
@@ -141,6 +149,7 @@ model_geometry() {
     [[ $PROMETHEUS_URL =~ ^https?://[A-Za-z0-9_.:/-]+$ ]] || model_fail 'Use a non-secret reachable Prometheus URL' || return
     max_replicas=$MAX_REPLICAS
   fi
+  if model_pd_enabled; then max_replicas=$(( max_replicas + $(jq -er .disaggregation.prefill_replicas "$model_config") )); fi
   (( GPUS_PER_POD <= gpus && max_replicas * HOSTS_PER_REPLICA <= nodes * (gpus / GPUS_PER_POD) && HOSTS_PER_REPLICA <= nodes )) || model_fail 'Requested replicas/hosts/GPUs exceed total model slots in the selected pool; choose a sufficient retained allocation' || return
   selector=$(jq -er .platform.gpu_selector "$model_config")
   [[ $selector == "oke-llm/allocation=$(jq -er .platform.platform_name "$model_config")" ]] || model_fail 'Unexpected allocation selector; model pipelines cannot retarget arbitrary GPU nodes' || return
@@ -238,7 +247,7 @@ model_storage() {
     if (( nodes > 1 )); then
       jq -e 'any(.spec.accessModes[]; .=="ReadOnlyMany" or .=="ReadWriteMany")' model-pvc.json >/dev/null || model_fail 'A multi-host allocation requires a ROX/RWX serving PVC: Kubernetes may place model pods on different retained GPU hosts; RWO staging volumes are insufficient' || return
     fi
-    if (( REPLICAS * HOSTS_PER_REPLICA > 1 )); then
+    if (( REPLICAS * HOSTS_PER_REPLICA > 1 )) || model_pd_enabled; then
       jq -e 'all(.spec.accessModes[]; .!="ReadWriteOncePod")' model-pvc.json >/dev/null || model_fail 'ReadWriteOncePod cannot serve multiple model pods' || return
     fi
     # A read-only mounted snapshot must contain its materialization marker.
@@ -254,7 +263,7 @@ model_ready_owner() {
   helm get metadata "$release" -n "$namespace" -o json > model-helm-metadata.json
   jq -e --slurpfile owner model-owner.json --slurpfile status model-helm-status.json '.status=="deployed" and .revision==$status[0].version and ($status[0].version|tostring)==$owner[0].data.helm_revision and (.version|ltrimstr("v"))==($owner[0].data.chart_version|ltrimstr("v")) and $status[0].info.status=="deployed"' model-helm-metadata.json >/dev/null || model_fail 'Helm revision/chart changed after validation; current generation must be validated again' || return
 }
-model_validate() {
+model_validate() (
   local endpoint port probe expected
   if jq -e .autoscaling.enabled "$model_config" >/dev/null; then
     kubectl -n "$namespace" wait --for=condition=Ready "scaledobject/$release" --timeout="${timeout}s" || { model_fail 'KEDA ScaledObject is not Ready; validate the configured Prometheus endpoint/query and retained-allocation scaling bounds'; return 2; }
@@ -271,6 +280,7 @@ model_validate() {
   kubectl -n "$namespace" get pods -l "oke-llm/model=$identity" -o json > model-pods.json
   expected=$REPLICAS
   if jq -e .autoscaling.enabled "$model_config" >/dev/null; then expected=$MIN_REPLICAS; fi
+  if model_pd_enabled; then expected=$(( expected + $(jq -er .disaggregation.prefill_replicas "$model_config") )); fi
   jq -e --arg image "$SERVING_IMAGE" --argjson expected "$((expected * HOSTS_PER_REPLICA))" '[.items[]|select(.metadata.deletionTimestamp==null)]|length >= $expected and all(.[]; any(.spec.containers[]; .name=="vllm" and .image==$image) and any(.status.conditions[]; .type=="Ready" and .status=="True"))' model-pods.json >/dev/null || model_fail 'Serving pod count, image identity or readiness does not match this model configuration' || return
   endpoint=$(model_http_service); port=8000
   if jq -e .router_enabled "$model_config" >/dev/null; then
@@ -303,6 +313,19 @@ model_validate() {
   fi
   jq -n --arg model "$MODEL_ID" --arg revision "$MODEL_REVISION" --arg image "$SERVING_IMAGE" --arg probe "$probe" \
     '{status:"ready",model:$model,model_revision:$revision,model_revision_kind:(if $revision=="main" then "mutable_ref" else "immutable_commit" end),image:$image,checks:["pod_readiness","image_identity","health","model_identity"],inference_probe:($probe|if .=="none" then "not_run; choose a task-specific probe" else . end),responses_conversation_persistence:false}' > model-validation.json
+  if model_pd_enabled; then
+    local prefill
+    prefill=$(jq -er .disaggregation.prefill_replicas "$model_config")
+    jq -e --argjson prefill "$prefill" --argjson decode "$REPLICAS" '[.items[]|select(.metadata.deletionTimestamp==null)] |
+      ([.[]|select(.metadata.labels["oke-llm/role"]=="prefill")]|length)==$prefill and
+      ([.[]|select(.metadata.labels["oke-llm/role"]=="decode")]|length)==$decode and
+      all(.[];.spec.containers[]|select(.name=="vllm")|.command==["bash","/pd/launch.sh"])' model-pods.json >/dev/null || model_fail 'Native P/D role counts or connector launchers do not match the configured role pools' || return
+    local pd_probe_args=()
+    if [[ $INFERENCE_PROBE == chat ]] || jq -e '.disaggregation.chat_probe // false' "$model_config" >/dev/null; then pd_probe_args+=(--chat); fi
+    python3 runtime/pd_observe.py --pods model-pods.json --namespace "$namespace" --base-url http://127.0.0.1:27180 --model "$MODEL_ID" --context-length "$CONTEXT_LENGTH" --timeout "$timeout" --output model-pd-validation.json "${pd_probe_args[@]}" || return
+    jq --slurpfile pd model-pd-validation.json '.+{disaggregation:$pd[0]}' model-validation.json > model-validation-pd.json
+    mv model-validation-pd.json model-validation.json
+  fi
   if jq -e '.lmcache.enabled // false' "$model_config" >/dev/null; then
     jq -e '[.items[] | select(.metadata.deletionTimestamp==null) | .spec.containers[] | select(.name=="vllm") | .command == ["bash","/lmcache/launch.sh"]] | length>0 and all(.[]; . == true)' model-pods.json >/dev/null || model_fail 'LMCache launcher is absent from a serving Pod' || return
     jq --slurpfile config "$model_config" '. + {lmcache:($config[0].lmcache + {store_retrieve_validation:"manual_cache_benchmark_required"}),routing:$config[0].routing_mode}' model-validation.json > model-validation-cache.json
@@ -311,4 +334,4 @@ model_validate() {
   kill "$model_forward_pid" 2>/dev/null || true
   wait "$model_forward_pid" 2>/dev/null || true
   trap - EXIT
-}
+)

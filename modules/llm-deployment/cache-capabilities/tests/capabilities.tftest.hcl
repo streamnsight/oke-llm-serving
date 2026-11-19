@@ -66,3 +66,61 @@ run "other_engine_is_not_a_vllm_adapter" {
     error_message = "Upstream support in another engine is not an implemented adapter in our stack."
   }
 }
+run "native_PD_is_metadata_eligible_not_runtime_validated" {
+  command = plan
+  variables { profile = { architecture = { kind = "dense", text_only = true, causal_generation = true, attention = { layout = "uniform_attention", layer_types = ["full_attention"] } } } }
+  assert {
+    condition     = output.assessment.disaggregation.selectable && output.assessment.disaggregation.status == "eligible_for_testing" && output.assessment.serving_modes == ["aggregated", "disaggregated"]
+    error_message = "Text-only uniform attention can test native P/D without claiming exact-image or network validation."
+  }
+}
+run "native_PD_hides_hybrid_and_composite_layouts" {
+  command = plan
+  variables { profile = { architecture = { kind = "hybrid_dense", text_only = false, attention = { layer_types = ["full_attention", "linear_attention"] } } } }
+  assert {
+    condition     = !output.assessment.disaggregation.selectable && output.assessment.serving_modes == ["aggregated"] && strcontains(join(" ", output.assessment.disaggregation.reasons), "uniform attention")
+    error_message = "The first adapter must not silently reinterpret hybrid/composite state as conventional KV."
+  }
+}
+run "native_PD_does_not_overwrite_recipe_connectors" {
+  command = plan
+  variables {
+    profile = { architecture = { kind = "dense", text_only = true, causal_generation = true, attention = { layout = "uniform_attention", layer_types = ["full_attention"] } } }
+    serving = { engine = { framework = "vllm" }, recipe = { args = ["--kv-transfer-config.kv_connector", "LMCacheMPConnector"] } }
+  }
+  assert {
+    condition     = !output.assessment.disaggregation.selectable && strcontains(join(" ", output.assessment.disaggregation.reasons), "transfer, speculative or expert-parallel")
+    error_message = "Dotted raw transfer flags are also a connector conflict."
+  }
+}
+run "native_PD_rejects_unassessed_quantized_KV" {
+  command = plan
+  variables {
+    profile = { architecture = { kind = "dense", text_only = true, causal_generation = true, attention = { layout = "uniform_attention", layer_types = ["full_attention"] } } }
+    serving = { engine = { framework = "vllm" }, recipe = { args = ["--kv-cache-dtype=fp8"] } }
+  }
+  assert {
+    condition     = !output.assessment.disaggregation.selectable && strcontains(join(" ", output.assessment.disaggregation.reasons), "scale compatibility")
+    error_message = "A generic FP8 dtype flag does not prove transferred scales are compatible."
+  }
+}
+run "native_PD_rejects_unimplemented_PP" {
+  command = plan
+  variables {
+    profile                = { architecture = { kind = "dense", text_only = true, causal_generation = true, attention = { layout = "uniform_attention", layer_types = ["full_attention"] } } }
+    hosts_per_replica      = 2
+    pipeline_parallel_size = 2
+  }
+  assert {
+    condition     = !output.assessment.disaggregation.selectable && strcontains(join(" ", output.assessment.disaggregation.reasons), "PP=1")
+    error_message = "Native MP PP support in aggregated serving is not support for P/D PP."
+  }
+}
+run "native_PD_requires_a_causal_generation_task" {
+  command = plan
+  variables { profile = { architecture = { kind = "dense", text_only = true, causal_generation = false, attention = { layer_types = ["full_attention"] } } } }
+  assert {
+    condition     = !output.assessment.disaggregation.selectable && strcontains(join(" ", output.assessment.disaggregation.reasons), "classifiers and unknown tasks")
+    error_message = "A text-only sequence classifier is not an autoregressive P/D model."
+  }
+}

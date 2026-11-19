@@ -1,5 +1,6 @@
 # Copyright (c) 2020-2022 Oracle and/or its affiliates. All rights reserved.
 # Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
+{{- if not (and .Values.disaggregation .Values.disaggregation.enabled) }}
 {{- if eq (int .Values.hosts) 1 }}
 apiVersion: apps/v1
 kind: Deployment
@@ -62,3 +63,4 @@ spec:
     {{- if and .Values.lmcache .Values.lmcache.enabled (eq .Values.lmcache.mode "mp") }}
     - {name: cache-metrics, port: 9090, targetPort: cache-metrics}
     {{- end }}
+{{- end }}

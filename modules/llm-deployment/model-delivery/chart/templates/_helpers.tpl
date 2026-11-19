@@ -6,6 +6,10 @@
 app.kubernetes.io/name: oke-llm-model
 app.kubernetes.io/instance: {{ .Release.Name }}
 oke-llm/model: {{ .Values.identity | quote }}
+{{- if .Values.role }}
+oke-llm/role: {{ .Values.role | quote }}
+model: {{ .Values.role | quote }}
+{{- end }}
 {{- end -}}
 {{- define "model.podSpec" -}}
 {{- $root := .root -}}
@@ -33,7 +37,9 @@ containers:
   - name: vllm
     image: {{ required "A digest-pinned serving image is required" $root.Values.image | quote }}
     imagePullPolicy: IfNotPresent
-    {{- if and $root.Values.lmcache $root.Values.lmcache.enabled }}
+    {{- if $root.Values.role }}
+    command: ["bash", "/pd/launch.sh"]
+    {{- else if and $root.Values.lmcache $root.Values.lmcache.enabled }}
     command: ["bash", "/lmcache/launch.sh"]
     {{- else }}
     command: ["vllm", "serve"]
@@ -59,6 +65,10 @@ containers:
       - {{ $root.Values.contextLength | toString | quote }}
       - --max-num-seqs
       - {{ $root.Values.concurrency | toString | quote }}
+      {{- if $root.Values.role }}
+      - --kv-transfer-config
+      - {{ dict "kv_connector" "NixlConnector" "kv_role" (ternary "kv_producer" "kv_consumer" (eq $root.Values.role "prefill")) "kv_load_failure_policy" "recompute" | toJson | quote }}
+      {{- end }}
       {{- if gt (int $root.Values.hosts) 1 }}
       - --distributed-executor-backend
       - mp
@@ -76,6 +86,13 @@ containers:
       {{- range $key, $value := $root.Values.recipeEnv }}
       - name: {{ $key }}
         value: {{ $value | quote }}
+      {{- end }}
+      {{- if $root.Values.role }}
+      - name: VLLM_NIXL_SIDE_CHANNEL_HOST
+        valueFrom: {fieldRef: {fieldPath: status.podIP}}
+      - {name: VLLM_NIXL_SIDE_CHANNEL_PORT, value: "5600"}
+      # Portable transport for the initial adapter; does not claim RDMA.
+      - {name: UCX_TLS, value: "tcp,cuda_copy"}
       {{- end }}
       {{- if and $root.Values.lmcache $root.Values.lmcache.enabled }}
       - {name: LMCACHE_ADAPTER, value: {{ $root.Values.lmcache.mode | quote }}}
@@ -130,6 +147,9 @@ containers:
         {{ $root.Values.rdmaResource }}: 1
         {{- end }}
     volumeMounts:
+      {{- if $root.Values.role }}
+      - {name: pd, mountPath: /pd, readOnly: true}
+      {{- end }}
       {{- if and $root.Values.lmcache $root.Values.lmcache.enabled }}
       - {name: lmcache, mountPath: /lmcache, readOnly: true}
       {{- end }}
@@ -139,6 +159,10 @@ containers:
       - {name: model, mountPath: /models, readOnly: true}
       {{- end }}
 volumes:
+  {{- if $root.Values.role }}
+  - name: pd
+    configMap: {name: {{ $root.Release.Name }}-pd}
+  {{- end }}
   {{- if and $root.Values.lmcache $root.Values.lmcache.enabled }}
   - name: lmcache
     configMap: {name: {{ $root.Release.Name }}-lmcache}

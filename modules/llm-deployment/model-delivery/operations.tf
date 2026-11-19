@@ -12,7 +12,7 @@ locals {
   }) }
   # These inputs already exist for model deployment; reuse their immutable
   # paths/versions instead of duplicating the large common library inline.
-  operation_input_files = { for path in ["common.sh", "config.json"] : path => local.runtime_files[path] }
+  operation_input_files = { for path in concat(["common.sh", "config.json"], contains(keys(local.runtime_files), "pd_observe.py") ? ["pd_observe.py"] : []) : path => local.runtime_files[path] }
   operation_parameters = merge(local.defaults, {
     CHART_VERSION     = local.chart_version, RECOVER_LOCK_HOLDER = "none",
     BENCHMARK_BACKEND = var.benchmark_backend, BENCHMARK_REQUESTS = "64", BENCHMARK_INPUT_TOKENS = "256", BENCHMARK_OUTPUT_TOKENS = "64", BENCHMARK_PREFIX_TOKENS = "0"

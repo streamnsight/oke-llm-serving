@@ -20,6 +20,7 @@ output "model_delivery" {
     port_forward          = "kubectl -n ${local.namespace} port-forward service/${local.router_enabled ? "${local.name}-router-service" : local.name} 8000:${local.router_enabled ? 80 : 8000}",
     routing               = local.routing_mode,
     cache_capabilities    = module.cache_capabilities.assessment,
+    disaggregation        = local.pd,
     lmcache               = merge(local.lmcache, { enabled = local.lmcache_enabled, validation = "runtime_store_retrieve_required" }),
     defaults              = local.defaults, workspace_gib_per_pod = local.workspace_gib,
     storage               = var.storage.mode, automatically_started = true,
