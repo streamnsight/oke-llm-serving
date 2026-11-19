@@ -125,7 +125,7 @@ containers:
     startupProbe:
       httpGet: {path: /health, port: http}
       periodSeconds: 10
-      failureThreshold: 180
+      failureThreshold: {{ div (add (int (default 1800 $root.Values.startupTimeoutSeconds)) 9) 10 }}
     readinessProbe:
       httpGet: {path: /health, port: http}
       periodSeconds: 10
