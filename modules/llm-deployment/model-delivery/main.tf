@@ -53,19 +53,20 @@ locals {
     })
   })
   values = {
-    identity       = local.identity, model = "$${MODEL_ID}", revision = "$${MODEL_REVISION}", image = "$${SERVING_IMAGE}",
-    tensorParallel = "$${TP}", pipelineParallel = "$${PP}", hosts = "$${HOSTS_PER_REPLICA}", gpusPerPod = "$${GPUS_PER_POD}",
-    replicas       = "$${REPLICAS}", contextLength = "$${CONTEXT_LENGTH}", concurrency = "$${CONCURRENCY}",
-    recipeArgs     = concat(try(local.serving.recipe.args, []), local.cache_args), recipeEnv = merge(try(local.serving.recipe.env, {}), local.cache_env, { VLLM_USE_RUST_FRONTEND = "$${VLLM_USE_RUST_FRONTEND}" }),
-    nodeSelector   = local.selector, cpu = "2", memory = "${16 + local.cache_memory_gib}Gi", shm = "8Gi", workspace = "${local.workspace_gib}Gi",
-    hfTokenSecret  = var.hf_token_secret, pvcName = var.storage.pvc_name,
-    modelPath      = var.storage.mode == "direct_hf" ? "" : var.storage.model_path,
-    rdmaResource   = try(var.platform.transport.requires_rdma, false) ? try(var.platform.transport.rdma_resource_name, "") : "",
-    router         = { enabled = local.router_enabled },
-    disaggregation = { enabled = local.pd_enabled, prefillReplicas = var.prefill_replicas },
-    lmcache        = merge(local.lmcache, { enabled = local.lmcache_enabled, controller = local.routing_mode == "kvaware" }),
-    monitoring     = { enabled = try(var.platform.monitoring_enabled, false) || var.autoscaling.enabled, platform = var.platform.platform_name },
-    autoscaling    = merge(var.autoscaling, { min_replicas = "$${MIN_REPLICAS}", max_replicas = "$${MAX_REPLICAS}", target_inflight = "$${TARGET_INFLIGHT}", prometheus_url = "$${PROMETHEUS_URL}" }),
+    identity              = local.identity, model = "$${MODEL_ID}", revision = "$${MODEL_REVISION}", image = "$${SERVING_IMAGE}",
+    tensorParallel        = "$${TP}", pipelineParallel = "$${PP}", hosts = "$${HOSTS_PER_REPLICA}", gpusPerPod = "$${GPUS_PER_POD}",
+    replicas              = "$${REPLICAS}", contextLength = "$${CONTEXT_LENGTH}", concurrency = "$${CONCURRENCY}",
+    startupTimeoutSeconds = var.timeout_seconds,
+    recipeArgs            = concat(try(local.serving.recipe.args, []), local.cache_args), recipeEnv = merge(try(local.serving.recipe.env, {}), local.cache_env, { VLLM_USE_RUST_FRONTEND = "$${VLLM_USE_RUST_FRONTEND}" }),
+    nodeSelector          = local.selector, cpu = "2", memory = "${16 + local.cache_memory_gib}Gi", shm = "8Gi", workspace = "${local.workspace_gib}Gi",
+    hfTokenSecret         = var.hf_token_secret, pvcName = var.storage.pvc_name,
+    modelPath             = var.storage.mode == "direct_hf" ? "" : var.storage.model_path,
+    rdmaResource          = try(var.platform.transport.requires_rdma, false) ? try(var.platform.transport.rdma_resource_name, "") : "",
+    router                = { enabled = local.router_enabled },
+    disaggregation        = { enabled = local.pd_enabled, prefillReplicas = var.prefill_replicas },
+    lmcache               = merge(local.lmcache, { enabled = local.lmcache_enabled, controller = local.routing_mode == "kvaware" }),
+    monitoring            = { enabled = try(var.platform.monitoring_enabled, false) || var.autoscaling.enabled, platform = var.platform.platform_name },
+    autoscaling           = merge(var.autoscaling, { min_replicas = "$${MIN_REPLICAS}", max_replicas = "$${MAX_REPLICAS}", target_inflight = "$${TARGET_INFLIGHT}", prometheus_url = "$${PROMETHEUS_URL}" }),
     "vllm-stack" = {
       servingEngineSpec = { enableEngine = false, modelSpec = [] },
       routerSpec = {

@@ -15,6 +15,7 @@ metadata:
   labels: {{- include "model.labels" $root | nindent 4 }}
 spec:
   replicas: {{ if eq $role "prefill" }}{{ int $.Values.disaggregation.prefillReplicas }}{{ else }}{{ int $.Values.replicas }}{{ end }}
+  progressDeadlineSeconds: {{ int (default 1800 $.Values.startupTimeoutSeconds) }}
   strategy:
     type: RollingUpdate
     rollingUpdate: {maxSurge: 0, maxUnavailable: 1}

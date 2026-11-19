@@ -9,6 +9,7 @@ metadata:
   labels: {{- include "model.labels" . | nindent 4 }}
 spec:
   replicas: {{ int .Values.replicas }}
+  progressDeadlineSeconds: {{ int (default 1800 .Values.startupTimeoutSeconds) }}
   strategy:
     type: RollingUpdate
     rollingUpdate: {maxSurge: 0, maxUnavailable: 1}
