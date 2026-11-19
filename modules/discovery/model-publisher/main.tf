@@ -32,7 +32,7 @@ locals {
 
   recommendation = {
     model_name               = local.model_name,
-    model_id                 = local.repository, model_revision = try(coalesce(try(var.model_spec.model.revision, null), try(var.model_spec.profile.model.resolved_revision, null)), ""),
+    model_id                 = local.repository,
     serving_image            = try(coalesce(try(local.selected.serving_configuration.engine.image, null), try(local.selected.engine.image, null), try(var.model_spec.serving_configuration.engine.image, null)), ""),
     tensor_parallel_size     = try(local.selected.tensor_parallel_size, 1), pipeline_parallel_size = try(local.selected.pipeline_parallel_size, 1),
     hosts_per_replica        = try(local.selected.hosts_per_replica, local.selected.pipeline_parallel_size, 1),

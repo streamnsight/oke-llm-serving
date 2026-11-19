@@ -24,7 +24,7 @@ locals {
     MODEL_PROJECT_ID       = var.platform.project_id
     MODEL_GPU_POOL_ID      = try(coalesce(var.platform.allocation.gpu_pool_id, "runtime"), "runtime")
     MODEL_ID               = coalesce(var.overrides.model_id, try(local.serving.model.repository, null), var.model.model.repository)
-    MODEL_REVISION         = coalesce(var.overrides.model_revision, try(local.serving.model.resolved_revision, null), try(var.model.model.revision, null), "unresolved")
+    MODEL_REVISION         = coalesce(var.overrides.model_revision, var.storage.mode == "direct_hf" ? "main" : null, try(local.serving.model.resolved_revision, null), try(var.model.model.revision, null), "unresolved")
     SERVING_IMAGE          = local.serving_image
     VLLM_USE_RUST_FRONTEND = var.api_frontend == "rust" ? "1" : "0"
     TP                     = tostring(coalesce(var.overrides.tensor_parallel_size, try(local.selection.tensor_parallel_size, null), 1))

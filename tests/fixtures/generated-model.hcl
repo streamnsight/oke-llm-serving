@@ -57,19 +57,19 @@ run "rendered_cluster_only_stack_autoruns_an_independent_model_project" {
     error_message = "A generated model stack must default to the Python frontend even when the recipe opts into Rust."
   }
   assert {
-    condition     = can(regex("^[a-f0-9]{40}$", output.model_delivery.defaults.MODEL_REVISION))
-    error_message = "The generated stack must continue to default to an immutable discovery commit."
+    condition     = var.model_revision == "main" && yamldecode(file("${path.root}/schema.yaml")).variables.model_revision.default == "main" && output.model_delivery.defaults.MODEL_REVISION == "main" && can(regex("^[a-f0-9]{40}$", local.model.model.revision))
+    error_message = "The generated Terraform/schema defaults must both use main for direct Hub serving while retaining the assessed commit."
   }
 }
-run "model_deployment_can_select_main_without_rewriting_the_assessed_commit" {
+run "model_deployment_can_select_a_commit_without_rewriting_the_assessed_commit" {
   command = apply
   variables {
-    model_revision = "main"
+    model_revision = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
     storage_mode   = "direct_hf"
   }
   assert {
-    condition     = output.model_delivery.defaults.MODEL_REVISION == "main" && output.model_delivery.storage == "direct_hf" && can(regex("^[a-f0-9]{40}$", local.model.model.revision)) && output.model_delivery.defaults.SERVING_IMAGE == run.rendered_cluster_only_stack_autoruns_an_independent_model_project.model_delivery.defaults.SERVING_IMAGE && output.model_delivery.automatic_execution.deployment.state == "SUCCEEDED" && output.model_delivery.automatic_execution.validation.state == "SUCCEEDED"
-    error_message = "The direct-HF main override must reach model deployment/validation while retaining the assessed commit and exact serving image."
+    condition     = output.model_delivery.defaults.MODEL_REVISION == var.model_revision && output.model_delivery.storage == "direct_hf" && can(regex("^[a-f0-9]{40}$", local.model.model.revision)) && output.model_delivery.defaults.SERVING_IMAGE == run.rendered_cluster_only_stack_autoruns_an_independent_model_project.model_delivery.defaults.SERVING_IMAGE && output.model_delivery.automatic_execution.deployment.state == "SUCCEEDED" && output.model_delivery.automatic_execution.validation.state == "SUCCEEDED"
+    error_message = "An explicit direct-HF commit must reach model deployment/validation while retaining the assessed commit and exact serving image."
   }
 }
 run "model_deployment_can_opt_into_rust_frontend" {
@@ -97,6 +97,7 @@ run "cluster_only_autoscaling_derives_standard_metrics_endpoint" {
 run "model_deployment_can_disable_monitoring_and_select_its_own_weight_delivery" {
   command = plan
   variables {
+    model_revision      = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
     monitoring_enabled  = false
     autoscaling_enabled = false
     storage_mode        = "existing_pvc"

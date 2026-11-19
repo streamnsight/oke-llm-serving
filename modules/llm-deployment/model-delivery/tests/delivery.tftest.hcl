@@ -52,8 +52,8 @@ run "model_delivery_deploys_and_validates_automatically" {
     error_message = "Python must override a recipe's experimental Rust opt-in in the effective config while preserving raw recipe provenance and other environment values."
   }
   assert {
-    condition     = local.defaults.MODEL_REVISION == var.model.selection.serving_configuration.model.resolved_revision
-    error_message = "Discovery's immutable commit remains the model deployment default."
+    condition     = local.defaults.MODEL_REVISION == "main" && var.model.model.revision == "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" && local.serving.model.resolved_revision == var.model.selection.serving_configuration.model.resolved_revision
+    error_message = "Direct Hub serving defaults to main while preserving discovery's immutable assessed commit."
   }
   assert {
     condition     = local.defaults.SERVING_IMAGE == "docker.io/${var.model.selection.serving_configuration.engine.image}" && local.values["vllm-stack"].routerSpec.repository == "docker.io/lmcache/lmstack-router" && startswith(local.config.benchmark_image, "docker.io/vllm/vllm-openai-cpu@sha256:")
@@ -80,12 +80,20 @@ run "explicit_Rust_frontend_is_opt_in" {
     error_message = "Rust frontend is available only by explicit selection; unrelated recipe environment remains unchanged."
   }
 }
-run "main_is_an_explicit_direct_Hub_override" {
+run "an_immutable_commit_is_an_explicit_direct_Hub_override" {
   command = plan
-  variables { overrides = { model_revision = "main" } }
+  variables { overrides = { model_revision = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" } }
   assert {
-    condition     = local.defaults.MODEL_REVISION == "main" && local.defaults.SERVING_IMAGE == "docker.io/${var.model.selection.serving_configuration.engine.image}" && local.values.recipeArgs == var.model.selection.serving_configuration.recipe.args && var.model.model.revision == "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-    error_message = "An explicit main ref is accepted for direct Hub delivery without rewriting discovery's commit, the serving image or recipe argv."
+    condition     = local.defaults.MODEL_REVISION == var.overrides.model_revision && local.defaults.SERVING_IMAGE == "docker.io/${var.model.selection.serving_configuration.engine.image}" && local.values.recipeArgs == var.model.selection.serving_configuration.recipe.args && var.model.model.revision == "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    error_message = "An explicit commit is accepted for direct Hub delivery without rewriting discovery's commit, the serving image or recipe argv."
+  }
+}
+run "retained_PVC_defaults_to_the_assessed_immutable_commit" {
+  command = plan
+  variables { storage = { mode = "existing_pvc", pvc_name = "retained-weights" } }
+  assert {
+    condition     = local.defaults.MODEL_REVISION == var.model.selection.serving_configuration.model.resolved_revision
+    error_message = "The module's main fallback is limited to direct Hub serving; retained weights keep the assessed commit."
   }
 }
 run "main_is_not_an_immutable_PVC_snapshot" {
