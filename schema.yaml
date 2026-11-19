@@ -1,7 +1,7 @@
 # Copyright (c) 2020-2022 Oracle and/or its affiliates. All rights reserved.
 # Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
 title: OKE LLM discovery
-description: Inspect a public Hugging Face model and assess GPU shapes, entitlement and host capacity across READY subscribed regions. Creates no GPU instances.
+description: Inspect a public Hugging Face model and compare combined serving with eligible separate prefill/decode layouts, using GPU shape, entitlement and host capacity across READY subscribed regions. Creates no GPU instances.
 schemaVersion: 1.1.0
 version: "0.1.0"
 outputs:
@@ -9,7 +9,7 @@ outputs:
     type: link
     title: Model and GPU discovery report
     displayText: Open discovery report
-    description: Model details, workload memory, all confirmed deployment choices and regional capacity/limit evidence. Opens a separate Object Storage HTML page, including when no deployment is available.
+    description: Model details, workload memory, serving configuration explanations, combined/P/D option tabs and regional capacity/limit evidence. Opens a separate Object Storage HTML page, including when no deployment is available.
   description:
     type: string
     title: Click the link to view report
