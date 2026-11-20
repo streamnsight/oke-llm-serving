@@ -21,8 +21,8 @@
 ## Phase 3 — verify coherent main and packages
 
 - [x] Verify every completed local branch's commits are included in the final integration head; retain any future/new edits rather than forcing removal.
-- [ ] Merge the validated consolidation into main and rebuild release archives from committed main. Validate the actual archives and refresh the owned discovery publication so its model ZIP includes the startup-deadline correction.
-- [ ] Record final branch/worktree status, private backup locations, test results and publication scope. Do not claim a remote push or update unrelated RMS stacks.
+- [x] Merge the validated consolidation into main and rebuild release archives from committed main. Validate the actual archives and refresh the owned discovery publication so its model ZIP includes the startup-deadline correction.
+- [x] Record final branch/worktree status, private backup locations, test results and publication scope. Do not claim a remote push or update unrelated RMS stacks.
 
 ## Evidence and constraints
 
@@ -39,3 +39,7 @@ The startup-deadline fix has executable rendered-chart coverage, 48 passing runt
 The full JavaScript suite uses Node 24, matching CI. An initial Node 20 run could not execute extensionless ESM CLI fixtures. Under Node 24, all but one enabled test initially passed; the remaining mock startup test relied on a fixed 0.4-second delay and passed in isolation. The fixture now waits for the actual mock cache process to exit instead of assuming scheduler timing. Its six focused checks pass (one optional chart check skipped); serving code is unchanged by this fixture correction. The complete final Node 24 suite passes: 204 passed, zero failed, four optional checks skipped, approximately 144 seconds. Logs and the isolated source/dependency export remain outside the repository.
 
 The larger model's manual benchmark stage succeeded with 128/128 measured requests across four unique/shared-prefix cells. All four windows observed native transfer with zero decode-side prompt recomputation and no transfer failures. Summaries are present in actual DevOps Logging without result uploads; the exact benchmark Job/ConfigMap were removed and the Lease released. The model remains Ready for inspection with unchanged Pod UIDs and zero restarts. This completes the runtime validation required before the consolidation merge.
+
+Completed source was merged into local main at `6bc00f6`. Both the discovery entry ZIP and standalone model ZIP were rebuilt from that committed main and passed the actual archive checks under Terraform 1.5.7, including the discovery archive's two embedded child roots. Both manifests identify the merged commit; private state/tfvars/dependencies are absent. All 24 packaged model-delivery runtime files match the corrected shared model ZIP already served by the owned validation report. Final archives are `/tmp/oke-serving-main-discovery.zip` and `/tmp/oke-serving-main-model.zip`; package logs, source/hash proof and audit records live in the private consolidation directory.
+
+Final intended checkout is local main with no tracked edits. The only unmerged feature is the explicitly preserved active dashboard work. The main workspace and that active dashboard checkout are the only two registered worktrees; 12 completed secondary worktrees were removed, their branch refs retained and their private files archived. The Git bundle is verified and refreshed after final integration. No remote Git push was performed, and unrelated RMS source uploads/shared release bundles were not updated.
