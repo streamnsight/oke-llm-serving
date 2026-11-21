@@ -16,6 +16,9 @@ section { margin-block: 0 40px; scroll-margin-top: 16px; }
 .section-heading { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px; }
 .facts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px 24px; margin: 20px 0; }
 .facts > div { min-width: 0; }
+.model-key-facts { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 16px; margin: 20px 0; }
+.model-key-facts > div { min-width: 0; }
+.model-key-facts dd { font-size: 23px; font-weight: 600; line-height: 1.35; font-variant-numeric: tabular-nums; }
 dt { margin-bottom: 4px; font-size: 12px; color: var(--oci-color-text-secondary); }
 dd { margin: 0; overflow-wrap: anywhere; }
 code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
@@ -40,18 +43,24 @@ input { width: 360px; }
 :focus-visible { outline: 2px solid var(--oci-color-link); outline-offset: 3px; }
 .options { display: grid; gap: 12px; }
 .option { border: 1px solid var(--oci-color-divider); border-radius: var(--oci-rounded-sm); background: var(--oci-color-surface); }
-.option > summary { display: flex; align-items: center; gap: 16px; padding: 20px; cursor: pointer; list-style: none; }
-.option > summary::-webkit-details-marker { display: none; }
-.option > summary::before { content: '+'; width: 18px; flex: 0 0 18px; color: var(--oci-color-link); font-size: 22px; }
-.option[open] > summary::before { content: '−'; }
-.option[open] > summary { border-bottom: 1px solid var(--oci-color-divider); }
+.option-summary, .location > summary { display: flex; align-items: center; gap: 16px; padding: 20px; }
+.option-summary { border-bottom: 1px solid var(--oci-color-divider); }
+.location > summary { cursor: pointer; list-style: none; }
+.location > summary::-webkit-details-marker { display: none; }
+.location > summary::before { content: '+'; width: 18px; flex: 0 0 18px; color: var(--oci-color-link); font-size: 22px; }
+.location[open] > summary::before { content: '−'; }
+.location-title { flex: 1 1 240px; min-width: 0; }
+.location-title strong, .location-title span { display: block; overflow-wrap: anywhere; }
+.location { border-top: 1px solid var(--oci-color-divider); }
+.location-body { padding: 0 20px 16px; }
+.locations { margin: 20px 0; }
+.locations > h4 { margin-bottom: 12px; }
 .option-title { flex: 1 1 260px; min-width: 0; }
 .option-title strong, .option-title span { display: block; overflow-wrap: anywhere; }
 .option-title strong { font-size: 16px; }
 .option-title .oci-status-active { display: inline-block; margin-top: 6px; }
 .option-title .badge { display: inline-block; margin: 6px 0 0 8px; }
 .option-stat { flex: 0 1 145px; min-width: 110px; }
-.region-group > h3 { margin: 12px 0; }
 .option-stat small { display: block; margin-top: 4px; font-size: 12px; color: var(--oci-color-text-secondary); }
 .option-stat strong { display: block; overflow-wrap: anywhere; font-size: 18px; font-variant-numeric: tabular-nums; }
 .option-stat span { display: block; font-size: 12px; color: var(--oci-color-text-secondary); }
@@ -68,7 +77,7 @@ input { width: 360px; }
 .command { white-space: pre-wrap; overflow-wrap: anywhere; padding: 16px; margin: 12px 0; color: var(--oci-color-text); background: var(--oci-color-neutral); border: 1px solid var(--oci-color-divider); border-radius: var(--oci-rounded-sm); font-size: 12px; line-height: 1.65; max-height: 28rem; overflow: auto; }
 .recipe-details { margin: 16px 0; }
 .recipe-details > summary, .ad-details > summary { cursor: pointer; color: var(--oci-color-link); }
-.deployment-steps { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; padding-top: 20px; border-top: 1px solid var(--oci-color-divider); }
+.deployment-steps { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; }
 .action-links { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; margin: 12px 0; }
 .action-primary { display: inline-flex; min-height: 38px; align-items: center; padding: 8px 14px; text-decoration: none; color: var(--oci-component-button-primary-text-color); background: var(--oci-component-button-primary-background-color); border-radius: var(--oci-rounded-sm); font-weight: 600; }
 .action-primary:hover { background: var(--oci-component-button-primary-hover-background-color); }
@@ -86,6 +95,7 @@ td small { color: var(--oci-color-text-secondary); margin-top: 4px; }
 #notices li { margin: 8px 0; }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
 [hidden] { display: none !important; }
-@media (max-width: 850px) { .facts, .option-body .facts { grid-template-columns: repeat(2, minmax(0,1fr)); } .metrics { grid-template-columns: repeat(2, minmax(0,1fr)); } .option > summary { flex-wrap: wrap; } .option-title { flex-basis: calc(100% - 50px); } .option-stat { margin-left: 34px; flex: 1 1 110px; } }
-@media (max-width: 500px) { h1.oci-page-title { font-size: 24px; overflow-wrap: anywhere; } .facts, .option-body .facts, .deployment-steps { grid-template-columns: minmax(0,1fr); } .option > summary, .option-body { padding: 16px; } .option-stat { flex-basis: 100%; } .filters label, .filters input, .filters select { width: 100%; } .metric { padding: 12px; } .metric strong { font-size: 21px; } th, td { min-width: 120px; } }
+@media (max-width: 1000px) { .model-key-facts { grid-template-columns: repeat(3, minmax(0,1fr)); } }
+@media (max-width: 850px) { .facts, .option-body .facts { grid-template-columns: repeat(2, minmax(0,1fr)); } .metrics { grid-template-columns: repeat(2, minmax(0,1fr)); } .option-summary, .location > summary { flex-wrap: wrap; } .option-title, .location-title { flex-basis: calc(100% - 50px); } .option-stat { flex: 1 1 110px; } }
+@media (max-width: 500px) { h1.oci-page-title { font-size: 24px; overflow-wrap: anywhere; } .facts, .option-body .facts, .deployment-steps { grid-template-columns: minmax(0,1fr); } .model-key-facts { grid-template-columns: repeat(2, minmax(0,1fr)); } .model-key-facts dd { font-size: 21px; } .option-summary, .option-body { padding: 16px; } .option-stat { min-width: 0; flex: 1 1 40%; } .location > summary { padding-inline: 0; } .location-body { padding-inline: 0; } .filters label, .filters input, .filters select { width: 100%; } .metric { padding: 12px; } .metric strong { font-size: 21px; } th, td { min-width: 120px; } }
 @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }

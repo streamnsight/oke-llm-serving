@@ -8,6 +8,17 @@ const label = value => text(value).replace(/_/g, " ");
 const number = value => value === null || value === undefined || !Number.isFinite(Number(value)) ? "Unknown" : Number(value).toLocaleString(undefined, {maximumFractionDigits: 2});
 const gb = value => value === null || value === undefined ? "Unknown" : number(value) + " GB";
 const positive = value => Number(value) > 0 ? number(value) : "Unknown";
+function parameters(value) {
+  if (!(value > 0)) return "Unknown";
+  for (const [size, suffix] of [[1e12, "T"], [1e9, "B"], [1e6, "M"], [1e3, "K"]]) {
+    if (value >= size) return number(value / size) + suffix;
+  }
+  return number(value);
+}
+function replicaMemory(row) {
+  const rank = row.memory_gb?.estimated_per_gpu, gpus = row.allocation?.required_gpus_per_replica;
+  return Number.isFinite(rank) && rank > 0 && Number.isFinite(gpus) && gpus > 0 ? rank * gpus : null;
+}
 function el(tag, value, className) {
   const node = document.createElement(tag);
   if (value !== undefined) node.textContent = value;
@@ -66,6 +77,13 @@ $("recommendation-policy").textContent = report.recommendation_policy?.descripti
 $("report-time").textContent = "Published: " + text(report.publication?.published_at) + " · Report and deployment links expire: " + text(report.publication?.expires_at);
 link($("model-links"), "View pinned model on Hugging Face", model.huggingface_url);
 const dimensions = model.dimensions || {};
+const dtypes = Object.entries(model.parameters_by_dtype || {}).sort((a, b) => b[1] - a[1]).map(([dtype]) => dtype);
+facts($("model-key-facts"), [
+  ["Parameters", parameters(model.parameter_count)], ["Layers", positive(dimensions.layers)],
+  ["Attention heads / KV heads", positive(dimensions.heads) + " / " + positive(dimensions.kv_heads)],
+  ["Checkpoint dtype", dtypes.join(" / ") || text(model.memory_assumptions?.weight_dtype)],
+  ["Max context", model.declared_context_length > 0 ? number(model.declared_context_length) + " tokens" : "Unknown"]
+]);
 facts($("model-details"), [
   ["Model type", text(model.model_type) + " · " + label(model.architecture)],
   ["Declared task", label(model.declared_pipeline)], ["Architecture", (model.architecture_classes || []).join(", ") || "Unknown"],
@@ -83,7 +101,8 @@ if (model.experts > 0) facts($("model-details"), [["Experts / active per token",
 $("model-provenance").textContent = text(model.weights_source) + ". Checkpoint download size describes storage; it is separate from resident GPU memory.";
 const cachedTokens = model.context_length > 0 && model.concurrency_per_replica > 0 ? model.context_length * model.concurrency_per_replica : null;
 $("workload").textContent = number(model.context_length) + " context tokens × " + number(model.concurrency_per_replica) + " concurrent sequences per replica = " + number(cachedTokens) + " live cached tokens when all sequences reach the requested length.";
-for (const [name, value] of [["Weight baseline (checkpoint precision)", model.memory_gb.resident_weights], [model.memory_gb.kv_per_replica == null && model.memory_gb.full_attention_kv != null ? "Full-attention KV payload / replica" : "KV cache reservation / replica", model.memory_gb.kv_per_replica ?? model.memory_gb.full_attention_kv], ["Runtime allowance / GPU", model.memory_gb.runtime_allowance], [model.component_planning?.payload_budget_bytes > 0 || (model.memory_gb.total_estimated == null && model.recipe_memory_budget_gb != null) ? "Planning payload budget / replica" : "Estimated total / replica", model.component_planning?.payload_budget_bytes > 0 ? Math.max(model.component_planning.payload_budget_bytes / 1e9, model.recipe_memory_budget_gb || 0) : model.memory_gb.total_estimated ?? model.recipe_memory_budget_gb]]) {
+const budgets = [model.component_planning?.payload_budget_bytes / 1e9, model.recipe_memory_budget_gb, model.memory_gb.total_estimated].filter(value => Number.isFinite(value) && value > 0);
+for (const [name, value] of [["Sizing budget / replica", budgets.length ? Math.max(...budgets) : null], ["Weights / replica", model.memory_gb.resident_weights], [model.memory_gb.kv_per_replica == null && model.memory_gb.full_attention_kv != null ? "Full-attention KV / replica" : "KV cache / replica", model.memory_gb.kv_per_replica ?? model.memory_gb.full_attention_kv], ["Runtime / GPU", model.memory_gb.runtime_allowance]]) {
   const node = add($("memory-metrics"), "div", undefined, "metric"); add(node, "span", name); add(node, "strong", gb(value));
 }
 if (model.memory_status !== "estimated") {
@@ -94,12 +113,12 @@ if (model.memory_status !== "estimated") {
   if (model.partial_memory?.linear_attention_layers > 0) add(note, "p", number(model.partial_memory.full_attention_layers) + " full-attention layers contribute the KV payload above. " + number(model.partial_memory.linear_attention_layers) + " linear-attention layers also need recurrent/cache state; cache-manager padding, cached state checkpoints and vision workspace are not included in that payload.");
 }
 if (model.planning_memory?.selected_payload_budget_bytes > 0) {
-  const budget = model.planning_memory, explanation = details($("memory-status"), "How GPU sizing uses this budget", "recipe-details");
+  const budget = model.planning_memory, explanation = add($("memory-status"), "div");
   facts(add(explanation, "dl", undefined, "facts"), [["Weights used in sizing", gb(budget.weight_bytes == null ? null : budget.weight_bytes / 1e9)], ["All-layer KV sizing surrogate", gb(budget.kv_surrogate_bytes == null ? null : budget.kv_surrogate_bytes / 1e9)], ["Recipe minimum", gb(budget.recipe_minimum_bytes == null ? null : budget.recipe_minimum_bytes / 1e9)], ["Payload safety margin", number(budget.safety_margin_fraction * 100) + "%"], ["Selected payload budget", gb(budget.selected_payload_budget_bytes / 1e9)], ["Additional runtime allowance per GPU", gb(budget.runtime_allowance_per_gpu_bytes / 1e9)]]);
   add(explanation, "p", "Sizing takes the largest of the recipe minimum, any supported analytical estimate, and (weights + all-layer KV surrogate) × (1 + margin). It divides that payload approximately across TP ranks, adds the runtime allowance per GPU, and checks against 90% of device memory. The all-layer surrogate treats every text layer as full attention; it is not an estimate of actual hybrid-cache allocation or a bound on recurrent/vision memory. Validation and benchmarking establish the real fit.");
 }
 if (model.component_planning?.payload_budget_bytes > 0) {
-  const p = model.component_planning, box = details($("memory-status"), "Memory planning scenario and assumptions", "recipe-details");
+  const p = model.component_planning, box = add($("memory-status"), "div");
   facts(add(box, "dl", undefined, "facts"), [["Planning payload / replica", gb(p.payload_budget_bytes / 1e9)], ["Cache scenario", gb(p.cache_scenario_bytes == null ? null : p.cache_scenario_bytes / 1e9)], ["Workspace component of uncertainty", gb(p.workspace_allowance_bytes == null ? null : p.workspace_allowance_bytes / 1e9)], ["Evidence / confidence", text(p.weight_source) + " / " + text(p.status)], ["Cache basis", text(p.cache_source)], ["Margin", number(p.safety_margin_fraction * 100) + "%"]]);
   add(box, "p", p.formula); add(box, "p", p.interpretation);
   if (p.storage_metadata_conflict) add(box, "p", "Tensor counts and complete shard sizes disagree; planning retains the larger storage baseline. Verify the selected checkpoint.");
@@ -175,73 +194,105 @@ for (const id of layoutIDs) {
     event.preventDefault(); selectLayout(layoutIDs[index], true);
   });
 }
+function optionGroups(rows) {
+  const groups = new Map();
+  for (const entry of rows) {
+    const [, row] = entry;
+    // Only location-specific evidence and links may differ inside one card.
+    const {region, availability_domain, capacity, links, recommendation, ...configuration} = row;
+    const key = JSON.stringify(configuration);
+    if (!groups.has(key)) groups.set(key, {row, locations: []});
+    groups.get(key).locations.push(entry);
+  }
+  return [...groups.values()];
+}
+function renderLocation(parent, id, row, recommended) {
+  const c = row.capacity, a = row.allocation, limits = c.limits || [];
+  const location = details(parent, "", "location");
+  const summary = location.children[0];
+  const title = add(summary, "div", undefined, "location-title");
+  add(title, "strong", row.region); add(title, "span", row.availability_domain, "muted oci-caption");
+  if (id === recommended) badge(title, "Recommended location");
+  const physical = add(summary, "div", undefined, "option-stat");
+  quantity(physical, c.ad_available_gpus, a.allocated_gpus); add(physical, "span", "GPUs available in AD");
+  add(physical, "small", number(c.ad_available_hosts) + " hosts");
+  const quota = add(summary, "div", undefined, "option-stat");
+  add(quota, "span", "Limit"); limitSummary(quota, limits, "current_limit", row.availability_domain, a.allocated_gpus);
+  const left = add(summary, "div", undefined, "option-stat");
+  add(left, "span", "Headroom"); limitSummary(left, limits, "remaining_headroom", row.availability_domain, a.allocated_gpus);
+  const content = add(location, "div", undefined, "location-body");
+  const steps = add(content, "div", undefined, "deployment-steps");
+  deploymentStep(steps, "1. GPU pool and shared components", "Create or reuse a compatible platform.", row.links.launch_url, row.links.download_url, row.links.expires_at);
+  const modelLinks = row.links.model_deployment || {};
+  deploymentStep(steps, "2. Model project and pipelines", "Apply runs onboarding, deployment and validation. Benchmarks are manual.", modelLinks.launch_url, modelLinks.download_url, modelLinks.expires_at);
+  const evidence = details(content, "Capacity and limit details", "recipe-details");
+  facts(add(evidence, "dl", undefined, "facts"), [["Observed", c.observed_at], ["Hosts covered by headroom", number(c.entitled_hosts)]]);
+  for (const limit of limits) add(evidence, "p", text(limit.name) + " · " + limitScope(limit) + " · limit " + limitQuantity(limit, "current_limit") + " / left " + limitQuantity(limit, "remaining_headroom") + (limit.effective_quota == null ? "" : " · quota " + number(limit.effective_quota)));
+  if (row.recommendation && row.serving_mode !== "disaggregated") {
+    const r = row.recommendation;
+    add(evidence, "p", "Growth at scan time: " + number(r.ad_max_replicas) + " replicas (" + number(r.ad_additional_replicas) + " additional).", "muted");
+  }
+}
 function renderOptions() {
   const layout = servingLayouts[activeLayout] || {options: {}, status: "not_assessed", reasons: ["This serving layout has not been assessed."]};
   const allRows = Object.entries(layout.options || {}), pd = activeLayout === "disaggregated";
   const recommended = layout.recommended_option_id ?? (pd ? null : report.recommended_option_id);
-  $("layout-description").textContent = layout.description || (pd ? "Separate role pools use native KV transfer. Each role holds its own model weights; counts below include both pools." : "Each serving instance handles prefill and decode.");
+  $("layout-description").textContent = layout.description || (pd ? "Separate prefill and decode instances, each holding the complete model." : "Each instance handles prefill and decode.");
   $("layout-status").replaceChildren();
   if ((layout.reasons || []).length || !allRows.length) {
     const note = add($("layout-status"), "div", undefined, "callout");
     add(note, "strong", allRows.length ? label(layout.status) : "No confirmed " + (pd ? "P/D" : "combined serving") + " option");
     if ((layout.reasons || []).length) list(note, layout.reasons);
-    else add(note, "p", "No complete allocation has confirmed model eligibility, physical supply and entitlement for this layout. Review the assessment and regional capacity below.");
+    else add(note, "p", "Review memory sizing, capacity and limits below.");
   }
   $("recommendation-policy").hidden = pd;
   const filter = $("search").value.toLowerCase(), mode = $("sort").value;
-  const rows = allRows.filter(([id, row]) => [id, row.region, row.availability_domain, row.gpu_shape].join(" ").toLowerCase().includes(filter));
-  rows.sort((a, b) => {
-    if (mode === "allocated") return (a[1].allocation.allocated_gpus ?? Infinity) - (b[1].allocation.allocated_gpus ?? Infinity) || a[0].localeCompare(b[0]);
-    if (mode === "capacity") return (b[1].capacity.ad_available_gpus ?? -1) - (a[1].capacity.ad_available_gpus ?? -1) || a[0].localeCompare(b[0]);
-    return [a[1].region, a[1].gpu_shape, a[1].availability_domain, a[0]].join(" ").localeCompare([b[1].region, b[1].gpu_shape, b[1].availability_domain, b[0]].join(" "));
+  const rows = allRows.filter(([id, row]) => [id, row.gpu_type, row.region, row.availability_domain, row.gpu_shape].join(" ").toLowerCase().includes(filter));
+  const groups = optionGroups(rows);
+  const capacity = group => Math.max(-1, ...group.locations.map(([, row]) => row.capacity.ad_available_gpus ?? -1));
+  const identity = row => [row.gpu_type, row.gpu_shape, row.allocation.tensor_parallel_size, row.allocation.pipeline_parallel_size].join(" ");
+  groups.sort((a, b) => {
+    if (mode === "capacity" && capacity(a) !== capacity(b)) return capacity(b) - capacity(a);
+    if (mode !== "gpu" && mode !== "region") {
+      for (const field of ["allocated_gpus", "unused_gpus", "required_hosts"]) {
+        const delta = (a.row.allocation[field] ?? Infinity) - (b.row.allocation[field] ?? Infinity);
+        if (delta) return delta;
+      }
+    }
+    return identity(a.row).localeCompare(identity(b.row));
   });
-  $("options").replaceChildren(); $("option-empty").hidden = rows.length > 0;
-  $("option-count").textContent = number(rows.length) + " of " + number(allRows.length) + " " + (pd ? "P/D" : "combined serving") + " options";
+  $("options").replaceChildren(); $("option-empty").hidden = groups.length > 0;
+  $("option-count").textContent = number(groups.length) + " GPU " + (groups.length === 1 ? "option" : "options") + " · " + number(rows.length) + " " + (rows.length === 1 ? "location" : "locations");
   $("option-empty").textContent = allRows.length ? "No matching deployment options." : "No capacity-confirmed deployment options for this serving layout.";
-  const groups = new Map();
-  for (const [id, row] of rows) {
-    if (!groups.has(row.region)) {
-      const group = add($("options"), "div", undefined, "region-group");
-      add(group, "h3", row.region);
-      groups.set(row.region, add(group, "div", undefined, "options"));
-    }
-    const a = row.allocation, c = row.capacity, serving = row.serving || {}, limits = c.limits || [];
-    const option = add(groups.get(row.region), "details", undefined, "option");
-    const summary = add(option, "summary"), title = add(summary, "div", undefined, "option-title");
-    add(title, "strong", row.gpu_shape); add(title, "span", row.availability_domain, "muted oci-caption");
-    if (id === recommended) add(title, "span", "Recommended starting point", "oci-status-active");
+  for (const group of groups) {
+    const row = group.row, a = row.allocation, serving = row.serving || {};
+    const option = add($("options"), "article", undefined, "option");
+    const summary = add(option, "div", undefined, "option-summary"), title = add(summary, "div", undefined, "option-title");
+    add(title, "h3", row.gpu_type || row.gpu_shape);
+    add(title, "span", row.gpu_shape + " · " + gb(row.memory_gb.per_gpu) + " / GPU", "muted oci-caption");
+    if (group.locations.some(([id]) => id === recommended)) add(title, "span", "Recommended starting point", "oci-status-active");
     if (row.runtime_validation !== "passed") badge(title, "Runtime unvalidated", true);
-    for (const [value, caption, packing] of [[number(a.required_gpus_per_replica), pd ? "GPUs per role instance" : "GPUs needed per replica"], [number(a.required_hosts), "Hosts · " + number(a.gpus_per_host) + " GPUs each", (pd ? number(row.prefill_replicas) + " prefill + " + number(row.decode_replicas) + " decode" : number(a.replicas) + " replicas") + " · " + number(a.allocated_gpus) + " GPUs allocated"]]) {
+    const allocationLabel = (pd ? number(row.prefill_replicas) + " prefill + " + number(row.decode_replicas) + " decode" : number(a.replicas) + " " + (a.replicas === 1 ? "replica" : "replicas")) + " · " + number(a.required_hosts) + " " + (a.required_hosts === 1 ? "host" : "hosts");
+    for (const [value, caption, detail] of [[number(a.required_gpus_per_replica), pd ? "GPUs used / role instance" : "GPUs used / replica"], [number(a.tensor_parallel_size) + " × " + number(a.pipeline_parallel_size), "TP × PP"], [gb(replicaMemory(row)), pd ? "Total memory / role instance (estimate)" : "Total memory / replica (estimate)"], [number(a.allocated_gpus), "GPUs allocated · total", allocationLabel]]) {
       const metric = add(summary, "div", undefined, "option-stat"); add(metric, "strong", value); add(metric, "span", caption);
-      if (packing) add(metric, "small", packing);
+      if (detail) add(metric, "small", detail);
     }
-    const quota = add(summary, "div", undefined, "option-stat");
-    limitSummary(quota, limits, "current_limit", row.availability_domain, a.allocated_gpus); add(quota, "span", "Current configured limit");
-    limitSummary(add(quota, "small", "Remaining headroom: "), limits, "remaining_headroom", row.availability_domain, a.allocated_gpus);
-    const available = add(summary, "div", undefined, "option-stat");
-    quantity(available, c.ad_available_gpus, a.allocated_gpus); add(available, "span", "GPUs physically available in selected AD");
-    const body = add(option, "div", undefined, "option-body"), allocation = add(body, "section");
-    add(allocation, "h3", pd ? "Allocation and role pools" : "Allocation and replica packing");
-    facts(add(allocation, "dl", undefined, "facts"), [["Shape / GPU type", row.gpu_shape + " / " + text(row.gpu_type)], ["Hosts / allocated GPUs", number(a.required_hosts) + " / " + number(a.allocated_gpus)], [pd ? "GPUs per role instance · TP × PP" : "GPUs per replica · TP × PP", number(a.required_gpus_per_replica) + " · " + number(a.tensor_parallel_size) + " × " + number(a.pipeline_parallel_size)], [pd ? "Prefill / decode instances" : "Replicas / replicas per host", pd ? number(row.prefill_replicas) + " / " + number(row.decode_replicas) : number(a.replicas) + " / " + number(a.replicas_per_host)], ["Unused GPUs", number(a.unused_gpus)], ["GPU memory per device", gb(row.memory_gb.per_gpu)], ["Estimated memory per rank", gb(row.memory_gb.estimated_per_gpu)], ["Transport", row.requires_rdma ? "RDMA required" : "Ethernet / within-host interconnect"]]);
-    add(allocation, "p", "Selected AD: " + number(c.ad_available_gpus) + " GPUs / " + number(c.ad_available_hosts) + " hosts reported; entitlement covers " + number(c.entitled_hosts) + " hosts. Observed: " + text(c.observed_at) + ".", "muted");
-    for (const limit of limits) {
-      add(allocation, "p", text(limit.name) + " · " + limitScope(limit) + " · configured limit: " + limitQuantity(limit, "current_limit") + " · remaining compartment headroom: " + limitQuantity(limit, "remaining_headroom") + (limit.effective_quota == null ? "." : " · effective compartment quota: " + limitQuantity(limit, "effective_quota") + "."), "muted");
-    }
-    if (pd) add(allocation, "p", "Role pods request " + number((row.prefill_replicas + row.decode_replicas) * a.required_gpus_per_replica) + " GPUs across both pools. Each role instance holds a complete model, sharded across its TP GPUs. Spare host slots can hold additional decode instances.");
-    if (row.recommendation && !pd) {
-      const r = row.recommendation;
-      add(allocation, "p", "Growth at scan time: capacity and entitlement cover " + number(r.ad_max_replicas) + " replicas with this layout in the selected AD (" + number(r.ad_additional_replicas) + " beyond this allocation). RDMA capability: " + (r.rdma_capable ? "supported by the shape; fabric placement still requires validation" : "not established") + ". Supply and limits are shared snapshots, not future reservations.", "muted");
-    }
-    const steps = add(body, "div", undefined, "deployment-steps");
-    deploymentStep(steps, "1. GPU pool and shared components", (pd ? "Size the retained pool for both role pools using this allocation. " : "Create this stack when you need a pool or shared controllers. ") + "Reuse an existing compatible platform for additional models.", row.links.launch_url, row.links.download_url, row.links.expires_at);
-    const modelLinks = row.links.model_deployment || {};
-    deploymentStep(steps, "2. Model project and pipelines", (pd ? "The launch link preselects separate prefill/decode roles and the counts shown above. " : "") + "Create an independent DevOps project for this model. Select the cluster; matching pool, networking and shared components are inferred. After infrastructure is ready, Apply runs namespace onboarding, deployment and validation. Benchmarking is manual.", modelLinks.launch_url, modelLinks.download_url, modelLinks.expires_at);
+    const body = add(option, "div", undefined, "option-body");
+    const allocation = details(body, pd ? "Allocation and role pools" : "Allocation and replica packing", "recipe-details allocation-details");
+    const packing = a.pipeline_parallel_size > 1 ? ["Replicas", number(a.replicas)] : ["Replicas / replicas per host", number(a.replicas) + " / " + number(a.replicas_per_host)];
+    facts(add(allocation, "dl", undefined, "facts"), [["Hosts · total", number(a.required_hosts)], ["GPUs / host", number(a.gpus_per_host)], pd ? ["Prefill / decode instances", number(row.prefill_replicas) + " / " + number(row.decode_replicas)] : packing, ["Spare GPUs · allocated, unassigned", number(a.unused_gpus)], ["Estimated memory / GPU", gb(row.memory_gb.estimated_per_gpu)], [pd ? "Total memory / role instance (estimate)" : "Total memory / replica (estimate)", gb(replicaMemory(row))], ["Transport", row.requires_rdma ? "RDMA required" : "Ethernet / within-host interconnect"]]);
+    add(allocation, "p", pd ? number(row.prefill_replicas) + " prefill + " + number(row.decode_replicas) + " decode · " + number(a.allocated_gpus) + " GPUs allocated" : number(a.replicas) + " replicas · " + number(a.allocated_gpus) + " GPUs allocated", "muted oci-caption");
+    add(allocation, "p", "Total memory = estimated memory per GPU × GPUs used per instance; includes runtime overhead. Spare GPUs are excluded.", "muted oci-caption");
+    if (pd) add(allocation, "p", "Role pods request " + number((row.prefill_replicas + row.decode_replicas) * a.required_gpus_per_replica) + " GPUs across both pools.", "muted oci-caption");
+    const locations = add(body, "section", undefined, "locations"); add(locations, "h4", "Available locations");
+    group.locations.sort((a, b) => [a[1].region, a[1].availability_domain, a[0]].join(" ").localeCompare([b[1].region, b[1].availability_domain, b[0]].join(" ")));
+    for (const [id, location] of group.locations) renderLocation(locations, id, location, recommended);
     if (pd && row.launch_variables) {
       const manual = details(body, "Settings for a manual ZIP upload", "recipe-details");
-      add(manual, "p", "Both tabs reuse the same ZIPs. Create RMS stack links prefill the selected layout settings and leave them editable. For a downloaded ZIP, enter these settings in the corresponding stack form; its packaged defaults describe combined serving.");
+      add(manual, "p", "Both tabs reuse the same ZIPs. Launch links prefill these settings; packaged defaults describe combined serving.");
       code(manual, JSON.stringify(row.launch_variables, null, 2));
     }
-    const config = add(body, "section"); add(config, "h3", "Serving configuration"); badge(config, label(row.configuration_status), true);
+    const config = details(body, "Serving configuration", "recipe-details"); badge(config, label(row.configuration_status), true);
     add(config, "p", "Runtime validation: " + label(row.runtime_validation) + ". Memory method: " + label(row.memory_method) + ".", "muted");
     facts(add(config, "dl", undefined, "facts"), [["Serving framework / version", text(serving.framework) + " / " + text(serving.version)], ["Container platform", serving.platform], ["Recipe GPU family", serving.source_hardware], ["Planned GPU family", serving.selected_hardware]]);
     if (row.cache_capabilities) {

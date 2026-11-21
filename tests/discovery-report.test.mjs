@@ -42,7 +42,7 @@ function execute(overrides = {}) {
     regional_capacity: [{region: "eu-frankfurt-1", gpu_shape: "GPU.8", gpus_per_host: 8, available_gpus: 136, available_hosts: 17, coverage: "complete", expected_ads: 1, known_ads: 1, limit_increase_possible: true, minimum_model_hosts: null, limits: [quota("AD", 0, 0)], availability_domains: [{availability_domain: "AD-1", available_hosts: 17, entitled_hosts: 0, limits: [quota("AD", 0, 0)], entitlement_status: "limit_increase_required", limit_increase_requests: [{limit_name: "gpu-count", current_limit: 0, scope: "AD", minimum_gpus_for_whole_hosts: null}]}]}], ...overrides,
   };
   const nodes = Object.fromEntries([...template.matchAll(/\bid="([^"]+)"/g)].map(match => [match[1], new Element("div")]));
-  nodes["report-data"].textContent = JSON.stringify(report); nodes.sort.value = "region";
+  nodes["report-data"].textContent = JSON.stringify(report); nodes.sort.value = "allocated";
   const created = [], document = {getElementById: id => nodes[id], createElement: tag => {const node = new Element(tag); created.push(node); return node;}};
   const context = {document, URL}; vm.runInNewContext(script, context, {timeout: 1000});
   return {nodes, created, context};
@@ -62,28 +62,32 @@ test('RMS controls do not advertise unavailable KV-aware routing',()=>{
   assert(!schema.variables.routing_mode.enum.includes('kvaware'));
  }
 });
-test("option sections start collapsed and retain packing, both stack URLs and expiry", () => {
+test("GPU sizing is visible with collapsed allocation and location-specific launch actions", () => {
   const {nodes, created} = execute();
-  assert.equal(nodes.options.children.length, 2);
-  assert.ok(created.filter(node => node.className === "option").every(node => node.tag === "details" && !node.open));
-  assert.match(nodes.options.textContent, /GPUs needed per replica/);
+  assert.equal(nodes.options.children.length, 1);
+  assert.equal(nodes.options.children[0].tag, "article");
+  assert.match(nodes.options.children[0].children[0].textContent, /GPUs used \/ replica/);
   assert.match(nodes.options.textContent, /2 replicas · 8 GPUs allocated/);
-  assert.match(nodes.options.textContent, /136 GPUs \/ 17 hosts/);
   assert.match(nodes.options.textContent, /expiry-time/);
-  const hrefs = created.filter(node => node.tag === "a").map(node => node.href);
+  assert.equal(created.filter(n => n.className === "location").length, 2);
+  assert.ok(created.filter(n => n.className === "location" || n.className === "recipe-details allocation-details").every(n => n.tag === "details" && !n.open));
+  const hrefs = created.filter(n => n.tag === "a").map(n => n.href);
   for (const region of ["eu-frankfurt-1", "us-chicago-1"]) {
     assert.ok(hrefs.some(href => href.includes(region + "-model.zip")));
     assert.ok(hrefs.some(href => href.includes(region + "-infra.zip")));
     assert.ok(hrefs.some(href => href.includes("region=" + region + "&zipUrl=model")));
   }
   nodes.search.value = "frankfurt"; nodes.search.events.input();
-  assert.equal(nodes.options.children.length, 1); assert.match(nodes.options.textContent, /eu-frankfurt-1/);
+  assert.equal(nodes.options.children.length, 1);
+  assert.match(nodes.options.textContent, /eu-frankfurt-1/);
+  assert.doesNotMatch(nodes.options.textContent, /us-chicago-1/);
 });
+
 test("model metadata, unknown memory and limit review remain visible without options", () => {
   const {nodes} = execute({options: {}, option_count: 0, failure_summary: ["No confirmed serving layout"]});
   assert.match(nodes["model-details"].textContent, /Transformer layers 32/);
   assert.match(nodes["model-details"].textContent, /safetensors/);
-  assert.match(nodes["memory-metrics"].textContent, /KV cache reservation \/ replica Unknown/);
+  assert.match(nodes["memory-metrics"].textContent, /KV cache \/ replica Unknown/);
   assert.match(nodes["memory-status"].textContent, /Complete memory estimate unavailable/);
   assert.match(nodes.failures.textContent, /No confirmed serving layout/);
   assert.match(nodes.capacity.textContent, /Review limit increase/);
@@ -117,9 +121,9 @@ test("zero and unknown-only supply are hidden while positive supply with zero li
 });
 test("partial hybrid memory and planning budget have distinct labels", () => {
   const {nodes} = execute({model: {repository:"Qwen/model", context_length:4096,concurrency_per_replica:4,memory_status:"unsupported",memory_gb:{resident_weights:55.56,full_attention_kv:1.07,total_estimated:null},recipe_memory_budget_gb:71.83,partial_memory:{full_attention_layers:16,linear_attention_layers:48},planning_memory:{weight_bytes:55560000000,kv_surrogate_bytes:4290000000,safety_margin_fraction:0.2,recipe_minimum_bytes:67000000000,selected_payload_budget_bytes:71830000000,runtime_allowance_per_gpu_bytes:2147483648}}});
-  assert.match(nodes["memory-metrics"].textContent, /Weight baseline \(checkpoint precision\) 55.56 GB/);
-  assert.match(nodes["memory-metrics"].textContent, /Full-attention KV payload \/ replica 1.07 GB/);
-  assert.match(nodes["memory-metrics"].textContent, /Planning payload budget \/ replica 71.83 GB/);
+  assert.match(nodes["memory-metrics"].textContent, /Weights \/ replica 55.56 GB/);
+  assert.match(nodes["memory-metrics"].textContent, /Full-attention KV \/ replica 1.07 GB/);
+  assert.match(nodes["memory-metrics"].textContent, /Sizing budget \/ replica 71.83 GB/);
   assert.match(nodes["memory-status"].textContent, /not an estimate of actual hybrid-cache allocation/);
 });
 test("untrusted metadata is text and unsafe deployment/source URLs are rejected", () => {
@@ -161,23 +165,24 @@ test("discovery excludes deployment-policy inputs and downstream forms own them"
   assert.ok(model.variables.storage_mode.enum.includes("staged_object_storage"));
 });
 
-test("options group by region while each node pool shows only its selected AD supply and limits", () => {
+test("identical GPU topology groups locations while preserving each AD's capacity and limits", () => {
   const first = option("region-a"), second = option("region-a"), third = option("region-b");
   first.capacity = {...first.capacity, ad_available_hosts: 34, ad_available_gpus: 34, regional_available_gpus: 999, limits: [quota("REGION", 4, 2)]};
   second.availability_domain = "AD-2"; second.capacity = {...second.capacity, ad_available_hosts: 5, ad_available_gpus: 40};
   const {nodes, created} = execute({options: {first, second, third}, option_count: 3});
-  assert.equal(nodes.options.children.length, 2, "one visible group per region");
-  const cards = created.filter(node => node.className === "option");
-  assert.equal(cards.length, 3, "keep each AD-specific stack choice and its links");
-  assert.match(cards[0].children[0].textContent, /34 GPUs physically available in selected AD/);
-  assert.match(cards[0].children[0].textContent.replace(/\s+/g," "), /Region: 4 \(below required allocation of 8 GPUs\) GPUs Current configured limit/);
-  assert.match(cards[0].children[0].textContent.replace(/\s+/g," "), /Remaining headroom: Region: 2 \(below required allocation of 8 GPUs\) GPUs/);
-  assert.doesNotMatch(cards[0].children[0].textContent, /999|reported in region/);
-  assert.match(cards[1].children[0].textContent, /AD-2/);
+  assert.equal(nodes.options.children.length, 1);
+  const locations = created.filter(node => node.className === "location");
+  assert.equal(locations.length, 3);
+  assert.match(locations[0].children[0].textContent, /34 GPUs available in AD/);
+  assert.match(locations[0].children[0].textContent.replace(/\s+/g," "), /Region: 4 \(below required allocation of 8 GPUs\)/);
+  assert.match(locations[0].children[0].textContent.replace(/\s+/g," "), /Headroom Region: 2 \(below required allocation of 8 GPUs\)/);
+  assert.doesNotMatch(locations[0].children[0].textContent, /999/);
+  assert.match(locations[1].children[0].textContent, /AD-2/);
   nodes.search.value = "AD-2"; nodes.search.events.input();
   assert.equal(nodes.options.children.length, 1);
   assert.match(nodes.options.textContent, /AD-2/); assert.doesNotMatch(nodes.options.textContent, /AD-1/);
 });
+
 test("capacity table shows per-AD supply and shared regional limit without a regional supply sum", () => {
   const {nodes} = execute({regional_capacity: [{
     region: "region-a", gpu_shape: "GPU.1", gpus_per_host: 1, available_hosts: 54, available_gpus: 54,
@@ -192,13 +197,13 @@ test("capacity table shows per-AD supply and shared regional limit without a reg
   assert.match(nodes.capacity.textContent.replace(/\s+/g," "), /limit 4 \/ left 2 Region · GPUs/);
   assert.doesNotMatch(nodes.capacity.textContent, /54 GPUs|hosts in region/);
 });
-test("unknown limits and quota units are explicit; zero headroom is not unknown", () => {
+test("unknown location limits and units are explicit; zero headroom is not unknown", () => {
   const row = option("region-a");
   row.capacity.limits = [{...quota("GLOBAL", null, 0), unit: "units (unverified)"}];
   const {created} = execute({options: {row}, option_count: 1});
-  const summary = created.find(node => node.className === "option").children[0].textContent.replace(/\s+/g," ");
+  const summary = created.find(n => n.className === "location").children[0].textContent.replace(/\s+/g," ");
   assert.match(summary, /Global: Unknown units \(unverified\)/);
-  assert.match(summary, /Remaining headroom: Global: 0 units \(unverified\)/);
+  assert.match(summary, /Headroom Global: 0 units \(unverified\)/);
 });
 
 test("capacity rows put region and AD first and bold only numeric quantities beside normal units", () => {
@@ -246,26 +251,28 @@ test("regional quota uses limit / left labels and preserves AD scope, zero and u
  assert.match(text,/limit 32 \/ left 32/);assert.match(text,/AD jVha:PHX-AD-3 · GPUs/);assert.match(text,/limit Unknown \/ left 0/);
 });
 
-test("selected AD is omitted only from the collapsed quota summary", () => {
- const row=option("ca-montreal-1");row.availability_domain="jVha:CA-MONTREAL-1-AD-1";
- row.capacity.limits=[{...quota("AD",56,52),availability_domain:row.availability_domain}];
- const {created}=execute({options:{row},option_count:1});const card=created.find(n=>n.className==="option");
- const quotaSummary=card.children[0].children[3].textContent.replace(/\s+/g," ");
- assert.match(quotaSummary,/56 GPUs/);assert.match(quotaSummary,/Remaining headroom: 52 GPUs/);
- assert.doesNotMatch(quotaSummary,/jVha|AD /);assert.match(card.children[0].children[0].textContent,/jVha:CA-MONTREAL-1-AD-1/);
- assert.match(card.children[1].textContent,/AD jVha:CA-MONTREAL-1-AD-1/);
+test("location quota avoids repeating its selected AD but keeps detailed scope", () => {
+  const row=option("ca-montreal-1");row.availability_domain="jVha:CA-MONTREAL-1-AD-1";
+  row.capacity.limits=[{...quota("AD",56,52),availability_domain:row.availability_domain}];
+  const {created}=execute({options:{row},option_count:1});
+  const location=created.find(n=>n.className==="location"), summary=location.children[0];
+  assert.match(summary.children[2].textContent,/56\s+GPUs/);
+  assert.match(summary.children[3].textContent,/52\s+GPUs/);
+  assert.doesNotMatch(summary.children[2].textContent,/jVha|AD /);
+  assert.match(summary.children[0].textContent,/jVha:CA-MONTREAL-1-AD-1/);
+  assert.match(location.children[1].textContent,/AD jVha:CA-MONTREAL-1-AD-1/);
 });
 
-
-test("option summary puts sizing and hosts before quota and available supply", () => {
-  const {created} = execute();
-  const summary = created.find(node => node.className === "option").children[0];
-  const stats = summary.children.slice(1);
-  assert.match(stats[0].textContent, /^4 GPUs needed per replica/);
-  assert.match(stats[1].textContent, /^1 Hosts · 8 GPUs each/);
-  assert.match(stats[1].textContent, /2 replicas · 8 GPUs allocated/);
-  assert.match(stats[2].textContent, /Current configured limit/);
-  assert.match(stats[3].textContent, /^136 GPUs physically available/);
+test("GPU summary shows usage, topology, replica memory and allocated GPU total before locations", () => {
+  const {nodes} = execute();
+  const card=nodes.options.children[0], stats=card.children[0].children.slice(1);
+  assert.match(stats[0].textContent, /^4 GPUs used \/ replica/);
+  assert.match(stats[1].textContent, /^4 × 1 TP × PP/);
+  assert.match(stats[2].textContent, /^120 GB Total memory \/ replica \(estimate\)/);
+  assert.match(stats[3].textContent, /^8 GPUs allocated · total/);
+  assert.match(stats[3].textContent, /2 replicas · 1 host/);
+  assert.doesNotMatch(card.children[0].textContent,/eu-frankfurt|Limit|Headroom/);
+  assert.ok(card.textContent.indexOf("Allocation and replica packing") < card.textContent.indexOf("Available locations"));
 });
 
 test("regional columns compare each GPU quantity with the full host allocation", () => {
@@ -332,8 +339,8 @@ test("serving tabs show actual role allocation and shared archives with distinct
   assert.equal(nodes["layout-tab-disaggregated"].tabIndex, 0);
   assert.equal(nodes["layout-tab-aggregated"].tabIndex, -1);
   assert.equal(nodes["layout-panel"].getAttribute("aria-labelledby"), "layout-tab-disaggregated");
-  assert.match(nodes["option-count"].textContent, /1 of 1 P\/D options/);
-  assert.match(nodes.options.textContent, /2 GPUs per role instance/);
+  assert.match(nodes["option-count"].textContent, /1 GPU option · 1 location/);
+  assert.match(nodes.options.textContent, /2 GPUs used \/ role instance/);
   assert.match(nodes.options.textContent, /1 prefill \+ 1 decode · 4 GPUs allocated/);
   assert.match(nodes.options.textContent, /Role pods request 4 GPUs/);
   assert.match(nodes.options.textContent, /Prefill \/ decode instances 1 \/ 1/);
@@ -341,7 +348,7 @@ test("serving tabs show actual role allocation and shared archives with distinct
   assert.match(nodes.options.textContent, /packaged defaults describe combined serving/);
   assert.match(nodes.options.textContent, /role-specific native NIXL transfer/);
   assert.doesNotMatch(nodes.options.textContent, /Planned engine command|Replicas \/ replicas per host|Growth at scan time/);
-  const cards=nodes.options.children.flatMap(group=>group.children).flatMap(group=>group.children).filter(n=>n.className==="option");
+  const cards=nodes.options.children;
   assert.equal(cards.length,1);
   const pdLinks=created.filter(n=>n.tag==="a"&&n.href.includes("zipUrlVariables")).map(n=>new URL(n.href));
   assert.equal(pdLinks.length,2);
@@ -382,16 +389,63 @@ test("unsupported or capacity-unconfirmed P/D remains visible with reasons and n
     assert.match(nodes["layout-status"].textContent,/No confirmed P\/D option/);
     assert(nodes["layout-status"].textContent.includes(reason));
     assert.equal(nodes.options.children.length,0);
-    assert.match(nodes["option-count"].textContent,/0 of 0 P\/D/);
+    assert.match(nodes["option-count"].textContent,/0 GPU options · 0 locations/);
   }
 });
 test("legacy reports expose an unassessed P/D tab without inventing eligibility", () => {
   const {nodes}=execute();nodes["layout-tab-disaggregated"].events.click();
   assert.match(nodes["layout-status"].textContent,/not assessed in this report/);
   assert.equal(nodes.options.children.length,0);
-  nodes["layout-tab-aggregated"].events.click();assert.equal(nodes.options.children.length,2);
+  nodes["layout-tab-aggregated"].events.click();assert.equal(nodes.options.children.length,1);
   assert.match(template,/MoE models can support P\/D/);
   assert.match(template,/twice the GPUs of one combined instance/);
   assert.match(template,/does not always double an existing replicated fleet/);
   assert.match(template,/KV-aware routing/);
+});
+
+test("key model facts humanize parameters and distinguish declared maximum context from workload", () => {
+  for (const [count, expected] of [[27000000000, "27B"], [2400000000000, "2.4T"], [600000000, "600M"], [null, "Unknown"]]) {
+    const {nodes}=execute({model:{repository:"org/model",parameter_count:count,dimensions:{layers:64,heads:64,kv_heads:8},parameters_by_dtype:{BF16:100,F32:1},declared_context_length:262144,context_length:4096,concurrency_per_replica:4,memory_gb:{}}});
+    const facts=nodes["model-key-facts"].textContent;
+    assert.ok(facts.includes("Parameters "+expected));
+    assert.match(facts,/Layers 64/);assert.match(facts,/Attention heads \/ KV heads 64 \/ 8/);
+    assert.match(facts,/Checkpoint dtype BF16 \/ F32/);assert.match(facts,/Max context 262,144 tokens/);
+    assert.match(nodes.workload.textContent,/4,096 context tokens/);
+  }
+  assert.match(template,/<details[^>]*><summary>More model information<\/summary>/);
+  assert.match(template,/<details id="sizing-details"[^>]*><summary>How GPU sizing uses this budget<\/summary><div id="memory-status">/);
+});
+test("replica totals include active ranks only and missing rank estimates stay unknown", () => {
+  const row=option("region");row.allocation={...row.allocation,tensor_parallel_size:1,pipeline_parallel_size:7,required_gpus_per_replica:7,gpus_per_host:2,required_hosts:14,allocated_gpus:28,replicas:2,replicas_per_host:1,unused_gpus:14};row.memory_gb.estimated_per_gpu=18;
+  const {nodes}=execute({options:{row}});
+  assert.match(nodes.options.children[0].children[0].textContent,/126 GB Total memory \/ replica/);
+  assert.match(nodes.options.textContent,/Spare GPUs · allocated, unassigned 14/);
+  assert.doesNotMatch(nodes.options.textContent,/replicas per host/);
+  assert.match(nodes.options.textContent,/14 Hosts · total|Hosts · total 14/);
+  row.memory_gb.estimated_per_gpu=null;
+  const unknown=execute({options:{row}}).nodes.options.children[0].children[0].textContent;
+  assert.match(unknown,/Unknown Total memory \/ replica/);
+});
+test("different topology or serving images never share a GPU card", () => {
+  const a=option("region-a"),b=option("region-b"),c=option("region-c");
+  b.allocation={...b.allocation,tensor_parallel_size:2,pipeline_parallel_size:2};
+  c.serving={...c.serving,image:"docker.io/vllm/vllm-openai@sha256:different"};
+  assert.equal(execute({options:{a,b,c}}).nodes.options.children.length,3);
+});
+test("efficient allocations precede wasteful layouts regardless of option ID or AD", () => {
+  const efficient=option("region-z"),wasteful=option("region-a");
+  efficient.gpu_shape=wasteful.gpu_shape="VM.GPU.A10.2";
+  efficient.allocation={...efficient.allocation,tensor_parallel_size:2,pipeline_parallel_size:3,required_gpus_per_replica:6,gpus_per_host:2,required_hosts:6,allocated_gpus:12,unused_gpus:0};
+  wasteful.allocation={...efficient.allocation,tensor_parallel_size:1,pipeline_parallel_size:7,required_gpus_per_replica:7,required_hosts:14,allocated_gpus:28,unused_gpus:14};
+  const {nodes}=execute({options:{aaa:wasteful,zzz:efficient}});
+  assert.match(nodes.options.children[0].children[0].textContent,/2 × 3 TP × PP/);
+  assert.match(nodes.options.children[1].children[0].textContent,/1 × 7 TP × PP/);
+});
+test("capacity sorting uses one AD and never sums locations", () => {
+  const a=option("region-a"),b=option("region-b"),c=option("region-c");
+  a.capacity.ad_available_gpus=b.capacity.ad_available_gpus=60;
+  c.capacity.ad_available_gpus=100;c.gpu_shape="GPU.other";
+  const {nodes}=execute({options:{a,b,c}});nodes.sort.value="capacity";nodes.sort.events.change();
+  assert.match(nodes.options.children[0].children[0].textContent,/GPU.other/);
+  assert.equal(nodes.options.children.length,2);
 });
