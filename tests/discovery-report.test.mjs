@@ -241,8 +241,20 @@ test("incompatible regional supply remains visible with an explicit dtype reason
 test("generic planning scenario is numeric and explicitly heuristic without deployment options", () => {
   const {nodes} = execute({options:{},option_count:0,model:{repository:"future/model",memory_status:"heuristic",memory_gb:{resident_weights:2495.77},component_planning:{payload_budget_bytes:3768e9,weight_source:"hub_dtype_counts",status:"heuristic_uncalibrated",cache_source:"all_layer_dense_surrogate_not_upper_bound",cache_scenario_bytes:395e9,workspace_allowance_bytes:249e9,safety_margin_fraction:0.2,formula:"payload formula",interpretation:"Planning scenario, not a guaranteed upper bound"}}});
   assert.match(nodes["memory-metrics"].textContent,/3,768 GB|3768 GB/);
+  assert.match(nodes["memory-metrics"].children[2].textContent,/KV planning \/ replica 395 GB All-layer scenario · unvalidated/);
   assert.match(nodes["memory-status"].textContent,/Heuristic planning scenario available/);
   assert.match(nodes["memory-status"].textContent,/not a guaranteed upper bound/);
+});
+
+test("unprofiled cache planning is visible while complete and partial KV estimates take precedence", () => {
+  const model={repository:"future/multimodal",context_length:262144,concurrency_per_replica:1,memory_status:"heuristic",memory_gb:{kv_per_replica:null,full_attention_kv:null},component_planning:{cache_scenario_bytes:51539607552,cache_source:"all_layer_dense_surrogate_not_upper_bound"}};
+  const cache=override=>execute({options:{},option_count:0,model:{...model,...override}}).nodes["memory-metrics"].children[2].textContent;
+  assert.equal(cache({}),"KV planning / replica 51.54 GB All-layer scenario · unvalidated");
+  assert.equal(cache({memory_gb:{kv_per_replica:7,full_attention_kv:3}}),"KV cache / replica 7 GB");
+  assert.equal(cache({memory_gb:{kv_per_replica:null,full_attention_kv:3}}),"Full-attention KV / replica 3 GB");
+  assert.equal(cache({component_planning:{cache_scenario_bytes:25e9,cache_source:"weight_fraction_uncalibrated"}}),"Cache allowance / replica 25 GB Weight-based scenario · unvalidated");
+  assert.equal(cache({component_planning:{cache_scenario_bytes:25e9,cache_source:"future_scenario"}}),"Cache allowance / replica 25 GB Planning scenario · unvalidated");
+  assert.equal(cache({component_planning:{cache_scenario_bytes:null}}),"KV cache / replica Unknown");
 });
 
 test("regional quota uses limit / left labels and preserves AD scope, zero and unknown", () => {

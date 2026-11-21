@@ -102,8 +102,14 @@ $("model-provenance").textContent = text(model.weights_source) + ". Checkpoint d
 const cachedTokens = model.context_length > 0 && model.concurrency_per_replica > 0 ? model.context_length * model.concurrency_per_replica : null;
 $("workload").textContent = number(model.context_length) + " context tokens × " + number(model.concurrency_per_replica) + " concurrent sequences per replica = " + number(cachedTokens) + " live cached tokens when all sequences reach the requested length.";
 const budgets = [model.component_planning?.payload_budget_bytes / 1e9, model.recipe_memory_budget_gb, model.memory_gb.total_estimated].filter(value => Number.isFinite(value) && value > 0);
-for (const [name, value] of [["Sizing budget / replica", budgets.length ? Math.max(...budgets) : null], ["Weights / replica", model.memory_gb.resident_weights], [model.memory_gb.kv_per_replica == null && model.memory_gb.full_attention_kv != null ? "Full-attention KV / replica" : "KV cache / replica", model.memory_gb.kv_per_replica ?? model.memory_gb.full_attention_kv], ["Runtime / GPU", model.memory_gb.runtime_allowance]]) {
+let cacheMetric = [model.memory_gb.kv_per_replica == null && model.memory_gb.full_attention_kv != null ? "Full-attention KV / replica" : "KV cache / replica", model.memory_gb.kv_per_replica ?? model.memory_gb.full_attention_kv];
+if (cacheMetric[1] == null && Number.isFinite(model.component_planning?.cache_scenario_bytes) && model.component_planning.cache_scenario_bytes >= 0) {
+  const source = model.component_planning.cache_source, allLayer = source === "all_layer_dense_surrogate_not_upper_bound";
+  cacheMetric = [allLayer ? "KV planning / replica" : "Cache allowance / replica", model.component_planning.cache_scenario_bytes / 1e9, (allLayer ? "All-layer scenario" : source === "weight_fraction_uncalibrated" ? "Weight-based scenario" : "Planning scenario") + " · unvalidated"];
+}
+for (const [name, value, note] of [["Sizing budget / replica", budgets.length ? Math.max(...budgets) : null], ["Weights / replica", model.memory_gb.resident_weights], cacheMetric, ["Runtime / GPU", model.memory_gb.runtime_allowance]]) {
   const node = add($("memory-metrics"), "div", undefined, "metric"); add(node, "span", name); add(node, "strong", gb(value));
+  if (note) add(node, "span", note);
 }
 if (model.memory_status !== "estimated") {
   const note = add($("memory-status"), "div", undefined, "callout");
