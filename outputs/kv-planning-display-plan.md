@@ -16,7 +16,7 @@
 ## Phase 3 — validate and integrate
 
 - [x] Run focused report tests and browser-check the supplied report data on desktop/mobile, including the collapsed sizing assumptions.
-- [ ] Commit, integrate after validation and rebuild/check the discovery ZIP from committed main. Existing reports and RMS uploads require an explicit refresh.
+- [x] Commit, integrate after validation and rebuild/check the discovery ZIP from committed main. Existing reports and RMS uploads require an explicit refresh.
 
 Only report rendering changes. The 51.54 GB scenario treats all 48 text layers as full-context attention with BF16 KV at the selected workload; it does not model Inkling's local-attention savings, auxiliary state, or actual engine allocation. It is not an upper bound. The Mini variant also repeats layers, which requires separate cache-layout validation.
 
@@ -26,3 +26,4 @@ Only report rendering changes. The 51.54 GB scenario treats all 48 text layers a
 - Guarded report Terraform tests: 22 passed with the strict fake OCI CLI.
 - Chromium rendered the supplied report data at 1440 × 1100 and 390 × 844. The cache metric showed 51.54 GB with its all-layer/unvalidated label; assumptions stayed collapsed and the mobile page had no horizontal overflow. Screenshots and private report evidence remain under `/tmp/inkling-discovery-20261121`.
 - No estimator formulas, serving eligibility, GPU resources or published reports changed.
+- Feature commit `3199cbe` was fast-forwarded into local main after validation. The rebuilt `/tmp/oke-serving-main-discovery.zip` passed actual archive checks with Terraform 1.5.7 and locked providers. Refresh the discovery stack upload and rerun discovery to publish the new metric.
