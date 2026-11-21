@@ -20,7 +20,7 @@
 
 - [x] Focused executable regressions: cross-region grouping, distinct geometry/configuration, spare GPU counts, per-replica totals, partial/unknown memory, parameter formatting, P/D, scoped capacity and exact links.
 - [x] Browser validation on desktop/mobile using rendered real report data plus a multi-region/multi-topology fixture; check expand/collapse, filters, sorting, keyboard tabs and launch URLs.
-- [ ] Run report/root Terraform checks as needed; commit tested source, merge after end-to-end browser validation and rebuild/check the actual discovery archive from committed main.
+- [x] Run report/root Terraform checks as needed; commit tested source, merge after end-to-end browser validation and rebuild/check the actual discovery archive from committed main.
 
 This change does not alter model estimation, capacity eligibility, GPU resources or the serving runtime. Grouping is linear in option count; sorting is O(n log n). Location capacities are never summed across ADs. Published uploads remain at their existing source until explicitly refreshed.
 
@@ -31,3 +31,4 @@ This change does not alter model estimation, capacity eligibility, GPU resources
 - Headed Chromium: 1440 × 1100 desktop and 390 × 844 mobile. Real Qwen3-14B report data rendered correctly; a synthetic multi-region fixture grouped five location choices into two distinct topology cards. Six used GPUs / two replicas / six hosts / twelve allocated GPUs remained distinct from seven used GPUs / fourteen hosts / twenty-eight allocated GPUs.
 - Verified closed sizing/allocation/configuration disclosures, expanded packing and location actions, exact source launch/download links, GPU/region/AD/no-match filters, allocation/capacity sorting, P/D role counts, keyboard tab focus and unsupported P/D explanations without launch actions. Mobile page width matched the 390px viewport; no page overflow. Only the preview server's unrelated favicon request returned 404.
 - No live stack, GPU allocation or published report was changed. Browser evidence and private fixtures remain outside the repository under `/tmp/oke-sizing-ui-preview`.
+- Feature commit `89c7c35` was fast-forwarded into local `main` after validation. The discovery ZIP was rebuilt from committed main at `/tmp/oke-serving-main-discovery.zip` and passed the actual archive checks with Terraform 1.5.7 and the locked providers. Existing RMS uploads and Object Storage bundles require an explicit refresh to use the new report UI.
